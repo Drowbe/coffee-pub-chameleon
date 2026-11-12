@@ -1,0 +1,177 @@
+# Documents Co-editing Plan: several people typing in one document at once
+
+**Audience:** Thomas, who decides; experience-design (the editor, presence, the lock's replacement); server-development (the live channel's limits, on a held branch); quality-assurance (two real browser pages, the independent safety read); the project manager (the queue); content-manager (the documents once it is built).
+
+**Status:** Proposed, 2026-11-12. Nothing is decided and nothing is built. The request, from Thomas: co-editing is the biggest gap in Documents; today one person edits (the edit lock) and everyone else sees the saved text live; he wants several people typing in one document at once, with the rich editor (ProseMirror) and Yjs, as [plan-documents](plan-documents.md) named it. Every lean below is a suggestion; the decisions are made in chat and then move to "Decisions". Facts are marked **(code)** (read at `1649a84f`, Documents 0.11.11) or **(memory)** (what I recall of a library, to confirm in the spike). Builds on [plan-documents](plan-documents.md), [plan-documents-rich-editor](plan-documents-rich-editor.md), [plan-documents-paper-layout](plan-documents-paper-layout.md) and [plan-module-live](plan-module-live.md).
+
+## What it is today
+
+- **One editor at a time.** `_lock:<id>` is one record written by compare-and-set, refreshed every 10 seconds, stale after 35 seconds seen on the reader's own clock. Others see "<name> is editing this. You can read it as it changes." **(code, `documents-lib-c-lock.js`)**.
+- **The text** is in `text:<id>:<chunk>` records (at most 6 chunks and 150,000 characters); `doc:<id>` holds the version (`rev`), page colour, layout and `size`. The commit is compare-and-set on `doc:<id>` and is the real safety; the lock is a courtesy **(code)**. Readers get changes through `host.on` and the `reconnected` resync **(code, `documents-lib-j-resync.js`)**.
+- **The rich editor** is ProseMirror (16 packages in one 282,652-byte vendored file) with our Markdown mapping. It sits behind an adapter (`getText`, `setText`, `onChange`, `revision`, `run`). Untouched blocks are written back exactly as stored, from a lookup kept beside the document, and the written text is read back and compared before it is saved **(code, plan-documents-rich-editor decisions 12 and 22)**.
+- **Paper pages** are decorations on the blocks, not part of the document **(code, `documents-lib-t-editor-pages.js`)**.
+- **`host.live`** carries short messages between the people using one module in one space. Nothing is stored. A message's data is at most **256 bytes** as JSON, 20 messages a second for one person in one module (burst of 20), 40 across modules; the server adds `from` (key, name, guest), `at` and a `seq` that counts up per module and space. A manifest `live.publish` names the permission needed to send; a viewer without it is refused with 403. `host.live.on('people')` says who has joined **(code, `server/module-live.js`, [api-modules](../api/api-modules.md) "Live messages")**.
+- **Storage limits:** a value about 60 KB, a module's data 5 MB, 240 saves a minute per module and person **(code, [api-modules](../api/api-modules.md))**.
+
+The two facts that shape everything: a live message is **small (256 bytes) and can be lost**, and storage is **the only truth**.
+
+## Decisions
+
+None yet. Thomas decides in chat from the questions at the end; his answers are recorded here, each with its reason.
+
+## Options: the sync model
+
+**A. Yjs in the page, `host.live` as the relay, storage as the truth (lean).** Each page holds a Yjs document bound to ProseMirror with `y-prosemirror`. Edits go out as small Yjs updates over `host.live` (topic `doc.<id>`). A Yjs snapshot is also kept in storage (see "The contract"), so a late joiner starts from it and a lost message is repaired from it. The Markdown record stays the saved form that everything else reads (reader, list, thumbnails, export, search).
+
+- *Gains:* no new server code except one limit; merging is Yjs's job (it is built for this and updates apply in any order, twice, or late); offline editing merges on return; per-person undo comes with it.
+- *Costs:* one more vendored bundle; the 256-byte message limit needs a change or chunking; the stored-form rules need a careful bridge (below); two stored forms (snapshot and Markdown) that must stay in step.
+
+**B. A record per block with compare-and-set, no CRDT (S3 in plan-documents).** Each paragraph, heading or grid is its own record, ordered by a fractional index; a save writes only the block that changed.
+
+- *Gains:* no library, no snapshot, storage is the only form.
+- *Costs:* two people typing in one paragraph is the common case and B has no answer: one overwrites the other, or a block lock returns. Markdown does not split into blocks cleanly (a list, a fence, a grid span lines). Cursors and per-person undo are all new work. Not co-editing as Thomas described it.
+
+**C. Operational transform (a server that orders changes).** Needs a server-side transform engine and a dedicated endpoint; the libraries for it are not a fit for ProseMirror's schema without much work. Rules out the module-only design. Not recommended.
+
+**Sub-choice: the relay.** (i) `host.live` with a raised size limit for this module (lean), (ii) `host.live` as is with each update cut into 256-byte frames, (iii) a dedicated server endpoint. (iii) is more code on the server and a second security surface for what `host.live` already does with a publish permission and rates. (ii) needs no core change but a paste of 5 KB becomes about 40 frames at 20 a second, which is 2 seconds of a stalled document and a long run of messages that can each be lost. (i) is a small core change: the manifest's `live` object may carry `bytes` (and `perSecond`) for that module, each capped by a server maximum from an environment variable. That change goes on a held branch and is read before merge. Whatever the relay, an update bigger than the cap is never sent; the page writes its snapshot to storage and sends a short "pull" message (see the contract).
+
+## The contract
+
+### The sync model on option A
+
+**Where the pieces live.**
+
+- **The live document** is a `Y.Doc` with the document's text as a `Y.XmlFragment` that `y-prosemirror` binds to the editor. Page colour, layout, page size and page numbers (the paper-layout fields) are a `Y.Map` in the same document, so two people changing the page colour merge instead of one getting a 409.
+- **The saved form** is unchanged: `text:<id>:<chunk>` and `doc:<id>`, written by the commit.
+- **The snapshot** is `ydoc:<id>:<n>` (chunks of at most 40 KB of base64 each, so every value stays under the 60 KB limit) and one header `ydoc:<id>` with `{ textRev, chunks, bytes, hash }`. It is the full state with garbage collection on. It is derived data: if it is missing or its `textRev` is not the saved text's `rev`, a page starts a new session from the saved text (see "Starting a session").
+
+**Who writes the saved text.** One writer at a time, chosen by a rule every page computes the same way, with no election messages: the editor with the lowest key among those who have joined and are synced. Every beat (the module's existing autosave beat) the writer, if the document changed since the last save:
+
+1. Takes the page's Yjs state and the ProseMirror document it renders.
+2. Writes it to Markdown with the stored-form rules (below), parses it back and compares with that document (the rich editor's read-back rule). If they differ, nothing is saved, the last saved text stays, and the editors see one plain note. The writer tries again at the next change.
+3. Writes the text chunks and `doc:<id>` by the existing commit (compare-and-set on `rev`), then the snapshot chunks and header. The snapshot comes after the text and carries its `rev`, so a crash in between leaves a snapshot older than the text, which is detected, never trusted.
+4. A 409 means another page wrote first. The writer re-reads, and if the saved text already equals what it would write, it is done; otherwise it goes round once more.
+
+If the writer leaves, the next lowest key becomes the writer at the next beat; if two pages both believe they are the writer for a moment, the compare-and-set settles it and nothing is lost. Any editor may also write on **Done** if they are the last editor out ("the last one out commits"), and the writer writes on any change that has waited a beat.
+
+**Merge before write.** A page writes only when its Yjs state includes the snapshot of the current saved `rev` (`baseRev`). A page that was offline or just reconnected first reads the snapshot and applies it (Yjs merges it as an update), and only then may it write. This is what stops a page with an old state from saving over newer text.
+
+**Untouched blocks stay exact.** The rule from the rich editor plan holds on one condition: the lookup of stored spellings is a function of the last saved text, so every page can rebuild it from the text it read, and a block whose content is the same as a stored block is written with its stored spelling. Alice changing paragraph 3 and Bob paragraph 5 gives a saved text where only those two blocks are re-spelled. The writer's lookup is rebuilt from the text it saved last (or read last) each time it writes; it does not depend on any other page's lookup. The corpus tests of the rich editor are run again on a Yjs-backed document. **To confirm in the spike:** whether the lookup by content survives a block moved by one person while another edits it (the lean: a moved block with the same content keeps its spelling; a changed one is re-spelled).
+
+**Starting a session.**
+
+1. Read `ydoc:<id>` and `doc:<id>`. If the header's `textRev` equals the saved `rev`, apply the snapshot.
+2. If there is no snapshot or it is behind, and no other editor has joined (`host.live` people), seed a new Yjs document from the saved text. To avoid two pages seeding at once and doubling the text, the seed is written with `host.storage` create-if-absent on `ydoc:<id>` (version 0), so only one seed wins; the loser reads it.
+3. Join `host.live` for the module, then publish a `sync` message with the state vector. Peers answer with the difference. Anything missed is repaired by the next step.
+
+**Repairing lost messages.** A page watches the `seq` of live messages; a gap means a message was lost (or the stream dropped), and the page asks for a sync. Every 15 seconds each editor also sends its state vector, a few dozen bytes. A page that sees it is far behind reads the snapshot from storage.
+
+**What goes over the wire.** Topics: `doc.<id>` for updates (base64 of a Yjs update, with the sender's `rev`), `sync` (state vector or difference), `pull` (a snapshot is in storage, read it), `cur` (a cursor, see Presence). Everything else is refused by the receiver.
+
+**Large changes.** A paste or a rewrite whose update is over the cap is not sent: the page writes the snapshot (a normal write, with the usual rates) and sends `pull`. Peers read the snapshot and apply it. Because applying a snapshot to Yjs is the same as applying an update, this needs no new code path beyond the repair path.
+
+### What replaces the edit lock
+
+- **Edit still opens editing.** Pressing Edit joins the live session. Several people may be editing. **Done** leaves it; the last one out commits first (if they are the writer) or asks the writer to (the next beat).
+- **`_lock:<id>` and `documents-lib-c-lock.js` go**, with "<name> is editing this" and the 409 lost-lock path. In their place: an editors list from `host.live` and a small bar entry "N editing" with names (Presence).
+- **A reader sees the same live document.** A reader who is not editing joins the session as a listener: it gets the updates and draws them, never publishes (and a viewer cannot: the manifest `publish` is `edit`, so the server refuses with 403). A reader does not need the live channel to read: if the channel is closed, the reader falls back to today's saved text with the resync.
+- **The Markdown box (source mode) while others edit.** It cannot merge character edits into a Yjs document without losing the history. Options:
+  - **(a) Off while anyone else is editing (lean).** The mode switch shows the box as unavailable with one sentence ("Others are editing. The Markdown box is off until you are alone."). When you are alone, the box works as today; its text enters the document as one replacement when you switch back or press Done, and your undo history for the session restarts. If someone joins while you are in the box, your text is applied and you are switched back to the rich editor with a note.
+  - **(b) Source edits applied to Yjs as a diff.** Parse the box's text into blocks, diff against the document's blocks, apply the changed blocks. Gains: the box works with others. Costs: a block diff with its own bugs, and a box edit that rewrites half the document would still overwrite someone else's typing in that region. A later step if people ask.
+  - **(c) The box for one person at a time.** Needs a small lock kept just for the box; the lock code stays. Gains: nothing (a) does not. Not recommended.
+- **Who may co-edit.** The module's `edit` permission per role, as today; the manifest becomes `"live": { "publish": "edit", ... }`, so the server, not the page, decides who may send. A guest co-edits only if the owner gave the guest role `edit` and the guest holds a valid pass (a guest without one cannot send). The names shown come from the server's `from` field, which cannot be forged by a page. Nothing in the module's permissions changes.
+- **The cap.** At most **8** people editing at once (lean; 16 is the next step up). Order is by the sequence number of each person's `join` message, which all pages see the same way. A ninth person pressing Edit gets the document read-only with one sentence ("Eight people are editing. You can read along; Edit works when one leaves.") and Edit retries when someone leaves. Why 8: at ten keystrokes a second each, 8 editors is about 80 messages a second for every page to apply; cursors add to that; the server limit is per sender, so the cost is on the receiving pages. The cap is a constant in the module, not a setting, until someone needs it moved.
+
+### Presence
+
+- **A list** of who is editing (name and colour), in the bar, from `host.live.on('people')` plus a `join`/`leave` mark carrying "editing". Colours are `host.live.tint(key)`, the same as the Whiteboard's pointers. First build.
+- **Cursors and selections,** drawn as ProseMirror decorations (a caret widget with the name, and a highlight over a selection), coloured from theme tokens by tint class; no inline colours (`check-no-raw-colours`). We do not use `y-prosemirror`'s cursor plugin (it takes a colour string and builds its own DOM) and we do not vendor `y-protocols`: a cursor is our own small `cur` message with a Yjs relative position pair (so it follows edits), sent at most 8 times a second while it changes, and dropped after 20 seconds without news. Names come from the server's `from`, never from the message. Lean: cursors in the same release as co-editing but as their own build step, so they can be cut without cutting editing.
+
+### Undo per person
+
+`y-prosemirror` has its own undo (`yUndoPlugin` with Yjs's `UndoManager`), which tracks only this page's own changes, so Undo undoes your typing and not another person's. It replaces `prosemirror-history` in co-editing mode (two histories on one document fight). The bar's Undo and Redo, and the keys, call the Yjs commands through the adapter's `run`. A block that undo brings back to its old content is written with its stored spelling, because the lookup is by content. Undo does not cross a mode switch to the Markdown box (as today), and the history restarts after a box replacement. The editor's typing-merge window is Yjs's default (about half a second); the spike checks it feels like today's.
+
+### Offline and reconnect
+
+- **While the live channel is lost** the page stays editable (lean). Edits go into the local Yjs document and wait; the bar shows "Offline: your changes are kept and join in when you are back." The page does not write the saved text (merge before write).
+- **On `reconnected`** (the module's existing resync): read the snapshot and the saved `rev`, apply the snapshot, send a `sync`, then the page may write again. Yjs merges both sides' changes.
+- **Limits.** The changes live in memory only; closing the page while offline loses them (a local store such as IndexedDB is a later step, not in this plan). A page offline for a long time still merges, but the result may surprise the others; the note says "Others kept working. Your changes joined in." The 150,000-character cap holds after the merge: if the merged text is over, the commit is refused and every editor sees "This document is over its length limit. Cut some text before it can be saved." until it is under.
+- **Alternative (read-only while offline).** Simpler and safer to explain; costs a person their typing on a train. The decision is in the questions.
+
+### Size of what is kept
+
+The saved text is at most 150,000 characters. The Yjs state for typed text is usually 1 to 3 times the text (memory: runs of typed characters merge into one entry, formatting and attributes add some); a document with many small edits by many people is more. Garbage collection on and a rewrite of the snapshot at every save keep it from growing without bound. A 150,000-character document may therefore need about 5 to 12 snapshot chunks. The module's data limit is 5 MB, and the snapshot doubles what each document costs; the spike measures a real document and a heavily edited one, and the plan's step 1 reports the number before step 2 starts. The snapshot is bookkeeping: it is deleted with the document, left out of an environment export (the text is the export), and rebuilt from the text if lost. **To confirm in the build:** how `_`-prefixed keys are treated by Clear, export and the list, to pick the key prefix.
+
+### The bundle
+
+- **Libraries:** `yjs`, `y-prosemirror`, `lib0` (and `y-protocols` only if the spike shows a need). All are by the same author and are MIT as far as I recall **(memory)**; **to confirm in the spike** by reading each package's licence file, copying it to `vendor/LICENSE.<package>` and writing it in `THIRD-PARTY.md`. Only MIT, Apache-2.0, BSD, ISC and MPL-2.0 are allowed; any other licence stops the plan.
+- **Size:** about 150 to 200 KB minified and about 50 KB gzipped for Yjs, `y-prosemirror` and the parts of `lib0` they use **(memory; measured in the spike)**. The existing bundle is 282,652 bytes, so this is about 60 percent more.
+- **One file with the editor.** `y-prosemirror` imports `prosemirror-model`, `-state`, `-view` and `-transform`; a second bundle would carry its own copies, and the editor's checks (`instanceof`, plugin keys) would fail. So the recipe in `THIRD-PARTY.md` is extended and the file `documents-lib-0-prosemirror.js` is rebuilt once with esbuild including the Yjs packages, with the same pinned versions for the existing ones. The lean is one file; the alternative (a second file with the editor packages aliased to the first) is a spike question.
+- **Checks:** `check-vendored-hashes` (new SHA-256 for the rebuilt file and rows for each new package), `check-third-party-licences`, `check-no-outside-urls` (any URL in the bundle's comments is removed as `marked`'s source-map line was), and the named innerHTML exemptions (none are expected: Yjs does not touch the page, and we do not use `y-prosemirror`'s cursor plugin).
+- **Names.** The bundle is not scanned by `check-names`; our module code is. Only the names the module code imports matter, and the module imports `Doc`, `applyUpdate`, `encodeStateAsUpdate`, `encodeStateVector`, `UndoManager`, `ySyncPlugin`, `yUndoPlugin`, `undo`, `redo`, relative-position functions. None is a banned word. If the spike finds one, it is aliased at export, as `tableEditing` was.
+- **No outside service.** Nothing is loaded from outside, and there is no hosted sync provider.
+
+### Security
+
+- **Who may send:** the server. The manifest `"live": { "publish": "edit" }` makes the server refuse a viewer (403). A guest needs a valid pass and the `edit` permission. The `from` of each received message is set by the server and is the only identity the page trusts.
+- **What an update can do:** Yjs updates are binary and a hostile or broken one is the main risk. The page treats them as untrusted input:
+  1. A message is accepted only on a known topic, from a person on the editors list, and only up to the size cap; the update is decoded inside a `try` and a failed decode drops the message.
+  2. `y-prosemirror` turns the shared content into ProseMirror nodes by the editor's schema; the page checks the resulting document against the schema (`doc.check()`) after each remote change and, if it fails, throws the update away and rebuilds the page from the last good snapshot. An update can therefore change only schema-valid nodes (**to confirm in the spike**: what `y-prosemirror` does with an unknown node name, and that a deliberately malformed update is caught).
+  3. Nothing reaches `innerHTML`. The safety rules of the rich editor (plan-documents-rich-editor, "Safety") hold unchanged: link and object-chip values are cleaned by the existing writer and reader, whatever came over the wire.
+  4. **The 150,000-character cap** is enforced in three places: the local editor refuses typing that would pass it (remote changes are not refused, they are merged); the commit refuses text over it (the existing `dlChunk` limit); and a receiver drops an update that takes its document more than 10 percent over the cap and re-reads the snapshot.
+  5. **Rates:** the server's per-person limit (20 a second, raised for this module by a manifest `perSecond`, capped by the server) is the real limit. Pages batch their updates in a 50 ms window so typing is about 10 messages a second, and cursors are throttled to 8 a second. A page told 429 waits for `Retry-After` and keeps its changes.
+  6. A hostile editor can already write anything an editor may write (garbage text). What they must not do is damage other people's work beyond that: the writer's read-back, the snapshot's `textRev` and the 10 percent rule are the guards, and an editor's undo restores.
+- **The independent safety read** (quality-assurance, a real browser) covers the new live topics and limits, the snapshot read and write, the update handling in point 2 above with deliberately bad input, and the editor's new paths. It is required before co-editing is on by default and before any beta client uses it. Plan-documents already said the live channel needs a security read first; the channel has been read for the Whiteboard, but not for a binary payload from a person who may type.
+
+### Paper, grids and the other nodes
+
+- **Page spacers and breaks** are local decorations and a `page_break` atom node. They are not in the Yjs document, so each page works out its own spacers. `y-prosemirror` redraws changed nodes when a remote change arrives (it keeps the nodes that did not change), so a remote edit makes a page run its measuring pass; the builder checks that this does not cause a flicker or a caret jump. The manual page break is an ordinary node and merges like a paragraph.
+- **Grids** are ordinary nodes, but the structure is the risk: one person adds a row while another adds a column, one deletes a column while another types in it, two people fix the same broken grid. ProseMirror's grid code repairs shape (`fixTables`) with a transaction of its own; if two pages repair the same break, both repairs sync and cells double. The spike tries these three collisions. If the result is not clean, the lean is to allow cell text edits for everyone and structure edits (add or remove a row or column) always, but with the repair run only on the writer's page. If that is not clean either, a grid is edited by one person at a time (a small mark on the grid) in the first release.
+- **Formulas, object chips and the source node** are atoms or leaf nodes; they merge as whole nodes, so two people changing the same formula get one of the two.
+
+## Left to build, in order
+
+All steps by the smaller model (Sonnet), one small PR each, a try build unless marked, each with a module version bump if it changes the module, rebased on `origin/main`. Steps 2 and 5 touch core and go on a held branch, read before merge.
+
+1. **Spike (M, experience-design).** Yjs and ProseMirror in the module's shadow root; two simulated peers over a fake channel with loss, delay and duplicates. Measures the bundle, the snapshot size for a real document and a heavily edited one, and the cost of a remote change on a page-layout pass. Proves: the Markdown round trip from a Yjs-backed document with the corpus tests; untouched blocks exact after two people edit different blocks; the three grid collisions; a malformed update; the licence files. A short report goes to the project manager before step 2.
+2. **The live limit, server half (S, server-development, held branch).** The manifest's `live` object accepts `bytes` and `perSecond`, each capped by a new environment variable; `api-modules` text is a content-manager job later. Tests in `check-module-live`. Not needed if the spike chooses frames.
+3. **The vendored bundle (M, experience-design).** The rebuilt file, `THIRD-PARTY.md` rows, licences, the hash and the checks. No page change.
+4. **Sync and the snapshot (L, experience-design).** The Yjs document bound to the editor, the live topics, session start, the writer rule, merge before write, repair, the large-change path, the Markdown box off while others edit. Behind a setting in the module (off by default) so main keeps working. Verified with two pages.
+5. **Presence (M, experience-design).** The editors list, the cap and the read-only message, the cursors and selections.
+6. **The lock's replacement (M, experience-design).** Remove `documents-lib-c-lock.js`, the lock record and its words; Edit, Done and the last-one-out commit; offline and reconnect; the note texts. Undo through Yjs.
+7. **The independent safety read (M, quality-assurance).** As above, with bad input in a real browser. Required before step 8.
+8. **On by default (S, production build).** After Thomas has tried it by hand with two real people, and on Safari and the phone. Then content-manager updates the user guide and architecture.
+
+## Verify
+
+- **Verified live (two Playwright pages as two people against the local server):** both pages type in one paragraph and in different paragraphs and converge; a late joiner gets the state; a page that loses and regains the stream converges; Done, last one out, saves; the saved Markdown has untouched blocks exactly as stored; the ninth editor is read-only; a viewer is refused by the server; the Markdown box is off while another is editing; per-person undo; the cap and over-length message.
+- **Checked by a tool:** the pure rules (the writer choice, the cap order, merge before write, the update filters) in module tests like the lock's; the vendored hashes, licences and outside-URL checks; the corpus round trip on a Yjs-backed document.
+- **Not verified here:** a real LiveKit call is not involved (the channel is the app's own server, so Playwright covers it), but **real devices, real networks, Safari, iPad and phone input methods under remote changes are not verified with real devices**; Thomas tests those by hand with two real people. Behaviour under load (many editors, long sessions, a slow network) is not measured.
+
+## Risks
+
+- **A remote change redraws the editor** (memory: `y-prosemirror` replaces changed nodes). Input methods and a caret mid-word on a phone are the worst case; the spike and step 4 test it, and a fix may need the larger model.
+- **The snapshot and the text drift** if a writer dies between the two writes. Handled by `textRev`; the cost is a session that starts from the text.
+- **5 MB per module** may bind sooner than today, since a document costs about 2 to 3 times its text.
+- **Two stored forms to keep honest.** Mitigation: the Markdown is the one everything reads; the snapshot is only for sessions and is rebuilt when stale.
+- **Grids** (above) and a **paste of a very large block** (handled by the pull path, slow on a poor connection).
+- **A held-branch core change** (the live limit) delays step 4 if not read promptly.
+
+## Not decided
+
+- Whether source-mode edits ever become diffs (option b).
+- A local store for offline edits.
+- Comments, suggestions and the history of who changed what (Yjs could carry them; none is in this plan).
+- Cursors for readers who are not editing (no: they are not shown).
+- Making the cap a setting.
+
+## Questions for Thomas
+
+1. **The sync model.** (A) Yjs in the page, `host.live` as the relay, storage as the truth; (B) a record per block with no Yjs (two people in one paragraph overwrite each other); (C) a server that orders changes (much more server work). Lean: A, because it is the only one that lets two people type in one paragraph.
+2. **What replaces the edit lock.** (A) Edit joins a shared session, Done leaves, the last one out saves, the lock goes; (B) keep the lock as the default and let an owner turn co-editing on for a document. Lean: A, with the lock removed; B keeps two paths in the code and the product is not released.
+3. **The Markdown box while others edit.** (a) Off while anyone else is editing; (b) edits applied as a block diff; (c) one person at a time in the box. Lean: (a). The box returns when you are alone.
+4. **Who may co-edit.** (A) Anyone who has the module's `edit` permission, as today, enforced by the server; (B) a new separate "co-edit" permission; (C) members only, never guests. Lean: A. Guests co-edit only if you gave the guest role `edit`.
+5. **The most people editing at once.** (A) 4; (B) 8; (C) 16. Past the cap a person reads along and Edit works when someone leaves. Lean: 8. Raise it only if you see a real need.
+6. **Cursors and selections in the first build.** (A) The editors list and coloured cursors with names, as their own step; (B) the list only at first, cursors later; (C) both in one step. Lean: A, so cursors can be cut without cutting editing.
+7. **Offline.** (A) Stay editable and merge on return, with a note, changes kept in memory only; (B) read-only when the live channel is lost; (C) editable and kept on the device for later (a local store, more work). Lean: A.
+8. **Where the Yjs state is kept.** (A) A snapshot in storage beside the text, rewritten at each save, rebuilt from the text if lost; (B) no snapshot; the first editor sends the state to late joiners over the live channel (nothing in storage, but a person joining an empty session starts from the text and a lost message cannot be repaired); (C) a snapshot and a log of updates (finer, needs compaction, more writes). Lean: A. It uses about 2 to 3 times the text's storage; the spike gives the real figure.
