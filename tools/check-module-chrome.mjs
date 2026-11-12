@@ -571,6 +571,14 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   const hostSel = R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'y\u0000'.repeat(100), title: 'T'.repeat(500), items: IT }])[0];
   assert.ok(hostSel.label.length === R.HEADER_SELECT_LABEL && hostSel.title.length === 40 && !/[\u0000-\u001f]/.test(hostSel.label), 'the select label (40) and title (40) are cut and clean too');
   assert.equal(R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items: 'not a list' }]).length, 0, 'items that are not a list: dropped');
+  // An ordinary icon item's title is cleaned the same way.
+  const iconTitle = (title) => R.cleanHeaderItems([{ id: 'a', icon: 'star', title }])[0];
+  assert.equal(iconTitle('Pi‮n​s').title, 'Pins', 'icon title: override and zero-width space removed');
+  assert.equal(iconTitle('A B').title, 'A B', 'icon title: U+2028 becomes a space');
+  assert.equal(iconTitle('שלום').title, 'שלום', 'icon title: RTL letters stay');
+  assert.equal(iconTitle('x'.repeat(10240)).title.length, 40, 'icon title: 10 KB cut to 40');
+  assert.equal(iconTitle('‮​⁦').title, '', 'icon title: only invisible characters is empty');
+  assert.equal(iconTitle(undefined).title, '', 'icon title: missing is empty, the item stays');
   // Invisible and direction characters, one case per class: gone from the select label, title, item labels and headings.
   const classes = { 'bidi override (U+202A-202E)': '‪‫‬‭‮', 'bidi isolate (U+2066-2069)': '⁦⁧⁨⁩', 'marks (U+200E, U+200F, U+061C)': '‎‏؜', 'zero width (U+200B-200D, U+2060, U+FEFF)': '​‌‍⁠﻿' };
   for (const [name, chars] of Object.entries(classes)) {

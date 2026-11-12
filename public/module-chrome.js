@@ -381,7 +381,7 @@ export function cleanHeaderItems(items) {
     }
     const c = {
       id: String(i?.id ?? '').slice(0, 40),
-      title: String(i?.title ?? '').slice(0, 40),
+      title: plain(i?.title, 40),
       icon: ICON.test(i?.icon || '') ? i.icon : '',
       regular: Boolean(i?.regular),
       on: Boolean(i?.on),
