@@ -37,13 +37,29 @@
   // Two writes to one block at once: the last write wins (no version is sent). Conflict handling, when it comes, sends the
   // version this page saw ({ version } on set) and resolves a 409 here.
   //
+  // Nothing a person did is lost to a wait or a closed page. Every write not yet accepted (waiting on the 600 ms timer, on
+  // its way, parked by a 429) is also kept in the browser's localStorage under `scope` (the space) and the key prefix: the
+  // newest intent per key (a put with its block, or a delete), at most WB_PENDING_CAP characters (when over, the oldest
+  // intents are left out first), for WB_PENDING_TTL ms. localStorage rather than sessionStorage because a closed tab must be
+  // rescued too (sessionStorage is per tab). replay() after the first read sends what an earlier page of the same person left
+  // (never another person's, never an old one, never anything that is not shaped like a block) and returns what to draw.
+  // A key is forgotten when the server accepted that very intent, or refused it for good. After 8 waits for a key the intent
+  // stays kept and parked: it is tried again after a minute and by the next replay. pending() counts the writes not accepted
+  // yet; beforeUnload(e) asks the browser's own prompt only while that is above 0.
+  //
   // It also keeps the page's guess of the server's clock (createServerClock, below), from the time the server stamps on
   // every write (updatedAt): what a timer counts from, so pages whose own clocks differ still show the same time.
   //
   // The same code keeps the board's settings (lib-a, WB_BOARD_PREFIX): a second sync for that prefix, whose one "block" is
   // the settings value. `prefix` names the keys a sync owns (block:<board>: unless given); it hears only those.
-  function createSync({ host, board, prefix = `block:${board}:`, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock() }) {
+  const WB_PENDING_CAP = 2000000; // characters kept in the browser for writes not saved yet
+  const WB_PENDING_TTL = 10 * 60 * 1000; // ms: an older leftover is ignored
+  function wbPendingStore() { try { return window.localStorage || null; } catch { return null; } }
+  function createSync({ host, board, prefix = `block:${board}:`, clean, me = '', onRemote, onReload, onRefused, onBusy = () => {}, clock = createServerClock(), scope = '', store = wbPendingStore(), parkMs = 60000 }) {
     const PREFIX = prefix;
+    const STORE_KEY = `wb-pending:${scope}:${PREFIX}`;
+    const pend = new Map(); // key -> the newest intent not accepted yet: a block, or GONE (kept in insertion order = age)
+    let persistDirty = false;
     const keyOf = (id) => PREFIX + id;
     const idOf = (key) => key.slice(PREFIX.length);
     const GONE = Symbol('gone');
@@ -138,11 +154,37 @@
       } catch { /* the next change or a reload puts it right */ }
     }
 
+    function persistNow() {
+      persistDirty = false;
+      if (!store) return;
+      try {
+        if (!pend.size) { store.removeItem(STORE_KEY); return; }
+        const items = [...pend].map(([k, v]) => [k, v === GONE ? { op: 'del' } : { op: 'put', value: v }]);
+        const wrap = (list) => JSON.stringify({ t: Date.now(), by: me, items: Object.fromEntries(list) });
+        let text = wrap(items);
+        while (text.length > WB_PENDING_CAP && items.length > 1) { items.shift(); text = wrap(items); } // the oldest go first
+        if (text.length > WB_PENDING_CAP) { store.removeItem(STORE_KEY); return; }
+        store.setItem(STORE_KEY, text);
+      } catch { /* no storage, or it is full: the in-memory wait still works */ }
+    }
+    function persistSoon() {
+      if (persistDirty) return;
+      persistDirty = true;
+      Promise.resolve().then(() => { if (persistDirty) persistNow(); });
+    }
+    function intend(key, value) { pend.delete(key); pend.set(key, value); persistSoon(); }
+    function settled(key, value) { const l = lanes.get(key); if (l && (l.next !== undefined || l.soon !== undefined)) return; if (pend.get(key) === value) { pend.delete(key); persistSoon(); } }
+
     function queue(key, value) {
+      intend(key, value);
       const l = lane(key);
       if (l.timer) { clearTimeout(l.timer); l.timer = 0; l.soon = undefined; }
       l.next = value;
       if (!l.busy) pump(key);
+    }
+    // Try a parked intent again after the minute, unless something newer came or it is being sent.
+    function park(key, value) {
+      setTimeout(() => { if (pend.get(key) === value && !active(lanes.get(key))) queue(key, value); }, parkMs);
     }
 
     async function pump(key) {
@@ -169,14 +211,21 @@
             if (r) clock.wrote(r.updatedAt, t0, Date.now());
             if (r && Number.isFinite(r.version)) saw(key, r.version, value);
           }
+          settled(key, value);
         } catch (err) {
-          if (err && err.status === 429 && tries < 8) {
+          if (err && err.status === 429 && tries >= 8) { // kept, not dropped: parked for a later try and the next replay
+            onBusy(err);
+            park(key, value);
+            continue;
+          }
+          if (err && err.status === 429) {
             tries += 1;
             onBusy(err);
             await new Promise((r) => { setTimeout(r, Math.max(1, Number(err.retryAfter) || 5) * 1000); });
             if (l.next === undefined) l.next = value; // nothing newer came: send this one again
             continue;
           }
+          settled(key, value); // refused for good
           onRefused(err, idOf(key));
           if (value === GONE) gone.delete(key); // not deleted: no delete of this page's to wait for
           await refetch(key, true);
@@ -236,6 +285,7 @@
       saveSoon(block, ms = 600) {
         const key = keyOf(block.id);
         const l = lane(key);
+        intend(key, block);
         l.soon = block;
         if (l.timer) clearTimeout(l.timer);
         l.timer = setTimeout(() => { l.timer = 0; const v = l.soon; l.soon = undefined; if (v) queue(key, v); }, ms);
@@ -250,6 +300,7 @@
       },
       // Send whatever is waiting now (the page is going away).
       flush() {
+        persistNow();
         for (const [key, l] of lanes) {
           if (!l.timer) continue;
           clearTimeout(l.timer);
@@ -258,6 +309,40 @@
           l.soon = undefined;
           if (v) queue(key, v); // a timer always has its block, and the write drains the lane when it is done
         }
+      },
+      // The number of writes not accepted by the server yet.
+      pending: () => pend.size,
+      // For 'beforeunload': asks the browser's own prompt while writes are not saved; true when it did.
+      beforeUnload(e) {
+        if (!pend.size || !e) return false;
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        e.returnValue = '';
+        return true;
+      },
+      // After the first read: send the writes an earlier page of this person left unsaved. Returns { put: [blocks], remove:
+      // [ids] } to show. What it sends replaces what the server holds for those keys (the last write wins, as always).
+      replay() {
+        const out = { put: [], remove: [] };
+        if (!store) return out;
+        let saved = null;
+        try { saved = JSON.parse(store.getItem(STORE_KEY)); } catch { saved = null; }
+        const ok = saved && typeof saved === 'object' && !Array.isArray(saved) && typeof saved.t === 'number' && Date.now() - saved.t >= 0 && Date.now() - saved.t <= WB_PENDING_TTL
+          && (!me || saved.by === me) && saved.items && typeof saved.items === 'object' && !Array.isArray(saved.items);
+        if (ok) {
+          for (const [key, it] of Object.entries(saved.items)) {
+            if (!key.startsWith(PREFIX) || !it || typeof it !== 'object' || pend.has(key)) continue; // a newer intent of this page wins
+            if (it.op === 'del') { out.remove.push(idOf(key)); queue(key, GONE); continue; }
+            if (it.op !== 'put') continue;
+            let b = null;
+            try { b = clean(it.value); } catch { b = null; }
+            if (!b || keyOf(b.id) !== key) continue;
+            out.put.push(b);
+            queue(key, it.value);
+          }
+        }
+        if (!pend.size) { try { store.removeItem(STORE_KEY); } catch { /* none */ } }
+        else persistSoon();
+        return out;
       },
       // A 'change' event.
       handle(e) {

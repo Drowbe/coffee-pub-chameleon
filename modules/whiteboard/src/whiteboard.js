@@ -58,6 +58,7 @@
 
   const policy = createPolicy(host);
   const me = (info.user && info.user.key) || '';
+  const spaceId = String((info.context.space && info.context.space.id) || '');
   const board = createBoard();
   const surface = $('board');
   let overview = null; // the overview's map (lib-n), once it is made (see "the overview")
@@ -441,7 +442,7 @@
     } catch { /* the next change or a reload puts it right */ } finally { resyncing = false; }
   }
 
-  const sync = createSync({ host, board: WB_BOARD, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
+  const sync = createSync({ host, board: WB_BOARD, scope: spaceId, clean: wbClean, me, onRemote, onReload: reload, onRefused, onBusy });
 
   // ---- the board's background -------------------------------------------------------------------------------------------
   // One setting for the whole board, seen by everyone (lib-a, WB_BOARD_PREFIX): its own sync, the same as the blocks' (one
@@ -484,7 +485,7 @@
     try { const list = await boardSync.load(); boardSettings = list[0] || WB_BOARD_USUAL; } catch { return; }
     showBackdrop();
   }
-  const boardSync = createSync({ host, board: WB_BOARD, prefix: WB_BOARD_PREFIX, clean: wbCleanBoard, me, onRemote: takeBoard, onReload: reloadBoard, onRefused, onBusy });
+  const boardSync = createSync({ host, board: WB_BOARD, scope: spaceId, prefix: WB_BOARD_PREFIX, clean: wbCleanBoard, me, onRemote: takeBoard, onReload: reloadBoard, onRefused, onBusy });
   // Put the settings as `next` (a background picked, or an undo): drawn at once, saved whole, told to the history.
   function commitBoard(next) {
     const stamped = { ...wbCleanBoard(next), by: me, at: new Date().toISOString() };
@@ -3894,6 +3895,10 @@
   });
   widthWatch.observe(host.rootElement);
   window.addEventListener('pagehide', () => { sync.flush(); boardSync.flush(); });
+  // Going away: send what waits at once (host.storage goes through the host, which has no keepalive request, so what is
+  // refused or cut off stays kept in the browser and the next load sends it). The browser's own prompt while writes wait.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { sync.flush(); boardSync.flush(); } });
+  window.addEventListener('beforeunload', (e) => { if (sync.pending() + boardSync.pending() > 0) { sync.beforeUnload(e) || boardSync.beforeUnload(e); } });
 
   // ---- start ------------------------------------------------------------------------------------------------------------
   host.on('change', (e) => { sync.handle(e); boardSync.handle(e); hearShared(e); });
@@ -3907,6 +3912,13 @@
   try { first = await sync.load(); } catch (err) { showMsg('The whiteboard could not be read', err.message); return; }
   await reloadBoard(); // the background (Default when it cannot be read)
   for (const b of first) if (policy.canSee(b)) { known.set(b.id, b); board.put(b); renderer.draw(b); }
+  { // writes an earlier page of this person left unsaved (see lib-c): shown and sent again
+    const left = sync.replay();
+    for (const b of left.put) if (policy.canSee(b)) onRemote({ op: 'put', block: b });
+    for (const id of left.remove) onRemote({ op: 'remove', id });
+    const lb = boardSync.replay();
+    if (lb.put[0]) takeBoard({ op: 'put', block: lb.put[0] });
+  }
   sweepSoon();
   // A dropped connection: read the board again when the live stream is back (the host's 'reconnected' event), when the
   // browser is back online, and when the page shows again after a while hidden.
