@@ -266,6 +266,19 @@ try {
       assert.equal(r.status, 400, clash);
       assert.match(r.json.error, /belongs to a member/);
     }
+    for (const mixed of ['M\u0430ry Jones', 'Sam \u03bflive', 'Jon \u0531nna']) {
+      const r = await enterDoor(A, mixed);
+      assert.equal(r.status, 400, mixed);
+      assert.match(r.json.error, /mix alphabets/);
+    }
+    const alike = await enterDoor(A, '\u043c\u0456\u0430');
+    assert.equal(alike.status, 400, 'all-Cyrillic lookalike of a member');
+    assert.match(alike.json.error, /belongs to a member/);
+    const long = await enterDoor(A, 'x'.repeat(41));
+    assert.equal(long.status, 400);
+    assert.match(long.json.error, /at most 40/);
+    for (const real of ['\u0418\u0432\u0430\u043d', '\u03a3\u03bf\u03c6\u03af\u03b1']) { assert.equal(door.mixesScripts(real), false, real); assert.notEqual(door.nameSkeleton(real), door.nameSkeleton('mia')); }
+    assert.equal(door.nameSkeleton('\uff2dia'), door.nameSkeleton('m\u0456\u0430'));
     sam = await enterDoor(A, 'Sam');
     assert.equal(sam.status, 201, sam.text);
     assert.equal(sam.json.guest.name, 'Sam');

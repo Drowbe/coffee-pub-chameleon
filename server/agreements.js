@@ -104,15 +104,19 @@ function versionsMatch(given, docs) {
 
 // A guest's typed name as kept: one line, no control characters and none that hide or reorder text, at most 40
 // characters as a person counts them. It is text and is kept as text: "<b>" stays "<b>" for a page to draw as text.
-function cleanGuestName(value) {
+function guestNameLine(value) {
   if (typeof value !== 'string') return '';
-  const line = value.slice(0, 2000)
+  return value.slice(0, 2000)
     .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
     .replace(/[\u200B-\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  return [...line].slice(0, GUEST_NAME_MAX).join('').trim();
 }
+function cleanGuestName(value) {
+  return [...guestNameLine(value)].slice(0, GUEST_NAME_MAX).join('').trim();
+}
+// True when the typed name, cleaned, is longer than the limit (it is refused, not cut).
+const guestNameTooLong = (value) => [...guestNameLine(value)].length > GUEST_NAME_MAX;
 
 // A refusal to record a guest's agreement: one plain sentence and its status.
 class AgreementError extends Error {
@@ -220,6 +224,6 @@ function cleanGuestRecord(a) {
 
 module.exports = {
   DOCS, DOC_IDS, MAX_TEXT_BYTES, MAX_ACCOUNT_RECORDS, MAX_GUEST_RECORDS, GUEST_NAME_MAX,
-  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, cleanGuestName,
+  readTexts, versionOf, cleanAgreed, hasAgreed, versionsMatch, cleanGuestName, guestNameTooLong,
   GuestAgreements, AgreementError, AgreementTextError,
 };
