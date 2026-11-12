@@ -105,9 +105,9 @@
   // The board's spoken help: the keys in this device's words (Command on a Mac), and only where there is a mouse or a
   // trackpad, as in the buttons' names; on a touch screen alone, what a finger does. Short: every gesture and tool, once.
   const boardHelp = () => {
-    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more; the speech bubble on its title opens its notes). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Notes shows your speaker notes to you only, and you can drag them; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
+    if (!KEYS) return 'Whiteboard. Tap a block to pick it, drag to move it, press it long for more (align, group, lock). Drag the board or use Hand to move it, pinch to zoom. Select strip: Many (drag round blocks or tap each), Select all, Clear selection. Press the board long for its background colour. Pen, Shape and Flowchart show their kinds on the strip: Pen, Marker, Brush, Highlighter; Rectangle, Ellipse, Line, Arrow; Connector (drag from one block to another) and flowchart shapes; Table properties on the strip sets every cell. The strip also has text size, alignment, line style and colours for what is picked. Fill: tap a block. Eraser: drag over drawings to erase them; one Undo brings them back. Table (tap a cell twice to write). Frame (takes what is inside along; tap its title or border to pick it, press the title long for more; the speech bubble on its title opens its notes). Timer: drag it; tap its time to set it. While you edit words, the bar makes them bold, italic, code or a link, and aligns them; tap a link on a picked block to open it. Press a note long, choose Add pointer, drag its tip. Paste spreadsheet rows to make a table. Find (magnifier in the title bar; Next and Previous). Overview (right of the toolbar): tap or drag in the map. Title bar menu: Save as image (or press the board long), Print, Present (frames in turn; Next and Back; the slider dims the rest; Transition sets the move; Notes shows your speaker notes to you only, and you can drag them; Present to everyone: others follow, Leave to explore). Other people\'s pointers show where they point; hide them in the title bar menu.';
     const M = MOD === 'Cmd' ? 'Command' : 'Ctrl';
-    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames; the speech bubble on its title, or Notes: speaker notes). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging flips it. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Notes: yours alone, draggable; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Pointers: hide in the title bar menu.`;
+    return `Whiteboard. Tab: next block; Enter edits, arrow keys move, Delete removes. Shift-click adds, ${M} A selects all, Escape clears, back to Select. ${M} C, X, V, D: copy, cut, paste, duplicate; ${M} Z, ${M} Shift Z: undo, redo. Move the board: right-drag, spacebar-drag or Hand (H). Select strip: Many, Select all, Clear selection. Pen (P; Marker M, Highlighter U; Shift: straight), Shape (R, O, L, A) and Flowchart (Connector C, Rounded box B, Diamond D) show their kinds on the strip; each tool's strip: text size, alignment, line style, colours. Fill (F; ${ALT}-click takes a colour). Eraser (E): drag over drawings to erase them; one Undo brings them back. Connector: drag block to block. Editing words: ${M} B, I, E, K: bold, italic, code, link; the bar aligns them too; ${M}-click a link, or click it on a picked block, to open it. Right-click a note: Add pointer. Table (G; Table properties sets every cell; Enter shows cells, arrows and Tab move, Enter edits, Escape leaves). Frame (S; takes its contents along; pick by title or border; double-click renames; the speech bubble on its title, or Notes: speaker notes). Paste rows for a table; paste, drop or Add (+) a picture. Right-click the board: background colour. ${M} G group, ${M} Shift G ungroup, ${M} L lock. Snap to grid: ${ALT} while dragging flips it. Find (/ or the title bar's magnifier). Overview (right of the toolbar): click or drag the map. Grid (same place): style, size, colour. Title bar menu: Save as image, Print, Present (frames: arrows, spacebar; Escape stops; slider dims; Transition button; Notes: yours alone, draggable; Present to everyone: others follow, Leave to explore). Timer (Y): drag it; click its time to set it. Pointers: hide in the title bar menu.`;
   };
   // The words of notes, text blocks and shapes are markup: drawn by the host's markdown (escaped first; lib-d,
   // wbShowWords), read out as the host's plain text of it.
@@ -252,6 +252,17 @@
       updateStatus(); // the strip's swatch
     },
     mark: (id, kind) => renderer.mark(id, kind),
+    // The Eraser (lib-f-tool-eraser): the blocks to test, one removed (a locked one, a draft or while presenting: no) with
+    // its drag's tag so the whole drag is one undo step, and its circle by the pointer.
+    blocks: () => board.all(),
+    erase(id, tag) {
+      const b = board.get(id);
+      if (presenting || !b || b.locked || drafts.has(id)) return false;
+      if (history) history.tag(tag, { join: true });
+      remove(id, { force: true });
+      return !board.has(id);
+    },
+    ring: (at) => renderer.ring(at),
     swatch: (at) => showSwatch(at),
     refuse(b, alt) {
       const d = blockTypes.get(b.type);
@@ -912,7 +923,7 @@
   }
 
   // ---- the host's bands: the tools, the colour and zoom menus, the +, the status line -----------------------------
-  // The tools are one switch, named Tools: Hand (a `mode`), Select, then Pen, Fill, Text, Note, Flowchart, Shape, Table and Frame. A tool
+  // The tools are one switch, named Tools: Hand (a `mode`), Select, then Pen, Fill, Eraser, Text, Note, Flowchart, Shape, Table and Frame. A tool
   // marked `apart` (the Timer) is its own on/off button after it. Pen, Flowchart and Shape are FAMILIES: one choice in the switch,
   // its kinds (each a tool of its own, with its own key) the buttons of the first group on the colour strip. A kind's key picks
   // its family with that kind; a family remembers the last kind picked, for this session.
@@ -930,6 +941,7 @@
     { id: 'select', label: 'Select', icon: 'arrow-pointer' },
     { id: 'pen', label: 'Pen', icon: 'pen' },
     { id: 'fill', label: 'Fill', icon: 'fill-drip' },
+    { id: 'eraser', label: 'Eraser', icon: 'eraser' },
     { id: 'text', label: 'Text', icon: 'font' },
     { id: 'note', label: 'Note', icon: 'note-sticky' },
     { id: 'flowchart', label: 'Flowchart', icon: 'diagram-project' },
@@ -2261,6 +2273,7 @@
       : tool.id === 'select' || tool.id === 'hand' ? `Pick a tool above, then click the board.${pictures ? ' Or paste or drop a picture here.' : ''}`
         : tool.makes === 'stroke' ? 'Press and drag to draw.'
           : tool.makes === 'highlight' ? `Press and drag over what to highlight.${KEYS ? ' Hold Shift for a straight band.' : ''}`
+                : tool.id === 'eraser' ? `Press and drag over drawings to erase them.${KEYS ? ' One Undo brings them back.' : ''}`
           : tool.id === 'fill' ? KEYS ? `Click a block to fill it. ${ALT}-click one to take its colour.` : 'Tap a block to fill it.'
           : tool.id === 'table' ? `${KEYS ? 'Click' : 'Tap'} the board to put a table there, or drag to give it a size.`
           : tool.id === 'frame' ? `Drag on the board to draw a frame, or ${KEYS ? 'click' : 'tap'} for one.`

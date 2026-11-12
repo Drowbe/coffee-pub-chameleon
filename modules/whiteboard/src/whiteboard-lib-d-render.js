@@ -403,6 +403,20 @@
       if (el) el.dataset.mark = kind;
     }
     // A small swatch of a colour by the pointer ({ sx, sy } on the screen, and the colour's token), or null to take it away.
+    // The Eraser's circle by the pointer ({ sx, sy } on the screen, or null to take it away): 12 screen pixels across (css).
+    let ringEl = null;
+    function ring(at) {
+      if (!at) { if (ringEl) ringEl.hidden = true; return; }
+      if (!ringEl) {
+        ringEl = document.createElement('div');
+        ringEl.className = 'wb-eraser-ring';
+        ringEl.setAttribute('aria-hidden', 'true');
+        surface.append(ringEl);
+      }
+      ringEl.hidden = false;
+      ringEl.style.left = `${at.sx}px`;
+      ringEl.style.top = `${at.sy}px`;
+    }
     let swatchEl = null;
     function swatch(at, token) {
       if (!at) { if (swatchEl) swatchEl.hidden = true; return; }
@@ -486,6 +500,7 @@
       pending,
       mark,
       swatch,
+      ring,
       element: (id) => els.get(id) || null,
       // A connector as it is drawn now ({ points, box, mid, head }), or null while it is not drawn.
       geometry: (id) => geoms.get(id) || null,

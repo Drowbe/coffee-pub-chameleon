@@ -836,6 +836,19 @@
 .board[data-tool="fill"] .wb-block[data-mark="no"], .board[data-tool="fill"] .wb-block[data-mark="no"] * { cursor: not-allowed; }
 .wb-block[data-mark="ok"] { outline: calc(2px / var(--wb-scale, 1)) solid var(--accent); outline-offset: calc(4px / var(--wb-scale, 1)); }
 .wb-block[data-mark="no"] { outline: calc(1px / var(--wb-scale, 1)) dashed var(--text-muted); outline-offset: calc(4px / var(--wb-scale, 1)); }
+/* the Eraser: a circle of the erase size by the pointer (12 screen pixels across), a neutral border and no fill */
+.wb-eraser-ring {
+  position: absolute;
+  z-index: 4;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--text-primary);
+  border-radius: var(--radius-large); /* 11px on a 12px box: a circle */
+  box-shadow: 0 0 0 1px var(--surface-card);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
 .wb-swatch {
   position: absolute;
   z-index: 4;
