@@ -2,7 +2,7 @@
 /*
  * check-whiteboard-cursor-icon.mjs -- the tool icon beside the mouse pointer (whiteboard-lib-t-cursor-icon.js).
  * Guards: wbToolCursorIcon for every tool the registry holds (a new tool without a decision fails), the null cases
- * (Select, Hand, Eraser, cannot edit, presenting), and the CSS: moved by transform, no left/top change, no raw colours.
+ * (Select, Hand, cannot edit, presenting), and the CSS: moved by transform, no left/top change, no raw colours.
  * Usage: node modules/whiteboard/test/check-whiteboard-cursor-icon.mjs. Exits 1 on any failure.
  */
 import fs from 'node:fs';
@@ -19,8 +19,9 @@ const files = fs.readdirSync(src).filter((f) => /^whiteboard-lib-(a|f|t)-.*\.js$
 const code = files.map((f) => fs.readFileSync(path.join(src, f), 'utf8')).join('\n');
 const lib = new Function(`${code}\nreturn { tools, wbToolCursorIcon };`)();
 const edit = { canEdit: true, presenting: false };
-const none = new Set(['select', 'hand', 'eraser']);
+const none = new Set(['select', 'hand']);
 const list = lib.tools.list();
+check(lib.wbToolCursorIcon('eraser', 'eraser', edit) === 'eraser', 'the eraser has its icon beside its ring');
 check(list.length >= 20, `the registry holds the tools (${list.length})`);
 for (const t of list) {
   const got = lib.wbToolCursorIcon(t.id, t.icon, edit);
