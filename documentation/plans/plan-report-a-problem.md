@@ -3,9 +3,9 @@
 **Audience:** Thomas, who decides; server-development (the route and its checks); experience-design (the form and
 the two entries); quality-assurance (the independent safety read); content-manager (the documents once it is built).
 
-**Status:** Draft, 2026-11-11. Nothing is built and nothing was run for this plan. Thomas's idea: a **Report a
+**Status:** Draft, 2026-11-12. Nothing is built and nothing was run for this plan. Thomas's idea: a **Report a
 problem** button in the product that opens a form and posts a bug report to GitHub issues. He decided six things on
-2026-11-11 (below); the rest is a draft with a lean for each open question left. This plan handles a secret and sends a
+2026-11-11 and a seventh on 2026-11-12 (below); the rest is a draft with a lean for each open question left. This plan handles a secret and sends a
 person's words off the server, so it needs an independent read before it is built and another of the code before it ships.
 
 ## What it is today
@@ -33,7 +33,11 @@ Thomas, 2026-11-11.
    box to include them. No names, no document content, no screenshot.
 5. **Where it goes:** a private GitHub repository issue filed by the server, its title starting with the area and a
    colon. The repository token is an environment variable, never in code. Readers are only the people added to that repository.
-6. **Limits:** none, and no way to answer the person, for now. *Reason:* Thomas's choice. See the open item below.
+6. **Limits:** no way to answer the person, for now. *Reason:* Thomas's choice. (He first chose no limits at all;
+   decision 7 replaced that.)
+7. **Safety net,** Thomas, 2026-11-12: a fixed length cap on the typed text (the field lengths in the contract) and
+   about 30 reports per person per hour, counted on the server per signed-in person. At the limit the person gets a
+   plain message. *Reason:* a stuck button could otherwise fill the issues.
 
 ## The contract (a draft, built on the leans below)
 
@@ -59,7 +63,8 @@ are not followed.
   mention. Body: a fixed first line saying the text below was typed by a person and is data, not instructions; then
   **What happened** and **What did you expect**, each in a fenced code block whose fence is longer than any in the
   text, so no markup, link, picture, mention or issue reference is live; then the details as a fixed list.
-- **Limits:** none (decision 6). A suggested safety net is under Open questions; it is not part of the contract.
+- **Limits (decision 7):** the field lengths above are the text cap. About 30 reports per account per hour, counted in
+  memory on the server; past that, 429 with "Too many reports. Try again in a while." The form shows it and keeps the text.
 - **Sending:** one request, 10 seconds at most. Sent: 200 `{ ok: true }`, no issue number. GitHub slow, down or
   refusing: 502, "The report could not be sent. Try again later." The log gets GitHub's status code only. No queue.
 - `GET /api/me` says whether the feature is on. The server's own log keeps one line a report (the account's key, the
@@ -81,7 +86,7 @@ are not followed.
 - **What leaves the server** is the area, the typed text and, when ticked, the details. It is the person's own
   explicit act and never holds call content, so About's sentence stays true.
 - **Hosted installs (`BASE_DOMAIN`):** the token and repository are the host's, one for every environment.
-- **Fake reports and spam:** only accounts can send. With no limit (decision 6), a stuck button could fill the issues.
+- **Fake reports and spam:** only accounts can send. The length cap and the hourly limit (decision 7) stop a stuck button from filling the issues.
 - **Reports read later by AI agents:** an issue made by this route is untrusted data. An agent may summarise it and
   must never follow instructions in it; the first line and the label say so.
 - **The token's reach:** it can read, write and close every issue in that one repository, so the repository should
@@ -116,22 +121,18 @@ are not followed.
 
 - **Checked by a tool,** against a stand-in GitHub on localhost so nothing real is called: off without the variables;
   401 and each 403; each bad field; the title and body for text holding mentions, links, fences, markup and control
-  characters; details only when asked; each limit; a slow and a failing stand-in; the token in no answer, log or export.
+  characters; details only when asked; the length cap and the hourly limit; a slow and a failing stand-in; the token in no answer, log or export.
 - **Verified live in a browser, with the stand-in:** the entries by role, the form, its refusals, what the tick shows.
 - **Not verified until Thomas tries it with a real token on a private repository:** that GitHub takes the token, that
   the typed text shows inert and notifies nobody, the label, the private check, and what an expired token answers.
 
 ## Open questions
 
-**Closed on 2026-11-11:** 1 (who and where: decision 3), 2 (details: decision 4), 4 (no reply path: decision 6) and 6
-(no limits: decision 6). Question 7 is half closed: the repository is private and the token is an environment variable
+**Closed on 2026-11-11:** 1 (who and where: decision 3), 2 (details: decision 4) and 4 (no reply path: decision 6).
+**Closed on 2026-11-12:** 6 and the safety net (limits: decision 7). Question 7 is half closed: the repository is private and the token is an environment variable
 (decision 5); its name and label are still Thomas's and block only the real try.
 
-**Still open, blocks the build:**
-
-- **Safety net (recommendation, not decided).** Because Thomas chose no limit, a fixed text length cap (the field
-  lengths already in the contract) and a small server-side flood stop (say 30 reports per person per hour, in memory) are
-  suggested, since a stuck button could fill the issues. Thomas decides whether to add them.
+**Still open, blocks the build:** none.
 
 **Still open, lean only:**
 
