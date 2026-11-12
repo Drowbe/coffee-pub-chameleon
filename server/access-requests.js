@@ -31,7 +31,8 @@ function readLimits(env = process.env) {
   return {
     perDay: whole(env.ACCESS_REQUESTS_PER_DAY, 5), // per person, in 24 hours
     perAddress: whole(env.ACCESS_REQUESTS_PER_ADDRESS, 20), // per address, in 24 hours
-    pendingPerSpace: whole(env.ACCESS_REQUESTS_PENDING_PER_SPACE, 50), // waiting at once, per space
+    pendingPerSpace: whole(env.ACCESS_REQUESTS_PENDING_PER_SPACE, 50), // accounts waiting at once, per space
+    pendingGuestsPerSpace: whole(env.ACCESS_REQUESTS_PENDING_GUESTS_PER_SPACE, 20), // door guests waiting at once, per space (counted apart)
     days: whole(env.ACCESS_REQUEST_DAYS, 7), // a request ends after
   };
 }
@@ -155,10 +156,13 @@ class AccessRequests {
   create(space, who, now = Date.now()) {
     if (this.sweep(now)) this.commit(() => {});
     if (this.pendingOf(space, who, now)) throw new AccessRequestError('You have asked already. Wait for an answer.', 409);
-    const recent = this.requests.filter((r) => this.mine(r, who) && now - r.at < DAY).length;
+    const last = this.lastAnswer(space, who);
+    if (last && last.state === 'denied' && now - (last.decidedAt || last.at) < DAY) throw new AccessRequestError('That request was declined. Try again tomorrow.', 429);
+    const recent = this.requests.filter((r) => this.mine(r, who) && r.state !== 'withdrawn' && now - r.at < DAY).length;
     if (recent >= this.limits.perDay) throw new AccessRequestError('You have asked as many times as you can today. Try again tomorrow.', 429);
-    const waiting = this.requests.filter((r) => r.space === space && this.stateOf(r, now) === 'pending').length;
-    if (waiting >= this.limits.pendingPerSpace) throw new AccessRequestError('Too many people are waiting to be let in. Try again later.', 429);
+    const isGuest = !who.key;
+    const waiting = this.requests.filter((r) => r.space === space && !r.guest === !isGuest && this.stateOf(r, now) === 'pending').length;
+    if (waiting >= (isGuest ? this.limits.pendingGuestsPerSpace : this.limits.pendingPerSpace)) throw new AccessRequestError('Too many people are waiting to be let in. Try again later.', 429);
     if (this.requests.length >= this.max) throw new AccessRequestError('Requests cannot be taken right now. Tell whoever runs this server.', 503);
     const r = { id: crypto.randomBytes(8).toString('hex'), space, at: now, state: 'pending' };
     if (who.key) r.key = who.key;

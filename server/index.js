@@ -1666,7 +1666,11 @@ function spacesFor(req, viewer, spaces) {
 function requestSpacesFor(viewer, spaces) {
   if (!viewer || viewer.all || viewer.owner || !viewer.key) return [];
   const access = currentEnvironment().accessRequests;
-  return spaces.filter((r) => spaceAccess.mayRequest(viewer, r)).map((r) => spaceAccess.requestView(r, Boolean(access.pendingOf(r.id, { key: viewer.key }))));
+  const who = { key: viewer.key };
+  return spaces.filter((r) => spaceAccess.mayRequest(viewer, r)).map((r) => {
+    const asked = Boolean(access.pendingOf(r.id, who));
+    return { ...spaceAccess.requestView(r, asked), ...(!asked && access.lastAnswer(r.id, who)?.state === 'denied' ? { answer: 'denied' } : {}) };
+  });
 }
 function shownSpace(req, space) {
   const general = withoutBudget(space);
@@ -3421,8 +3425,14 @@ app.get('/img/space/:id', (req, res) => {
   // A signed-in person is shown the picture of a space they may enter and no other's (the access key: any); a guest, the
   // picture of a space their link or the guest door lets them into.
   if (guest) {
-    if (!guestMaySeeSpace(guest, store.spaceById(req.params.id))) return res.status(404).end();
-  } else if (!hasStreamKey(req) && !spaceAccess.mayEnter(accountViewer(req), store.spaceById(req.params.id))) return res.status(404).end();
+    const sp = store.spaceById(req.params.id);
+    if (!guestMaySeeSpace(guest, sp) && !(guest.kind !== 'link' && spaceAccess.mayRequest(doorViewer(guest), sp))) return res.status(404).end();
+  } else if (!hasStreamKey(req)) {
+    // A stranger who may ask to enter sees the picture too (name, picture and description); a closed space is a 404.
+    const sp = store.spaceById(req.params.id);
+    const viewer = accountViewer(req);
+    if (!spaceAccess.mayEnter(viewer, sp) && !spaceAccess.mayRequest(viewer, sp)) return res.status(404).end();
+  }
   const file = store.spaceImagePath(req.params.id);
   if (file) return sendImage(res, file);
   res.status(404).end();
