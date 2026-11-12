@@ -1216,20 +1216,21 @@
     });
   }
   // Zoom is the window's, in the title bar, as in the Whiteboard: Zoom out and Zoom in as icons, and a menu with the rest.
+  // They are the title bar's own icons (host.header.set), not toolbar items: the edit row (Tags, the formats, Insert, two
+  // switches, Page, Done) fills the toolbar's 16 items, which dropped Zoom in and the Zoom menu.
   const zoomItems = () => [
-    { type: 'button', id: 'zoom-out', title: withKey('Zoom out', '-'), icon: 'magnifying-glass-minus', placement: 'titlebar' },
-    { type: 'button', id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus', placement: 'titlebar' },
-    { type: 'button', id: 'zoom', title: 'Zoom', icon: 'up-right-and-down-left-from-center', placement: 'titlebar' },
+    { id: 'zoom-out', title: withKey('Zoom out', '-'), icon: 'magnifying-glass-minus' },
+    { id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus' },
+    { id: 'zoom', title: 'Zoom', icon: 'up-right-and-down-left-from-center' },
   ];
   function renderChrome() {
     let items;
     if (ed) {
       items = ed.lost ? [] : [
         { type: 'button', id: 'done', label: 'Done', icon: 'check', primary: true, zone: 'end', ...(ed.finishing ? { disabled: true } : {}) },
-        ...zoomItems(),
       ];
     } else if (openId) {
-      items = [...zoomItems()];
+      items = [];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
         { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
@@ -1290,6 +1291,7 @@
     else if (!wantSwitch && listSwitch) { listSwitch.destroy(); listSwitch = null; }
     else if (listSwitch) listSwitch.set(listView);
     host.toolbar.set(items).catch(() => {});
+    if (host.header) host.header.set(openId || (ed && !ed.lost) ? zoomItems() : []).catch(() => {});
     if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }] : []).catch(() => {});
     renderStatus();
   }
@@ -1310,6 +1312,9 @@
     if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
     if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
     if (id === 'done') { finish(); return; }
+  });
+  host.on('header', (e) => {
+    const id = String((e && e.id) || '');
     if (id === 'zoom-in') { setView(dlViewStep(view, 1)); return; }
     if (id === 'zoom-out') { setView(dlViewStep(view, -1)); return; }
     if (id === 'zoom') { zoomMenu(e); return; }
