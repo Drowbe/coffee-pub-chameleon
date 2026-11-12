@@ -43,6 +43,7 @@ const { watchArrival, slowSenders } = require('./arrival');
 const { Ai, AiError, listModelsFor, managedOffer, MANAGED_PROVIDERS } = require('./ai');
 const objectFormat = require('./object-format');
 const { presenceView, belongsToSpace } = require('./presence-view');
+const spaceAccess = require('./space-access');
 const { mergeCall, cleanAwayMessage } = require('./live');
 const { streamWriter } = require('./stream-write');
 const destinations = require('./destinations');
@@ -1645,6 +1646,11 @@ function withoutBudget(space) {
   if (!space || !('budget' in space)) return space;
   const { budget: _budget, ...rest } = space;
   return rest;
+}
+// The spaces `viewer` is told of (plan-access-bundle.md, step 3): only the ones spaceAccess.mayEnter lets them in. One
+// they may enter but are not in yet (open to accounts or guests) is told as its name, picture and description only.
+function spacesFor(req, viewer, spaces) {
+  return spaceAccess.enterable(viewer, spaces).map((r) => (viewer.all || viewer.owner || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)));
 }
 function shownSpace(req, space) {
   const general = withoutBudget(space);
@@ -3378,6 +3384,8 @@ app.get('/img/site/background', (_req, res) => {
 // A space's picture: nothing until one is set.
 app.get('/img/space/:id', (req, res) => {
   if (!currentUser(req) && !hasStreamAccess(req)) return res.status(403).end();
+  // A signed-in person is shown the picture of a space they may enter and no other's (the access key: any).
+  if (!hasStreamKey(req) && !spaceAccess.mayEnter(accountViewer(req), store.spaceById(req.params.id))) return res.status(404).end();
   const file = store.spaceImagePath(req.params.id);
   if (file) return sendImage(res, file);
   res.status(404).end();
@@ -4098,6 +4106,21 @@ app.post('/api/asides/invite/:id/decline', requireUser, (req, res) => {
 // them -- someone in an aside reads as its parent space with `aside: true` to the parent's members, and anyone else's
 // place is `space: null, elsewhere: true`. A guest reads only their own space and its people. The access key (OBS,
 // Studio) reads everything, as before; GET /api/status is unchanged.
+// A signed-in person who may not enter `space`: the routes that take a space id answer them exactly as for an id that
+// does not exist, so a closed space is not told to exist (a person who may enter but has not joined is told, 403).
+function closedTo(req, space) {
+  const viewer = accountViewer(req);
+  return Boolean(viewer) && !spaceAccess.mayEnter(viewer, space);
+}
+// The same, for a module request's viewer (moduleViewer's `who`).
+function closedToWho(who, space) {
+  return Boolean(who && who.user) && !spaceAccess.mayEnter({ key: who.user.key, owner: hasOwnerRights(who.user) }, space);
+}
+// The signed-in person alone, never the access key: for the routes that are a person's own.
+function accountViewer(req) {
+  const user = currentUser(req);
+  return user ? { key: user.key, owner: hasOwnerRights(user) } : null;
+}
 function presenceViewer(req) {
   if (hasStreamKey(req)) return { all: true };
   const user = currentUser(req);
@@ -4117,7 +4140,7 @@ app.get('/api/presence', async (req, res) => {
     online: byKey,
     present: isPresent,
     describeUser: presenceUser,
-    describeSpace: (r) => shownSpace(req, r),
+    describeSpace: (r) => (viewer.all || viewer.owner || viewer.guestSpace || spaceAccess.isMember(viewer, r) ? shownSpace(req, r) : spaceAccess.openSpaceView(r)),
     activeSpace: activeSpaceId(byKey),
   });
   res.json({ ...branding(), ...view, ownerOnline: hasOnlineOwner(byKey) });
@@ -4229,8 +4252,19 @@ app.get('/api/pages/:path', requireStream, (req, res) => {
 // Spaces: the Lobby (everyone) plus the spaces an owner curates. Signed-in
 // users and stream key holders can read them; owners change them.
 app.get('/api/spaces', (req, res) => {
-  if (!currentUser(req) && !hasStreamAccess(req)) return res.status(401).json({ error: 'sign in first' });
-  res.json({ spaces: store.spaces.map((r) => shownSpace(req, r)) });
+  const viewer = presenceViewer(req);
+  if (!viewer || viewer.guestSpace) return res.status(401).json({ error: 'sign in first' });
+  res.json({ spaces: spacesFor(req, viewer, store.spaces) });
+});
+// POST /api/spaces/:id/join: a signed-in person enters a space that is open to accounts or to guests: they are added to
+// its members and it is marked as theirs to remove. A space they may not enter answers as an unknown id does.
+app.post('/api/spaces/:id/join', requireUser, (req, res) => {
+  const space = store.spaceById(req.params.id);
+  const user = currentUser(req);
+  if (!space || !spaceAccess.mayEnter(accountViewer(req), space)) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (space.isLobby) return res.status(400).json({ error: `everyone is already in the Lobby` });
+  const joined = store.joinSpace(user.key, space.id);
+  res.json({ space: shownSpace(req, joined) });
 });
 app.post('/api/spaces', requireOwner, (req, res) => {
   const { name, description, members, profile, link, linkIcon } = req.body || {};
@@ -4243,7 +4277,7 @@ app.post('/api/spaces/order', requireOwner, (req, res) => {
 // moderator may change (MODERATOR_SPACE_FIELDS, the budget among them) as stored; anyone else is "owners only".
 app.get('/api/spaces/:id', requireUser, (req, res) => {
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
   if (isOwner(req)) return res.json({ space });
   if (!moderates(currentUser(req), space)) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
   const theirs = { id: space.id };
@@ -4260,7 +4294,7 @@ app.patch('/api/spaces/:id', requireUser, (req, res) => {
   const body = req.body || {};
   if (!isOwner(req)) {
     const space = store.spaceById(req.params.id);
-    if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+    if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
     const onlyTheirs = Object.keys(body).every((k) => MODERATOR_SPACE_FIELDS.includes(k));
     if (!moderates(currentUser(req), space) || !onlyTheirs) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
   }
@@ -4276,7 +4310,7 @@ app.post('/api/spaces/:id/phases/cover', (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' });
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
   const day = req.body?.day;
   if (!phaseRule.isDay(day)) return res.status(400).json({ error: 'Send the day to cover as YYYY-MM-DD.' });
   const perms = modulePerms(who, space.id);
@@ -4309,7 +4343,7 @@ app.delete('/api/spaces/:id/image', requireOwner, (req, res) => {
 // (POST) mirror the personal-link routes above; DELETE turns it off.
 function requireSpaceMember(req, res, next) {
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || !spaceAccess.mayEnter(accountViewer(req), space)) return res.status(404).json({ error: `no such ${word('space')}` });
   if (!space.members.includes(currentUser(req).key) && !isOwner(req)) return res.status(403).json({ error: `you are not in that ${word('space')}` });
   next();
 }
@@ -4755,7 +4789,7 @@ function moduleAccess(req, res, need) {
     if (!who.user) return void res.status(403).json({ error: `${word('guest', { many: true })} have no personal data` });
   } else if (scope === 'space') {
     const space = store.spaceById(String(req.query.space || ''));
-    if (!space) return void res.status(404).json({ error: `no such ${word('space')}` });
+    if (!space || closedTo(req, space)) return void res.status(404).json({ error: `no such ${word('space')}` });
     if (refusedInLobby(manifest, space.id)) return void res.status(404).json({ error: lobbyRefusal(manifest) });
     if (!moduleSpaceAccess(entry, who, space)) return void res.status(403).json({ error: `this ${word('module')} is not available in that ${word('space')} for you` });
     spaceId = space.id;
@@ -4873,7 +4907,7 @@ function attentionFor(req, res) {
   if (!who || who.keyed) return void res.status(401).json({ error: 'Sign in first.' });
   if (!who.user) return void res.status(403).json({ error: `${word('guest', { many: true, cap: true })} have no personal list of what needs action.` });
   const space = store.spaceById(req.params.id);
-  if (!space) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
   if (!(hasOwnerRights(who.user) || space.members.includes(who.user.key))) return void res.status(403).json({ error: `You are not in that ${word('space')}.` });
   return { who, space, perms: modulePerms(who, space.id) };
 }
@@ -4927,7 +4961,7 @@ function factsFor(req, res) {
   if (!who || who.keyed) return void res.status(401).json({ error: 'Sign in first.' });
   if (!who.user) return void res.status(403).json({ error: `${word('guest', { many: true, cap: true })} do not see the status line.` });
   const space = store.spaceById(req.params.id);
-  if (!space) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
   if (!(hasOwnerRights(who.user) || space.members.includes(who.user.key))) return void res.status(403).json({ error: `You are not in that ${word('space')}.` });
   return { who, space, perms: modulePerms(who, space.id) };
 }
@@ -4980,7 +5014,7 @@ function tagsFor(req, res) {
   const who = moduleViewer(req);
   if (!who || who.keyed) return void res.status(401).json({ error: 'Sign in first.' });
   const space = store.spaceById(req.params.id);
-  if (!space) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
   const allowed = who.user ? hasOwnerRights(who.user) || space.members.includes(who.user.key) : who.guestSpace.id === space.id;
   if (!allowed) return void res.status(403).json({ error: `You are not in that ${word('space')}.` });
   return { who, space, perms: modulePerms(who, space.id) };
@@ -5079,7 +5113,7 @@ function layoutSpaceFor(req, res) {
   const who = moduleViewer(req);
   if (!who || who.keyed) return void res.status(401).json({ error: 'Sign in first.' });
   const space = store.spaceById(req.params.id);
-  if (!space) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return void res.status(404).json({ error: `There is no such ${word('space')}.` });
   const allowed = who.user ? hasOwnerRights(who.user) || space.members.includes(who.user.key) : who.guestSpace.id === space.id;
   if (!allowed) return void res.status(403).json({ error: `You are not in that ${word('space')}.` });
   const canShare = Boolean(who.user) && (hasOwnerRights(who.user) || Boolean(store.spaceFlags(who.user.key, space.id).moderator));
@@ -5279,7 +5313,7 @@ function chatAccess(req, spaceId, permission) {
   if (found.error) return found;
   const { who } = found;
   const space = store.spaceById(spaceId);
-  if (!space) return { status: 404, error: `no such ${word('space')}` };
+  if (!space || (who.user && !spaceAccess.mayEnter({ key: who.user.key, owner: hasOwnerRights(who.user) }, space))) return { status: 404, error: `no such ${word('space')}` };
   const allowed = who.user ? hasOwnerRights(who.user) || space.members.includes(who.user.key) : who.guestSpace.id === space.id;
   if (!allowed) return { status: 403, error: `you are not in that ${word('space')}` };
   if (!permission) return { who, space };
@@ -6362,7 +6396,7 @@ app.get('/api/spaces/:id/ai', (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `No such ${word('space')}.` });
   res.json(aiPolicy.availability(who, space, 'chat'));
 });
 
@@ -6376,7 +6410,7 @@ app.post('/api/spaces/:id/ai', async (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'Sign in first.' });
   const space = store.spaceById(req.params.id);
-  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `No such ${word('space')}.` });
   const allowed = aiPolicy.check(who, space, 'chat');
   if (!allowed.ok) return refuseAi(res, allowed, { who, space, purpose: 'chat' });
   const asked = aiQuestionOf(req.body?.question);
@@ -6426,7 +6460,7 @@ function importSpaceOf(req, res) {
   const who = moduleViewer(req);
   if (!who || who.keyed) { res.status(401).json({ error: 'Sign in first.' }); return null; }
   const space = store.spaceById(req.params.id);
-  if (!space) { res.status(404).json({ error: `No such ${word('space')}.` }); return null; }
+  if (!space || closedTo(req, space)) { res.status(404).json({ error: `No such ${word('space')}.` }); return null; }
   if (who.user && !(hasOwnerRights(who.user) || space.members.includes(who.user.key))) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
   if (!who.user && !(who.guestSpace && who.guestSpace.id === space.id)) { res.status(403).json({ error: `You are not in this ${word('space')}.` }); return null; }
   return { who, space };
@@ -6905,7 +6939,7 @@ app.get('/api/me/calendars', requireUser, (req, res) => {
 app.post('/api/me/spaces/:id/feed', requireUser, (req, res) => {
   const user = currentUser(req);
   const space = store.spaceById(req.params.id);
-  if (!space || space.isLobby) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || space.isLobby || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
   const why = spaceAddressWhy(user, space);
   if (why) return res.status(403).json({ error: why });
   const token = newFeedToken();
@@ -7240,7 +7274,7 @@ function refScope(who, { provider, kind, scope, space, from, skipConsumer = fals
   let perms;
   if (scope === 'space') {
     const r = store.spaceById(String(space || ''));
-    if (!r) throw refError(404, `no such ${word('space')}`);
+    if (!r || closedToWho(who, r)) throw refError(404, `no such ${word('space')}`);
     if (!manifest.scope.includes('space')) throw refError(400, `that ${word('module')} has no space scope`);
     if (!moduleSpaceAccess(entry, who, r)) throw Object.assign(refError(403, `that ${word('module')} is not available in that ${word('space')} for you`), { unseen: true });
     // The asking module must itself be on in that space, and readable by the viewer.
@@ -7979,7 +8013,7 @@ function busPlace(who, moduleId, scope, space, need) {
   let spaceId = null;
   if (scope === 'space') {
     const r = store.spaceById(String(space || ''));
-    if (!r) throw refError(404, `no such ${word('space')}`);
+    if (!r || closedToWho(who, r)) throw refError(404, `no such ${word('space')}`);
     if (!manifest.scope.includes('space')) throw refError(400, `that ${word('module')} has no space scope`);
     if (!moduleSpaceAccess(entry, who, r)) throw refError(403, `that ${word('module')} is not available in that ${word('space')} for you`);
     perms = modulePerms(who, r.id);
@@ -8539,7 +8573,7 @@ app.get('/api/ai/catalog', (req, res) => {
   const spaceId = typeof req.query.space === 'string' ? req.query.space : '';
   if (!spaceId) return res.status(400).json({ error: `Say which ${word('space')} the tools are for.` });
   const space = store.spaceById(spaceId);
-  if (!space) return res.status(404).json({ error: `No such ${word('space')}.` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `No such ${word('space')}.` });
   const allowed = aiPolicy.check(who, space, 'chat');
   if (!allowed.ok) return res.status(allowed.status).json({ error: allowed.why });
   const sees = aiPolicy.sees(space);
@@ -8874,7 +8908,7 @@ function libraryAccess(req, res, need, { file = false } = {}) {
   if (who.keyed) return refuse(403, `The access key can't open ${name}.`);
   if (!who.user) return refuse(403, `${word('guest', { many: true, cap: true })} can't use ${name}.`);
   const space = store.spaceById(String(req.query.space || ''));
-  if (!space) return refuse(404, `There is no such ${word('space')}.`);
+  if (!space || closedTo(req, space)) return refuse(404, `There is no such ${word('space')}.`);
   if (refusedInLobby(manifest, space.id)) return refuse(404, lobbyRefusal(manifest));
   if (!moduleSpaceAccess(entry, who, space)) return refuse(404, `There is no such ${word('space')}.`);
   const perms = modulePerms(who, space.id);
@@ -10095,7 +10129,7 @@ function settingsPlace(req, res, scope) {
   if (scope === 'person') return { user, ctx: { userKey: user.key } };
   if (scope === 'space') {
     const space = store.spaceById(String(req.query.space || req.body?.space || ''));
-    if (!space) return void res.status(404).json({ error: `no such ${word('space')}` });
+    if (!space || closedTo(req, space)) return void res.status(404).json({ error: `no such ${word('space')}` });
     // A moderator is a member ticked as one in that space (an owner ticks it on the member's profile).
     if (!(hasOwnerRights(user) || (space.members.includes(user.key) && store.spaceFlags(user.key, space.id).moderator))) return void res.status(403).json({ error: `only ${word('owner', { a: true })} or the ${word('space')}'s ${word('moderator', { many: true })} change its settings` });
     return { user, ctx: { spaceId: space.id }, space };
@@ -10199,7 +10233,7 @@ app.get('/api/modules/for-space', (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
   const space = store.spaceById(String(req.query.space || ''));
-  if (!space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || closedTo(req, space)) return res.status(404).json({ error: `no such ${word('space')}` });
   const perms = modulePerms(who, space.id);
   res.json({
     modules: modules.enabledAll()
@@ -10677,7 +10711,7 @@ app.get('/api/modules/stream', (req, res) => {
   const who = moduleViewer(req);
   if (!who || who.keyed) return res.status(401).json({ error: 'sign in first' }); // the access key opens only a module's keyed page
   const space = req.query.space ? store.spaceById(String(req.query.space)) : null;
-  if (req.query.space && !space) return res.status(404).json({ error: `no such ${word('space')}` });
+  if (req.query.space && (!space || closedTo(req, space))) return res.status(404).json({ error: `no such ${word('space')}` });
   // The views this connection carries: the space's (or, without a space, the page's), and with page=1 the page's too.
   const views = [{ space, view: null }];
   if (space && req.query.page === '1') views.push({ space: null, view: 'page' });
@@ -11053,7 +11087,7 @@ function moduleLiveFor(req, res) {
   if (!who || who.keyed) return void res.status(401).json({ error: 'sign in first' });
   if (typeof req.query.space !== 'string' || !req.query.space) return void res.status(400).json({ error: `live messages are only in ${word('space', { a: true })}; say which one` });
   const space = store.spaceById(req.query.space);
-  if (!space) return void res.status(404).json({ error: `no such ${word('space')}` });
+  if (!space || closedTo(req, space)) return void res.status(404).json({ error: `no such ${word('space')}` });
   if (refusedInLobby(manifest, space.id)) return void res.status(404).json({ error: lobbyRefusal(manifest) });
   if (!moduleSpaceAccess(entry, who, space)) return void res.status(403).json({ error: `this ${word('module')} is not available in that ${word('space')} for you` });
   const perms = modulePerms(who, space.id);

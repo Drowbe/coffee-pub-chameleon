@@ -33,6 +33,8 @@ function belongsToAside(viewer, aside) {
   return Boolean(viewer.owner) || (aside.members || []).includes(viewer.key);
 }
 
+const { mayEnter } = require('./space-access');
+
 const NOWHERE = Object.freeze({ space: null, aside: false, asidePrivate: false, elsewhere: false, inCall: false });
 const ELSEWHERE = Object.freeze({ space: null, aside: false, asidePrivate: false, elsewhere: true, inCall: false });
 
@@ -93,7 +95,7 @@ function presenceView(viewer, { users, spaces, asides, online, present, describe
   return {
     users: shownUsers,
     spaces: spaces
-      .filter((s) => !viewer.guestSpace || s.id === viewer.guestSpace)
+      .filter((s) => mayEnter(viewer, s))
       .map((s) => ({ ...describeSpace(s), mine: belongsToSpace(viewer, s) })),
     asides: asides.filter((a) => belongsToAside(viewer, a)).map((a) => ({ ...a, mine: true })),
     activeSpace: activeSpaceFor(viewer, activeSpace, find),

@@ -583,11 +583,22 @@ async function presenceNow() {
   }
 }
 const hereHint = (e) => [e.here ? 'You are here' : '', e.count ? `${e.count} here` : ''].filter(Boolean).join(' · ');
+// Join a space from the menu, then enter it like any of mine.
+async function joinFromMenu(id) {
+  try {
+    await api('POST', `/api/spaces/${encodeURIComponent(id)}/join`);
+    pickSpace(id);
+  } catch {
+    // the list shows it as joinable still; try again
+  }
+}
 export async function openSwitcher(trigger) {
   const data = await presenceNow();
   const entries = switcherEntries({ spaces: data?.spaces, users: data?.users, present: presentSpaceNow() });
   const leave = entries.find((e) => e.leave);
-  const items = entries.filter((e) => !e.leave).map((e) => ({ icon: e.here ? 'location-dot' : 'door-open', label: e.name, hint: hereHint(e), onPick: () => pickSpace(e.id) }));
+  const items = entries.filter((e) => !e.leave).map((e) => (e.join
+    ? { icon: 'user-plus', label: e.name, hint: 'Join', onPick: () => joinFromMenu(e.id) }
+    : { icon: e.here ? 'location-dot' : 'door-open', label: e.name, hint: hereHint(e), onPick: () => pickSpace(e.id) }));
   if (!data) items.push({ label: "Couldn't load the list. Try again.", disabled: true });
   if (seesUpdates(account?.role)) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'plus', label: `New ${word('space')}`, onPick: newSpace });
   if (leave) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'right-from-bracket', label: `Leave ${word('space')}`, onPick: () => pickSpace(leave.id, 'leave') });
@@ -600,10 +611,10 @@ async function refreshMenuSpaces() {
   const data = await presenceNow();
   if (!data) return;
   const entries = switcherEntries({ spaces: data.spaces, users: data.users, present: presentSpaceNow() }).filter((e) => !e.leave);
-  const keep = new Set(entries.map((e) => `menu-space-${e.id}`));
+  const keep = new Set(entries.filter((e) => !e.join).map((e) => `menu-space-${e.id}`));
   for (const id of menuSpaceIds) if (!keep.has(id)) nav.unregister(id);
   menuSpaceIds = keep;
-  entries.forEach((e, i) => {
+  entries.filter((e) => !e.join).forEach((e, i) => {
     const hint = hereHint(e);
     nav.register({ id: `menu-space-${e.id}`, bar: 'primary', zone: 'right', group: 'menu-where', order: 3 + Math.min(i, 900), icon: e.here ? 'location-dot' : 'door-open', label: hint ? `${e.name} (${hint})` : e.name, visible: () => onPhone() && account !== null && !pageTabsInBar, onClick: () => pickSpace(e.id) });
   });

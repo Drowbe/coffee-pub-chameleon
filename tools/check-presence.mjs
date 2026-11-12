@@ -73,7 +73,7 @@ const test = async (name, fn) => {
       ev: [null, false, false, false, false, true],
     });
     assert.deepEqual(a.asides, [], 'no aside record for a non-member');
-    assert.deepEqual(a.spaces.map((s) => [s.id, s.mine]), [['lobby', true], ['spa', true], ['spb', false]]);
+    assert.deepEqual(a.spaces.map((s) => [s.id, s.mine]), [['lobby', true], ['spa', true]], 'a closed space is not told to a person outside it');
     assert.ok(!JSON.stringify(a).includes('asd'), 'the aside\'s id is nowhere in the answer');
   });
 
@@ -299,7 +299,7 @@ try {
     assert.deepEqual(person(r, bob), [null, false, true, false, true]);
     assert.deepEqual(person(r, carol), [spaceA, false, false, true, true]);
     assert.ok(!r.json.users.some((u) => u.space === spaceB), 'nobody is placed in the Tower');
-    assert.equal(r.json.spaces.find((s) => s.id === spaceB).mine, false);
+    assert.ok(!r.json.spaces.some((s) => s.id === spaceB), 'and the Tower is not listed to one outside it');
     const b = await presence({ token: bobT });
     assert.deepEqual(person(b, alice), [null, false, true, false, true], 'and Bob reads Alice the same way');
     assert.deepEqual(person(b, bob), [spaceB, false, false, true, true]);
