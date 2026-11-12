@@ -328,6 +328,12 @@ try {
     assert.equal(r.json.guest.name, 'Sam');
     assert.ok(r.json.unavailable.length > 3);
     assert.match(r.json.none, /Nothing is open to guests here/);
+    // The guest role's permissions, exactly what a guest link's join answers with (the page shows chat and the call by them; a guest link's join answers the same).
+    const roles = await A.call('GET', '/api/roles', { token: a.admin });
+    assert.ok(r.json.permissions && typeof r.json.permissions === 'object');
+    assert.deepEqual(r.json.permissions, roles.json.roles.guest, 'the door answers exactly the guest role set');
+    const nocookie = await A.call('GET', '/api/guest-door');
+    assert.equal(nocookie.json.permissions, undefined, 'no cookie, no permissions');
     assert.equal((await A.call('GET', '/api/guest-door')).status, 401, 'no cookie');
     assert.equal(r.headers.get('cache-control'), 'no-store');
   });

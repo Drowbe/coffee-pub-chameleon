@@ -4207,7 +4207,7 @@ app.get('/api/guest-door', (req, res) => {
   const guest = guestOf(req);
   if (!guest || guest.kind !== 'door') return res.status(401).json({ error: guestDoorOn() ? `Enter as ${word('guest', { a: true })} first.` : guestDoorClosed() });
   currentEnvironment().guestRegister.touch(guest.id, guest.name);
-  res.json({ guest: { id: guest.id, name: guest.name }, spaces: doorSpacesFor(), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
+  res.json({ guest: { id: guest.id, name: guest.name }, permissions: store.roleSet('guest'), spaces: doorSpacesFor(), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
 });
 // DELETE /api/guest-door: ends this guest's session (and clears the cookie).
 app.delete('/api/guest-door', (req, res) => {

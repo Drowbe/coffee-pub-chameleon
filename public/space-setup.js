@@ -355,7 +355,7 @@ export function createSpaceSetup(deps) {
       parts.push(sectionHtml('entry', '<span id="setup-entry-heading">Who can enter</span>', `<div class="setup-choices" id="setup-entry" role="radiogroup" aria-labelledby="setup-entry-heading">
           <label class="setup-choice"><input type="radio" name="setup-entry" value="invited"><i class="fa-solid fa-lock fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Invited people only</span></label>
           <label class="setup-choice"><input type="radio" name="setup-entry" value="accounts"><i class="fa-solid fa-user-group fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Anyone with an account</span></label>
-        </div><p class="hint">Others with an account see this ${esc(spaceWord())} on Home and can join it. Saved with Save.</p>`));
+        </div><p class="hint" id="setup-entry-hint">Others with an account see this ${esc(spaceWord())} on Home and can join it. Saved with Save.</p>`));
     }
     parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>
         <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(guests)} can see costs and booking codes</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-guests-see-hidden"></label><p class="hint">Off keeps amounts and booking codes from ${esc(guests.toLowerCase())}. Only ${esc(word('owner', { many: true }))} can change this. Saved with Save.</p>`));
@@ -1330,6 +1330,8 @@ export function createSpaceSetup(deps) {
       label.insertAdjacentHTML('beforeend', `<i class="fa-solid fa-globe fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Anyone, including ${esc(word('guest', { many: true }))}</span>`);
       label.prepend(radio);
       choices.append(label);
+      const hint = q('#setup-entry-hint');
+      if (hint) hint.textContent = `Others with an account see this ${spaceWord()} on Home and can join it. ${word('guest', { many: true, cap: true })} can come in from the sign-in page, with no account. Saved with Save.`;
       for (const radio of choices.querySelectorAll('input')) radio.checked = radio.value === state.draft.entry;
     }
     if (q('#setup-budget-currency')) state.currencies = await api('GET', '/api/currencies').then((r) => r.currencies || null).catch(() => null);

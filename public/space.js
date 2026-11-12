@@ -192,7 +192,23 @@ let features = { maxQuality: 720, allowScreenShare: true, allowAsides: true, all
 // token both identifies which space's guest link this is and, appended to
 // our own reads below, is this tab's only credential -- there's no session.
 const GUEST_PREFIX = 'guest-';
-const guestToken = location.pathname.startsWith('/guest/') ? decodeURIComponent(location.pathname.split('/')[2] || '') : null;
+const pathToken = location.pathname.startsWith('/guest/') ? decodeURIComponent(location.pathname.split('/')[2] || '') : null;
+// The same address also opens a space for a guest who came through the guest door (the landing, /guest, links to
+// /guest/<space id>): their cookie is their credential, so nothing rides on the address. Told apart by asking the door
+// whether this is a space it lets this visitor into; if not, the address is a guest link's token.
+async function doorGuestHere(id) {
+  if (!id) return null;
+  try {
+    const res = await fetch('/api/guest-door', { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) return null;
+    const answer = await res.json();
+    const space = (answer.spaces || []).find((s) => s.id === id);
+    return space ? { guest: answer.guest, space, permissions: answer.permissions || {} } : null;
+  } catch { return null; }
+}
+const doorGuest = await doorGuestHere(pathToken);
+const guestToken = doorGuest ? null : pathToken; // a guest link's token: rides on the reads below
+const guestMode = Boolean(pathToken); // any guest, by link or by the door: no account, no Set up, no creating
 // What POST /api/guest-join hands the guest once they give a name: their pass, signed by the server, by which the live
 // stream, presence and the call know them (as me.key, the id on it). For this page only: a reload asks the name again.
 let guestPass = '';
@@ -262,7 +278,7 @@ function adoptPendingSpace() {
 
 async function loadPresence() {
   try {
-    const url = guestToken ? `/api/presence?guest=${encodeURIComponent(guestToken)}` : '/api/presence';
+    const url = guestToken ? `/api/presence?guest=${encodeURIComponent(guestToken)}` : doorGuest ? `/api/presence?space=${encodeURIComponent(doorGuest.space.id)}` : '/api/presence';
     const { users, spaces, asides, activeSpace: active, ownerOnline: hasOwner } = await api('GET', url, undefined, undefined, AbortSignal.timeout(PRESENCE_GIVE_UP_MS));
     presenceUsers.clear();
     for (const u of users) presenceUsers.set(u.key, u);
@@ -282,7 +298,7 @@ async function loadPresence() {
     updatePhaseChip(); // the space's dates ride on its presence record: a change by someone else reaches the chip here
     // The invitation to a private conversation (an aside, so a call) is offered only where there can be one.
     const canInvite = features.callService && features.conferenceEnabled && features.allowPrivate;
-    if (!guestToken) initDashboard({ users, spaces: presenceSpaces, me: me?.key }, { openInSpace, joinSpace: canInvite ? joinInvitedSpace : null });
+    if (!guestMode) initDashboard({ users, spaces: presenceSpaces, me: me?.key }, { openInSpace, joinSpace: canInvite ? joinInvitedSpace : null });
     reconcileGhostTiles();
     renderGuestLink();
     updateRecallButton();
@@ -551,7 +567,7 @@ function renderSpaceListHead() {
   $('home-add-space-label').textContent = label;
   button.title = label;
   button.setAttribute('aria-label', label);
-  button.hidden = Boolean(guestToken) || !hasOwnerRights(me);
+  button.hidden = Boolean(guestMode) || !hasOwnerRights(me);
   // The Modules column's heading (plan-home-lobby.md, decision 11): the module word, the template's when it sets one.
   const modules = $('home-modules-title');
   if (modules) {
@@ -696,6 +712,29 @@ function enterFromCard(spaceId) {
   else if (entered) reconnectTo(spaceId);
   else join(spaceId);
 }
+// The texts a guest agrees to by typing their name (TERMS_FILE, NDA_FILE), shown on a guest link's form: drawn as text,
+// never as markup. The versions go with the name; the server records them.
+let guestDocs = [];
+async function showGuestDocs() {
+  try {
+    const a = await api('GET', '/api/agreements');
+    guestDocs = a.required && Array.isArray(a.docs) ? a.docs : [];
+  } catch { guestDocs = []; }
+  const box = $('guest-docs');
+  box.textContent = '';
+  for (const d of guestDocs) {
+    const h = document.createElement('h2');
+    h.textContent = d.title || d.id;
+    box.append(h);
+    for (const part of String(d.text || '').split(/\n{2,}/)) {
+      if (!part.trim()) continue;
+      const p = document.createElement('p');
+      p.textContent = part.trim();
+      box.append(p);
+    }
+  }
+  box.hidden = $('guest-docs-note').hidden = !guestDocs.length;
+}
 $('guest-join').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('guest-join-error').hidden = true;
@@ -704,12 +743,13 @@ $('guest-join').addEventListener('submit', async (event) => {
   const submit = $('guest-join').querySelector('button[type="submit"]');
   submit.disabled = true;
   try {
-    const { spaceId: joinedId, spaceName: joinedName, permissions, guest } = await api('POST', '/api/guest-join', { token: guestToken, name });
+    const { spaceId: joinedId, spaceName: joinedName, permissions, guest } = await api('POST', '/api/guest-join', { token: guestToken, name, ...(guestDocs.length ? { versions: Object.fromEntries(guestDocs.map((d) => [d.id, d.version])) } : {}) });
     me = { key: guest.id, displayName: guest.name, role: 'guest', permissions };
     guestPass = guest.pass;
     setGuestPass(guestToken, guestPass); // the module host's stream and live messages know this guest by it
     await joinAsGuest(joinedId, joinedName);
   } catch (err) {
+    if (err.status === 409) await showGuestDocs(); // the text changed: shown again, to read
     $('guest-join-error').textContent = err.message;
     $('guest-join-error').hidden = false;
   } finally {
@@ -1079,6 +1119,7 @@ let paintCallTab = () => {}; // the phone's call item (Online), set with who is 
 let micLive = false; // the microphone is live (reflectMic): the call item says so on a phone
 const canvas = createCanvas({
   guestToken,
+  guest: guestMode, // a door guest has no token to send, but is a guest
   onNote: (text) => layoutNote(text),
   onPopBlocked: () => setStatus(POPUP_BLOCKED, true),
   // The Layouts section is read again each time the menu opens, and drawn from layoutMenuItems() with the note last.
@@ -1088,7 +1129,7 @@ const canvas = createCanvas({
   noteEl: menuNote,
   // A composite's page (the Calendar and Map tabs' too) gets the handoff a page over the call gets, and its links home
   // stay in this page (overlayParams, homeLinksIn, below).
-  frameParams: () => (guestToken ? new URLSearchParams() : overlayParams()),
+  frameParams: () => (guestMode ? new URLSearchParams() : overlayParams()),
   onCompositeLoad: (frame) => homeLinksIn(frame),
   onTabs: () => paintCallTab(), // the phone's tabs are new: Online, the call item, says whether the call is the view
   onChatAsk: (input) => {
@@ -1146,7 +1187,7 @@ tabRole('rejoin-call', 'join'); // the call's ok colour in the tab bar
 // only while in the call, shows the conference and opens them. It sits in the session group, ahead of the clock.
 nav.register({
   id: 'call-settings', bar: 'primary', zone: 'right', group: 'session', order: 50, icon: 'sliders', label: 'Call settings',
-  visible: () => inCall && !guestToken && canDo('canInvite'),
+  visible: () => inCall && !guestMode && canDo('canInvite'),
   onClick: () => {
     canvas.showBuiltin('conference'); // shows the conference view
     setTimeout(() => { if ($('settings').hidden || $('settings').dataset.group !== 'more') openSettings('more'); }, 50);
@@ -1791,7 +1832,7 @@ function callMenuItems() {
     items.push({ divider: true });
     // The guest link's switch, for whoever can manage the space. After the menu has closed, so the click that picked
     // it does not close the settings again.
-    if (!guestToken && canDo('canInvite')) items.push({ icon: 'gear', label: 'Settings', onPick: () => setTimeout(() => openSettings('more'), 0) });
+    if (!guestMode && canDo('canInvite')) items.push({ icon: 'gear', label: 'Settings', onPick: () => setTimeout(() => openSettings('more'), 0) });
     items.push({ icon: 'phone-slash', label: 'Leave the call', danger: true, onPick: () => $('hangup').click() });
   }
   return items;
@@ -2732,9 +2773,9 @@ async function layoutRequest(method, url, body) {
   if (!res.ok) throw Object.assign(new Error(typeof data.error === 'string' && data.error ? data.error : 'That did not work. Try again.'), { status: res.status, id: data.id || null });
   return data;
 }
-const mayChangeLayout = (shared) => !guestToken && (!shared || layoutList.canShare);
+const mayChangeLayout = (shared) => !guestMode && (!shared || layoutList.canShare);
 // Making a shared layout the space's default is the owners' and the admin's, as Opens with is (decision 4).
-const maySetDefault = (shared) => !guestToken && shared && layoutList.canSetDefault;
+const maySetDefault = (shared) => !guestMode && shared && layoutList.canSetDefault;
 const findLayout = (id) => layoutList.shared.find((l) => l.id === id) || layoutList.mine.find((l) => l.id === id) || null;
 // Favorites are each signed-in person's own; a guest keeps none (decision 4). No limit (plan-layout-views.md, decision 13).
 const mayFavorite = () => !guestToken && Boolean(me?.key) && me.role !== 'guest';
@@ -2772,7 +2813,7 @@ function renderLayouts() {
 // Nothing where there is nothing to load or save (an aside; a guest with no shared layouts) or on a narrow canvas.
 function layoutMenuItems() {
   const { mine, shared } = layoutList;
-  const canSave = Boolean(layoutList.spaceId) && !guestToken;
+  const canSave = Boolean(layoutList.spaceId) && !guestMode;
   const empty = !layoutList.spaceId || (!canSave && !shared.length);
   if (empty || canvas.isNarrow()) return [];
   const entry = (l, isShared) => ({
@@ -3541,7 +3582,7 @@ function savePrefs() {
 let pendingCallPrefs = {};
 let callPrefsTimer = 0;
 function syncCallPrefs(patch) {
-  if (guestToken) return;
+  if (guestMode) return;
   Object.assign(pendingCallPrefs, patch);
   clearTimeout(callPrefsTimer);
   callPrefsTimer = setTimeout(async () => {
@@ -4698,7 +4739,8 @@ function messageEl(entry, own) {
   entry.chat = true;
   if (entry.visibility !== 'private') entry.visibility = 'public';
   let body;
-  let name = entry.who;
+  // A guest's messages all share the sender `guest` (server): the typed name is shown, marked as a guest, as text.
+  let name = entry.by === 'guest' ? `${entry.who} (${word('guest')})` : entry.who;
   let look = null;
   if (entry.picture) {
     body = document.createElement('div');
@@ -5434,8 +5476,9 @@ function leaveSpaceNow(said = `left the ${word('space')}`) {
   // A guest has no session and no room to pick from -- back to their own
   // name-only form for the one space their link is for, not the real
   // members' space list (which they can't do anything with anyway).
-  $('join').hidden = !!guestToken;
-  $('guest-join').hidden = !guestToken;
+  $('join').hidden = guestMode;
+  $('guest-join').hidden = !guestToken; // a door guest has typed a name already: their way back is the landing
+  if (doorGuest) { location.href = '/guest'; return; }
   $('away').hidden = true;
   updateCrumb();
   asideSelection.clear();
@@ -5700,7 +5743,7 @@ function updateCrumb() {
   } else if (currentSpace) {
     space = { name: spaceName };
   }
-  const segs = anchorSegments({ space, viewingHome, guestSpaceName: guestToken ? guestSpaceName : '', parentName, asideWord: word('aside', { cap: true }), others });
+  const segs = anchorSegments({ space, viewingHome, guestSpaceName: guestMode ? guestSpaceName : '', parentName, asideWord: word('aside', { cap: true }), others });
   const iconOf = (seg) => (!currentSpace ? spaceCrumbIcon(null) : currentSpace.isAside ? (seg.action ? spaceCrumbIcon(originSpace) : 'people-arrows') : spaceCrumbIcon(currentSpace));
   setTopbarLocation(segs.map((seg) => crumbSegmentHtml(seg, iconOf(seg))).join('<span class="crumb-sep" aria-hidden="true">&rsaquo;</span>'));
   // The one bar (step 7): the switcher reads the last segment; the Spaces slot leaves.
@@ -5813,6 +5856,7 @@ async function joinAsGuest(joinedId, joinedName) {
     setStatus('', false);
     $('guest-join-error').textContent = err.message;
     $('guest-join-error').hidden = false;
+    if (doorGuest) setStatus(err.message, true); // their form is never shown
   }
 }
 
@@ -5821,7 +5865,7 @@ async function joinAsGuest(joinedId, joinedName) {
 function enterSpace({ joinCall = false } = {}) {
   entered = true;
   console.debug('[app] in', currentSpace.id);
-  if (!guestToken && currentSpace && !currentSpace.isAside) rememberSpace(currentSpace.id); // an aside is gone once it ends, so it is not kept
+  if (!guestMode && currentSpace && !currentSpace.isAside) rememberSpace(currentSpace.id); // an aside is gone once it ends, so it is not kept
   $('join').hidden = true;
   $('guest-join').hidden = true;
   $('canvas').hidden = false;
@@ -6745,7 +6789,7 @@ async function copyText(text, statusEl) {
   }
 }
 function renderGuestLink() {
-  if (guestToken || !currentSpace) return; // a guest has no session to manage this with
+  if (guestMode || !currentSpace) return; // a guest has no session to manage this with
   $('guest-section').hidden = !canDo('canInvite');
   const space = presenceSpaces.find((r) => r.id === currentSpace.id);
   const token = space?.guestToken || null;
@@ -7225,7 +7269,7 @@ document.addEventListener('app:open-page', (event) => {
 // is in, or into another, as its entry on home does (decision 15; the visit view comes in a later step).
 document.addEventListener('app:enter-space', (event) => {
   const { id, action } = event.detail || {};
-  if (!id || guestToken) return;
+  if (!id || guestMode) return;
   event.preventDefault();
   if (!$('page-overlay-frame').hidden) closeOverlay();
   const connected = entered && currentSpace;
@@ -7283,6 +7327,7 @@ document.addEventListener('click', (event) => {
 // page (#join), so there's nothing to load: just swap views, the same "away"
 // treatment openOverlay() gives profile/admin, and stay connected underneath.
 function showSpaceList() {
+  if (doorGuest) { location.href = '/guest'; return; } // a guest's list is their landing
   if (!document.body.classList.contains('in-space')) return;
   setAway(true);
   viewingHome = true;
@@ -7316,7 +7361,7 @@ function returnToCanvas() {
 // Spaces, the logo or the phone menu's home: home over the space while present in one, never a real navigation (that
 // would drop the call), also when home already shows; present nowhere, a real navigation is fine.
 function goHome(event) {
-  if (guestToken || !currentSpace) return false;
+  if (guestMode || !currentSpace) return false;
   if (!document.body.classList.contains('in-space') && !viewingHome) return false;
   event.preventDefault();
   if (document.body.classList.contains('in-space')) showSpaceList(); // first, so closing a page over it keeps Away
@@ -7337,7 +7382,7 @@ const HOME_CHAT = 'lobby';
 // it, an aside that falls back to it, an invitation to it) land on Home instead. A guest link made for it still enters
 // it as before (joinAsGuest), and everything that reads the record (OBS, tokens, Stream, Manage) is unchanged.
 function isHomeRecord(id) {
-  return !guestToken && id === LOBBY;
+  return !guestMode && id === LOBBY;
 }
 function landOnHome() {
   if (rememberedSpace() === LOBBY) forgetSpace();
@@ -7473,7 +7518,7 @@ function liveChatNotice(data) {
     // order once the space's chat is back (hideHomeChat), so nothing said in the space lands in Home's chat.
     if (parkSpaceChat(() => applyChatNotice(data))) return;
     applyChatNotice(data);
-  } else if (data.space === HOME_CHAT && !guestToken) homeChatNotice(data);
+  } else if (data.space === HOME_CHAT && !guestMode) homeChatNotice(data);
 }
 // What the live stream says of the chat in sight, the server's word. A message or a picture already drawn (my own, from
 // the answer to my own request) is not drawn again; one of mine from another tab is drawn as mine.
@@ -7481,7 +7526,7 @@ function applyChatNotice(data) {
   if ((data.type === 'chat' || data.type === 'chat-picture') && chatIdOk(data.id)) {
     if (!canDo('chatRead') || chatMessageNode(data.id)) return;
     const entry = data.type === 'chat' ? storedEntry(data) : pictureEntry(data);
-    if (entry) addEntry(entry, Boolean(me?.key && !guestToken && entry.by === me.key));
+    if (entry) addEntry(entry, Boolean(me?.key && !guestMode && entry.by === me.key));
   } else if (data.type === 'chat-delete' && chatIdOk(data.id)) applyDeleteNotice(data);
   else if (data.type === 'chat-visibility') applyVisibilityNotice(data);
   else if (data.type === 'chat-clear-some') applyClearNotice(data);
@@ -7499,7 +7544,7 @@ function homeChatNotice(data) {
 // Back after the live stream dropped (the server restarted, the network went): the history again, for Home's chat and
 // for the space's chat in sight.
 async function catchUpLiveChat() {
-  if (!guestToken) catchUpHomeChat();
+  if (!guestMode) catchUpHomeChat();
   const id = liveSpaceId;
   if (!id || inAside() || homeChatSpace || !canDo('chatRead')) return;
   let got = null;
@@ -7876,6 +7921,23 @@ async function init() {
   populateCallSettingsUI();
   applyLayout();
 
+  if (doorGuest) {
+    // A guest from the door: no account and no name to ask, they typed it at the door. In at once, on the one space
+    // the landing linked to; the permissions are the guest role's, as the door answered.
+    $('join').hidden = true;
+    $('guest-section').hidden = true;
+    guestSpaceName = doorGuest.space.name;
+    me = { key: doorGuest.guest.id, displayName: doorGuest.guest.name, role: 'guest', permissions: doorGuest.permissions };
+    const banner = $('guest-banner');
+    $('guest-banner-text').textContent = `You are in as ${me.displayName} (${word('guest')}).`;
+    banner.hidden = false;
+    $('guest-banner-leave').addEventListener('click', async () => {
+      try { await api('DELETE', '/api/guest-door'); } catch { /* the cookie is cleared by the answer, or already gone */ }
+      location.href = '/login';
+    });
+    await joinAsGuest(doorGuest.space.id, doorGuest.space.name);
+    return;
+  }
   if (guestToken) {
     // No account: no whoami (and so no Sign out), no Manage, no Guests section (that
     // needs a real session too) -- just the name field and, past that,
@@ -7888,6 +7950,7 @@ async function init() {
       guestSpaceName = info.spaceName; // a guest's anchor: the space's name, before entering too
       updateCrumb();
       $('guest-join').hidden = false;
+      await showGuestDocs();
       $('guest-join').dataset.spaceId = info.spaceId;
       $('guest-join').dataset.spaceName = info.spaceName;
     } catch (err) {
@@ -7938,7 +8001,7 @@ async function init() {
     // Following an invitation from another page: "/#join=<space>" goes straight into that space.
     history.replaceState(null, '', location.pathname + location.search);
     joinInvitedSpace(invited[1]);
-  } else if (!guestToken && rememberedSpace()) {
+  } else if (!guestMode && rememberedSpace()) {
     // A reload: back into the space this tab was in. Joining checks it is still there; presence
     // does not have to have answered first.
     join(rememberedSpace());

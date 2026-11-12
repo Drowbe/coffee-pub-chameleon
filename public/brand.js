@@ -1343,6 +1343,7 @@ async function startNotifications() {
 // own page is already doing it.
 function startPresence() {
   if (new URLSearchParams(window.location.search).get('from') === 'space') return;
+  if (isGuestPage()) return; // a guest has no account to mark online (the guest door's would be refused: 401)
   const beat = () => {
     if (document.visibilityState === 'visible') fetch('/api/presence', { method: 'POST' }).catch(() => {});
   };

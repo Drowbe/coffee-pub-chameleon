@@ -589,7 +589,7 @@ test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the 
   const items = space.slice(space.indexOf('function layoutMenuItems() {'), space.indexOf('function layoutRowItems(layoutId) {'));
   // Nothing where there is nothing to load or save, or on a narrow canvas; shared first, then your own; Default marked;
   // a favorite's heart; a press loads it and keeps the menu open; the ... for those who may do something with it.
-  assert.match(items, /const canSave = Boolean\(layoutList\.spaceId\) && !guestToken;/);
+  assert.match(items, /const canSave = Boolean\(layoutList\.spaceId\) && !guestMode;/);
   assert.match(items, /if \(empty \|\| canvas\.isNarrow\(\)\) return \[\];/);
   assert.match(items, /const items = \[\{ heading: 'Layouts' \}\];[\s\S]*for \(const l of layoutList\.system\) \{[\s\S]*\n[\s\S]*for \(const l of shared\) withModified\(l, true\);\n\s*for \(const l of mine\) withModified\(l, false\);/, 'the system layouts first (plan-layout-views.md, step 2), then shared, then your own');
   assert.match(items, /tag: l\.id === layoutList\.defaultLayout \? 'Default' : undefined,/);
@@ -603,7 +603,7 @@ test('the Layout menu\'s Layouts section (plan-saved-layouts.md, step 3; in the 
   // Modified: a row under the layout shown; Update only where this person may change it, else the word alone.
   assert.match(items, /layoutModified && l\.id === currentLayoutTab/);
   assert.match(items, /mayChangeLayout\(isShared\)\n\s*\? \{ icon: 'arrows-rotate', label: 'Update', tag: 'Modified', keepOpen: true, onPick: \(\) => updateLayout\(l\.id\) \}\n\s*: \{ label: 'Modified', disabled: true \}/);
-  assert.match(space, /const mayChangeLayout = \(shared\) => !guestToken && \(!shared \|\| layoutList\.canShare\);/, 'a guest changes nothing; shared ones only with the right');
+  assert.match(space, /const mayChangeLayout = \(shared\) => !guestMode && \(!shared \|\| layoutList\.canShare\);/, 'a guest changes nothing; shared ones only with the right');
   // The ...: Replace with this layout, Rename, Delete (confirmed in the menu's own confirm row, under the Layout button).
   const menuFn = space.slice(space.indexOf('function layoutRowItems(layoutId) {'), space.indexOf('async function setFavorite('));
   for (const label of ['Replace with this layout', 'Rename', 'Delete']) assert.ok(menuFn.includes(`label: '${label}'`), `the ... offers ${label}`);
@@ -643,7 +643,7 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   const settings = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
   const settingsHtml = settings; // the panel draws its markup in space-setup.js (space-settings.html is gone)
   // Only on a shared row, only for those the server says may set it (canSetDefault), never a guest.
-  assert.match(space, /const maySetDefault = \(shared\) => !guestToken && shared && layoutList\.canSetDefault;/);
+  assert.match(space, /const maySetDefault = \(shared\) => !guestMode && shared && layoutList\.canSetDefault;/);
   assert.match(space, /canSetDefault: Boolean\(got\.canSetDefault\)/, 'read from GET .../layouts');
   assert.match(space, /more: mayFavorite\(\) \|\| mayChangeLayout\(isShared\) \|\| maySetDefault\(isShared\) \? \(\) => layoutRowItems\(l\.id\) : undefined,/, 'the ... shows for one who may only set the default (and for anyone signed in, to favorite)');
   assert.match(space, /tag: l\.id === layoutList\.defaultLayout \? 'Default' : undefined,/, 'the default entry is marked Default');
@@ -661,7 +661,7 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   // whether or not Opens with is set (plan-layout-views.md, step 5); a remembered layout wins; a fresh request to open
   // one object wins over both. Calendar or Map: the Workspace opens and restore() answers the tab the page presses.
   const restore = canvasJs.slice(canvasJs.indexOf('  function restore() {'), canvasJs.indexOf('  // --- saved layouts'));
-  assert.match(restore, /const firstLayout = request \? 'workspace' : firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest: Boolean\(guestToken\), entering: enteringNow \}\);/);
+  assert.match(restore, /const firstLayout = request \? 'workspace' : firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\);/);
   assert.match(restore, /if \(firstLayout !== 'workspace' && !SYSTEM_TABS\.includes\(firstLayout\) && spaceDefaultLayout && spaceDefaultLayout\.id === firstLayout\) \{[\s\S]*?loadLayout\(spaceDefaultLayout\);\n\s*return null;/);
   assert.ok(!/Array\.isArray\(spaceOpensWith\) &&/.test(restore), 'a layout no longer needs Opens with to be set');
   assert.ok(restore.indexOf('loadLayout(spaceDefaultLayout)') < restore.indexOf('whatOpens({'), 'before the module list');
@@ -1776,7 +1776,7 @@ function homeHarness({ present = true, inSpace = true, home = false, overlayOpen
   const listeners = [];
   const doc = { addEventListener: (type, f) => { if (type === 'click') listeners.push(f); }, body: { classList: { contains: (c) => state.classes.has(c), remove: (c) => state.classes.delete(c) } } };
   const $ = (id) => (id === 'page-overlay-frame' ? { get hidden() { return state.frameHidden; }, set hidden(v) { state.frameHidden = v; }, src: '' } : {});
-  const api = new Function('document', '$', 'setAway', 'state', 'currentSpace', 'guestToken', `
+  const api = new Function('document', '$', 'setAway', 'state', 'currentSpace', 'guestToken', 'guestMode', `
     let viewingHome = ${home};
     function showSpaceList() { setAway(true); viewingHome = true; document.body.classList.remove('in-space'); }
     function refreshNotices() {}
@@ -2658,7 +2658,7 @@ test('the one bar: the switcher in the Spaces slot\'s place, the layout tabs aft
   // The links inside the Calendar's or Map's page, which the view frame handled, are the composite frame's now: the page
   // gets the handoff a page over the call gets (?from=space, the names: a page a link leads on to keeps its way back and
   // the switcher's picks reach this page), its home links stay in this page, and its Back returns the frame to the page.
-  assert.match(space, /frameParams: \(\) => \(guestToken \? new URLSearchParams\(\) : overlayParams\(\)\),\n\s*onCompositeLoad: \(frame\) => homeLinksIn\(frame\),/);
+  assert.match(space, /frameParams: \(\) => \(guestMode \? new URLSearchParams\(\) : overlayParams\(\)\),\n\s*onCompositeLoad: \(frame\) => homeLinksIn\(frame\),/);
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
   assert.match(canvasJs, /if \(guestToken\) q\.set\('guest', guestToken\);\n\s*else if \(typeof frameParams === 'function'\) for \(const \[k, v\] of frameParams\(\)\) if \(!q\.has\(k\)\) q\.set\(k, v\);/, 'the composite\'s page gets the handoff, its space kept');
   assert.match(canvasJs, /post\(\{ type: 'app:compositehello' \}\);\n\s*if \(typeof onCompositeLoad === 'function'\) \{ try \{ onCompositeLoad\(frame\); \}/, 'every page that loads in the frame is handed to the space page');
@@ -2697,7 +2697,7 @@ test('Add <space> on Home: owners and the admin, the existing request, then into
   assert.match(html, /<div class="space-list" id="spaces">[^<]*(<!--[\s\S]*?-->)?\s*<button class="space-choice-add" id="home-add-space" type="button" hidden>[^\n]*<\/button>\n\s*<\/div>/, 'Add <space> is the ghost card inside the grid (hidden until the page knows who is looking)');
   const space = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
   assert.match(space, /const label = `Add \$\{word\('space', \{ cap: true \}\)\}`;/, 'the button reads Add <Space> in the template\'s word');
-  assert.match(space, /button\.hidden = Boolean\(guestToken\) \|\| !hasOwnerRights\(me\);/, 'owners and the admin only, never a guest');
+  assert.match(space, /button\.hidden = Boolean\(guestMode\) \|\| !hasOwnerRights\(me\);/, 'owners and the admin only, never a guest');
   assert.match(space, /await api\('POST', '\/api\/spaces', \{ name: `\$\{word\('space', \{ cap: true \}\)\} \$\{count\}`, description: '', members: \[\] \}\)/, 'the request Manage\'s Add button makes');
   assert.match(space, /await loadPresence\(\);[^\n]*\n\s*await joinInvitedSpace\(space\.id\);\n\s*if \(entered && currentSpace\?\.id === space\.id\) enterSetup\(\);/, 'then into the new space, and Set up opens once in');
   assert.match(space, /\$\('home-add-space'\)\?\.addEventListener\('click', addSpace\);/);

@@ -62,7 +62,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // handoff a page over the call gets: from=space and the names for its header), so a link inside it that leads on to
 // another page keeps its way back. `onCompositeLoad(frame)`: each page that loads in a composite's frame, so the page
 // can take the header links inside it (home, which must not navigate the top window away from the call).
-export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null, onArrange = null } = {}) {
+export function createCanvas({ guestToken = null, guest = Boolean(guestToken), onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null, onArrange = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
   // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
@@ -189,7 +189,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
     const ids = [...opened.values()].sort((a, b) => a.order - b.order).map((p) => p.id);
     // In column mode the conference and the chat are not the canvas's to remember: the list keeps whichever of the two
     // it held before (a phone reads it as its tabs), the chat when nothing was remembered yet (whatOpens's default).
-    const prev = Array.isArray(saved.__open) ? saved.__open : guestToken ? ['conference', 'chat'] : ['chat'];
+    const prev = Array.isArray(saved.__open) ? saved.__open : guest ? ['conference', 'chat'] : ['chat'];
     const kept = (id) => prev.includes(id);
     saved.__open = columnMode() ? ids.filter((id) => { const p = opened.get(id); return !columnOwned(p) || kept(id); }) : ids;
     persist();
@@ -2128,7 +2128,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
         // Onto the canvas (the phone's tabs): only what the phone would have had open, the remembered list's (the
         // chat alone when nothing is remembered yet, as whatOpens's default; the conference too for a guest), and the
         // conference while on the call, since closing it would hang up. The rest closes, as it was on the phone.
-        const prev = Array.isArray(saved.__open) ? saved.__open : guestToken ? ['conference', 'chat'] : ['chat'];
+        const prev = Array.isArray(saved.__open) ? saved.__open : guest ? ['conference', 'chat'] : ['chat'];
         for (const p of [...opened.values()]) {
           if (p.kind !== 'builtin' || !(inColumn(p) || p.lifted)) continue;
           const keep = prev.includes(p.id) || Boolean(p.def.inCall?.());
@@ -2255,7 +2255,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
     // The column's own (plan-one-bar.md, step 6): wider than a phone the conference and the chat open in the side column,
     // whatever the lists or a layout say, and whatOpens leaves them out of what goes on the canvas.
     if (columnMode()) for (const id of builtins.keys()) if (canOpenHere(id)) api_openBuiltin(id);
-    const firstLayout = request ? 'workspace' : firstVisitLayout({ firstVisit: spaceFirstVisit, remembered: saved.__open, guest: Boolean(guestToken), entering: enteringNow });
+    const firstLayout = request ? 'workspace' : firstVisitLayout({ firstVisit: spaceFirstVisit, remembered: saved.__open, guest, entering: enteringNow });
     // A shared layout as the first visit (plan-saved-layouts.md, decision 4): it opens through loadLayout, modes and
     // places included, whether or not Opens with is set (the two are independent now). A person's remembered layout
     // still wins after their first visit (plan-entering, decision 5).
@@ -2272,7 +2272,7 @@ export function createCanvas({ guestToken = null, onChatAsk = null, onChatAttach
       environment: environmentOpensWith,
       modules: available.map((m) => m.id),
       canOpen: canOpenHere,
-      guest: Boolean(guestToken),
+      guest,
       column: columnMode(),
       aliases, // a stored `calendar` or `todo` opens the composite while the Calendar is on here (composites.js)
     });
