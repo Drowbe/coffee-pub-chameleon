@@ -476,7 +476,7 @@ if (!/role: 'radiogroup'/.test(switchDraw) || !/role: 'radio', 'aria-checked': S
 if (!/const FOLDS = \['chips', 'switch',/.test(frameJs) || !/\.mf-fold-switch \.mf-switch-btn:has\(> i\) > \.mf-word \{ display: none; \}/.test(read('public/sdk/system.css'))) fail('public/module-frame.js: the switch shows only its icons while the row is too narrow');
 if (!/if \(iconic\(b\)\) b\.dataset\.tip = name;/.test(frameJs)) fail('public/module-frame.js: a folded choice\'s word is its tooltip');
 if (!/observer = new win\.ResizeObserver\(later\);/.test(frameJs)) fail('public/module-frame.js: the row is fitted again as it changes size');
-if (!/label: s\(o\?\.label, TOOLBAR_LIMITS\.label\), icon: icon\(o\?\.icon\)/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: cleanToolbarItems must keep a tabs option\'s icon');
+if (!/label: plain\(o\?\.label, TOOLBAR_LIMITS\.label\), icon: icon\(o\?\.icon\)/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: cleanToolbarItems must keep a tabs option\'s icon');
 if (!/if \(i\.type === 'tabs'\) place\(\{ type: 'switch', id: i\.id, label: i\.label \|\| SWITCH_LABEL, value: i\.value, options: i\.options\.map/.test(read('public/module-chrome.js'))) fail('public/module-chrome.js: a tabs item is the frame\'s switch, its options (and icons) kept');
 const destination = read('public/destination.js');
 // The destination's view switch and panel switch are tabs items of its one toolbar row (the frame draws and fits them).

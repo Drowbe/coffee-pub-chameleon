@@ -2273,7 +2273,7 @@ export function mountModule({ module, frame = null, container = null, scope = 'e
     // page's one row with its own.
     async 'toolbar.set'({ items }) {
       if (!toolbarOut) return false; // a dashboard widget
-      toolbarOut(items);
+      try { toolbarOut(items); } catch { /* items that cannot be read: nothing changes */ }
       return true;
     },
     // The module's tools in the nav bars (host.nav.set): registered under the module's own namespace in the shared

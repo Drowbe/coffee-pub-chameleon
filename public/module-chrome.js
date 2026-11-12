@@ -12,6 +12,12 @@ export const STATUS_QUIET_MS = 1500;
 
 const ICON = /^[a-z0-9-]{1,40}$/;
 const TINT = /^(gold|blue|green|teal|purple|red|orange|pink)$/;
+// THE text helper: every word a person reads that a module gave (labels, titles, text, placeholders, hints, status text), never an
+// id or a value. Text only: one line. Gone: invisible direction and joining characters (U+061C, U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069,
+// U+FEFF; this includes U+200D, so a joined emoji shows as separate emoji: the safe choice, no emoji-aware exceptions); turned into
+// a space: control characters, U+0085, U+2028 and U+2029. Trimmed and cut. Only the first 1000 characters are looked at. Anything that is not a string is ''.
+const plain = (v, n) => (typeof v === 'string' ? v.slice(0, 1000).replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
+// An id: only whitespace collapsed (not text a person reads).
 const str = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // What host.add.set sent, cleaned: a leaf { id, label, icon?, tint?, hint?, disabled }, a category
@@ -23,16 +29,19 @@ export const addKey = (e) => `${String((e && e.label) || '').trim().toLowerCase(
 export function cleanAddEntries(entries) {
   let leaves = 0;
   const leaf = (e, seen) => {
+    try { return leafOf(e, seen); } catch { return null; } // an entry that cannot be read is dropped
+  };
+  const leafOf = (e, seen) => {
     if (!e || typeof e !== 'object' || e.items || e.divider) return null;
     const id = str(e.id, 40);
-    const label = str(e.label, ADD_LIMITS.label);
+    const label = plain(e.label, ADD_LIMITS.label);
     if (!id || !label || leaves >= ADD_LIMITS.leaves || seen.has(addKey(e))) return null;
     seen.add(addKey(e));
     leaves += 1;
     const out = { id, label, disabled: Boolean(e.disabled) };
     if (ICON.test(e.icon || '')) out.icon = e.icon;
     if (TINT.test(e.tint || '')) out.tint = e.tint;
-    const hint = str(e.hint, 40);
+    const hint = plain(e.hint, 40);
     if (hint) out.hint = hint;
     return out;
   };
@@ -41,13 +50,14 @@ export function cleanAddEntries(entries) {
   const counted = () => out.filter((x) => !x.divider).length;
   for (const e of Array.isArray(entries) ? entries : []) {
     if (counted() >= ADD_LIMITS.top) break;
+    try {
     if (!e || typeof e !== 'object') continue;
     if (e.divider) {
       if (out.length && !out[out.length - 1].divider) out.push({ divider: true });
       continue;
     }
     if (Array.isArray(e.items)) {
-      const label = str(e.label, ADD_LIMITS.label);
+      const label = plain(e.label, ADD_LIMITS.label);
       if (!label) continue;
       const items = [];
       const seenIn = new Set();
@@ -65,6 +75,7 @@ export function cleanAddEntries(entries) {
     }
     const l = leaf(e, seenTop);
     if (l) out.push(l);
+    } catch { /* an entry that cannot be read is dropped */ }
   }
   while (out.length && out[out.length - 1].divider) out.pop();
   return out;
@@ -85,11 +96,13 @@ export function dropRepeatedAdds(lists) {
 }
 export function foldBarItems(items) {
   const clean = (Array.isArray(items) ? items : []).slice(0, 10).map((i) => {
+    try {
     const quick = i?.type === 'quickadd';
     const icon = ICON.test(i?.icon || '') ? i.icon : quick ? 'plus' : '';
-    const label = str(i?.label, ADD_LIMITS.label) || (quick ? str(i?.placeholder, ADD_LIMITS.label) || 'Add' : '');
+    const label = plain(i?.label, ADD_LIMITS.label) || (quick ? plain(i?.placeholder, ADD_LIMITS.label) || 'Add' : '');
     return { id: str(i?.id, 40), label, icon, primary: Boolean(i?.primary), disabled: Boolean(i?.disabled), quick };
-  }).filter((i) => i.id && i.label);
+    } catch { return null; } // an item that cannot be read is dropped
+  }).filter((i) => i && i.id && i.label);
   const ordered = [...clean.filter((i) => i.primary), ...clean.filter((i) => !i.primary)];
   return {
     entries: ordered.map(({ id, label, icon, disabled }) => ({ id, label, disabled, ...(icon ? { icon } : {}) })),
@@ -140,12 +153,14 @@ export function cleanStatusItems(items, limit = STATUS_LIMITS.items) {
   let end = null;
   for (const i of Array.isArray(items) ? items : []) {
     if (out.length + (end ? 1 : 0) >= limit) break;
+    try {
     if (!i || typeof i !== 'object') continue;
-    const text = str(i.text, STATUS_LIMITS.text);
+    const text = plain(i.text, STATUS_LIMITS.text);
     if (!text) continue;
-    const item = { text, title: str(i.title, STATUS_LIMITS.title) || text, quiet: Boolean(i.quiet), end: false };
+    const item = { text, title: plain(i.title, STATUS_LIMITS.title) || text, quiet: Boolean(i.quiet), end: false };
     if (ICON.test(i.icon || '')) item.icon = i.icon;
     if (i.end && !end) { item.end = true; end = item; } else out.push(item);
+    } catch { /* an item that cannot be read is dropped */ }
   }
   return end ? [...out, end] : out;
 }
@@ -240,23 +255,24 @@ const pageZone = (i) => {
 };
 // A switch's own name: plain text only, short; a non-string, an empty one or one with "<" or ">" in it is left out (the row says "Tools").
 export const SWITCH_LABEL = 'Tools';
-// Direction controls and zero-width characters are removed (they can hide or reorder the words).
-const INVISIBLE = /[\u200B-\u200D\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g;
-const switchName = (v) => { const t = typeof v === 'string' ? v.replace(INVISIBLE, '').replace(/\s+/g, ' ').trim().slice(0, TOOLBAR_LIMITS.label) : ''; return t && !/[<>]/.test(t) ? t : ''; };
+const switchName = (v) => { const t = typeof v === 'string' ? plain(v, TOOLBAR_LIMITS.label) : ''; return t && !/[<>]/.test(t) ? t : ''; };
 export function cleanToolbarItems(items) {
   const s = (v, n) => String(v ?? '').slice(0, n);
   const id = (v) => s(v, 40);
   const icon = (v) => (ICON.test(v || '') ? v : '');
   const out = [];
-  for (const i of (Array.isArray(items) ? items : []).slice(0, TOOLBAR_LIMITS.items)) {
+  let list = [];
+  try { list = Array.isArray(items) ? items.slice(0, TOOLBAR_LIMITS.items) : []; } catch { /* an items value that cannot be read: no items */ }
+  for (const i of list) {
+    try { // an item that cannot be read (a getter that throws, a cyclic value) is dropped; the rest stay
     if (!i || typeof i !== 'object') continue;
     const own = typeof i.send === 'function' ? { send: i.send } : {};
     const type = ['tabs', 'text', 'title', 'search', 'chips', 'button', undefined].includes(i.type) ? i.type || 'button' : null;
     if (!type) continue;
-    if (type === 'text' || type === 'title') { const text = s(i.text, TOOLBAR_LIMITS[type]); if (text) out.push({ type, text, ...own, ...pageZone(i) }); continue; }
+    if (type === 'text' || type === 'title') { const text = plain(i.text, TOOLBAR_LIMITS[type]); if (text) out.push({ type, text, ...own, ...pageZone(i) }); continue; }
     if (type === 'tabs') {
       const options = (Array.isArray(i.options) ? i.options : []).slice(0, TOOLBAR_LIMITS.tabs).map((o) => ({
-        id: id(o?.id), label: s(o?.label, TOOLBAR_LIMITS.label), icon: icon(o?.icon), regular: Boolean(o?.regular), iconOnly: Boolean(o?.iconOnly),
+        id: id(o?.id), label: plain(o?.label, TOOLBAR_LIMITS.label), icon: icon(o?.icon), regular: Boolean(o?.regular), iconOnly: Boolean(o?.iconOnly),
         ...(Number.isInteger(o?.count) && o.count >= 0 ? { count: o.count } : {}), // a number that stays visible when the words fold away
       })).filter((o) => o.id && (o.label || o.icon));
       if (id(i.id) && options.length) out.push({ type, id: id(i.id), value: id(i.value), options, ...(switchName(i.label) ? { label: switchName(i.label) } : {}), ...own, ...pageZone(i) });
@@ -264,16 +280,16 @@ export function cleanToolbarItems(items) {
     }
     if (type === 'search') {
       if (!id(i.id)) continue;
-      const placeholder = s(i.placeholder, TOOLBAR_LIMITS.placeholder);
-      out.push({ type, id: id(i.id), value: s(i.value, TOOLBAR_LIMITS.value), placeholder, label: s(i.label, TOOLBAR_LIMITS.placeholder) || placeholder || 'Search', ...own });
+      const placeholder = plain(i.placeholder, TOOLBAR_LIMITS.placeholder);
+      out.push({ type, id: id(i.id), value: s(i.value, TOOLBAR_LIMITS.value), placeholder, label: plain(i.label, TOOLBAR_LIMITS.placeholder) || placeholder || 'Search', ...own });
       continue;
     }
     if (type === 'chips') {
       const single = Boolean(i.single);
       const options = (Array.isArray(i.options) ? i.options : []).slice(0, TOOLBAR_LIMITS.chips).map((o) => {
-        const opt = { id: id(o?.id), label: s(o?.label, 40) };
+        const opt = { id: id(o?.id), label: plain(o?.label, 40) };
         if (!single) { opt.default = o?.default !== false; opt.on = o?.on === undefined ? opt.default : Boolean(o.on); }
-        const note = s(o?.note, 20);
+        const note = plain(o?.note, 20);
         if (note) opt.note = note;
         if (Number.isInteger(o?.count) && o.count >= 0) opt.count = o.count;
         if (icon(o?.icon)) opt.icon = o.icon;
@@ -281,7 +297,7 @@ export function cleanToolbarItems(items) {
         return opt;
       }).filter((o) => o.id && o.label);
       if (!id(i.id) || !options.length) continue;
-      const chips = { type, id: id(i.id), label: s(i.label, 60) || 'Filter', single, options, ...own };
+      const chips = { type, id: id(i.id), label: plain(i.label, 60) || 'Filter', single, options, ...own };
       if (single) chips.value = options.some((o) => o.id === id(i.value)) ? id(i.value) : options[0].id;
       out.push(chips);
       continue;
@@ -289,8 +305,8 @@ export function cleanToolbarItems(items) {
     const b = {
       type: 'button',
       id: id(i.id),
-      label: s(i.label, TOOLBAR_LIMITS.label),
-      title: s(i.title, 40),
+      label: plain(i.label, TOOLBAR_LIMITS.label),
+      title: plain(i.title, 40),
       icon: icon(i.icon),
       regular: Boolean(i.regular),
       on: typeof i.on === 'boolean' ? i.on : null, // null: not a toggle, so no pressed state
@@ -302,6 +318,7 @@ export function cleanToolbarItems(items) {
       ...pageZone(i),
     };
     if (b.id && (b.label || b.icon)) out.push(b);
+    } catch { /* dropped */ }
   }
   return out;
 }
@@ -320,10 +337,6 @@ export const HEADER_SELECT_LABEL = 40;
 export const HEADER_ITEM_LABEL = 60;
 export const HEADER_MENU_MAX = 50;
 const MENU_ID = /^[a-z0-9._-]{1,40}$/;
-// Text only: one line. Gone: invisible direction and joining characters (U+061C, U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069,
-// U+FEFF; this includes U+200D, so a joined emoji shows as separate emoji: the safe choice, no emoji-aware exceptions); turned into
-// a space: control characters, U+0085, U+2028 and U+2029. Trimmed and cut. Only the first 1000 characters are looked at.
-const plain = (v, n) => (typeof v === 'string' ? v.slice(0, 1000).replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
 function cleanMenuItems(items) {
   let count = 0;
   let current = false;
@@ -409,7 +422,7 @@ export function cleanStandardActions(spec) {
     else if (v && typeof v === 'object') {
       const o = {};
       if (v.disabled) o.disabled = true;
-      const hint = str(v.hint, 40);
+      const hint = plain(v.hint, 40);
       if (hint) o.hint = hint;
       out[id] = o;
     }
@@ -431,7 +444,7 @@ export function cleanShareResult(r, origin) {
     return null;
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-  return { url: url.href, title: str(r.title, 80) || 'Share', message: String(r.message ?? '').replace(/[ \t]+/g, ' ').trim().slice(0, 300) };
+  return { url: url.href, title: plain(r.title, 80) || 'Share', message: String(r.message ?? '').replace(/[ \t]+/g, ' ').trim().slice(0, 300) };
 }
 
 // What the frame's title bar shows for a module (module-frame.js, titlebar.actions): its header icons (host.header.set),
