@@ -685,9 +685,10 @@ async function joinOpenSpace(spaceId, button) {
     await api('POST', `/api/spaces/${encodeURIComponent(spaceId)}/join`);
     await loadPresence();
   } catch (err) {
-    button.disabled = false;
     $('join-error').textContent = err.message || "Couldn't join. Try again.";
     $('join-error').hidden = false;
+  } finally {
+    button.disabled = false;
   }
 }
 function enterFromCard(spaceId) {
