@@ -307,26 +307,81 @@ export function cleanToolbarItems(items) {
 }
 
 // The titlebar's own items (host.header.set), cleaned: at most 10 of { id, title, icon, regular, on, disabled, overflow,
-// danger }, and at most ONE select ({ kind: 'select', id, label, title, disabled }: a divider and a dropdown button after the
-// title, its `label` the current choice's words, up to HEADER_SELECT_LABEL characters; the first one given, a second is
-// dropped). The select counts in the 10 (it is one of the module's items) but not in the five icons beside the menu.
-// `overflow` puts an icon in the title bar's menu; `danger` (a destructive action) is always last in that menu, red.
+// danger }, and at most ONE select ({ kind: 'select', id, label, title, disabled, items }: a divider and a dropdown button after
+// the title, its `label` the current choice's words, up to HEADER_SELECT_LABEL characters; the first one given, a second is
+// dropped; a select with no pickable `items` is dropped). The select counts in the 10 (it is one of the module's items) but not
+// in the five icons beside the menu. `overflow` puts an icon in the title bar's menu; `danger` (a destructive action) is always
+// last in that menu, red.
+// The select's `items` (data only; the HOST draws the menu under the button, host-menu.js): rows { id, label, current?, disabled?,
+// items? }, { divider: true } and { heading: 'Words' }. At most HEADER_MENU_MAX (50) entries, children counted; a row's `items`
+// are its children, ONE level (deeper is dropped); ids 1 to 40 of [a-z0-9._-], none twice; labels plain text of up to
+// HEADER_ITEM_LABEL characters (no HTML, no icon or class names, control characters removed); at most one `current` row.
 export const HEADER_SELECT_LABEL = 40;
+export const HEADER_ITEM_LABEL = 60;
+export const HEADER_MENU_MAX = 50;
+const MENU_ID = /^[a-z0-9._-]{1,40}$/;
+// Text only: one line. Gone: invisible direction and joining characters (U+061C, U+200B-U+200F, U+202A-U+202E, U+2060, U+2066-U+2069,
+// U+FEFF; this includes U+200D, so a joined emoji shows as separate emoji: the safe choice, no emoji-aware exceptions); turned into
+// a space: control characters, U+0085, U+2028 and U+2029. Trimmed and cut. Only the first 1000 characters are looked at.
+const plain = (v, n) => (typeof v === 'string' ? v.slice(0, 1000).replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
+function cleanMenuItems(items) {
+  let count = 0;
+  let current = false;
+  const ids = new Set();
+  const level = (list, deep) => {
+    const out = [];
+    // Cap the list BEFORE walking it, so a huge array is never iterated.
+    for (const i of Array.isArray(list) ? list.slice(0, HEADER_MENU_MAX) : []) {
+      if (count >= HEADER_MENU_MAX) break;
+      if (!i || typeof i !== 'object') continue;
+      if (i.divider === true) {
+        if (out.length && !out[out.length - 1].divider) { out.push({ divider: true }); count += 1; }
+        continue;
+      }
+      if (i.heading !== undefined) {
+        const heading = plain(i.heading, HEADER_ITEM_LABEL);
+        if (heading) { out.push({ heading }); count += 1; }
+        continue;
+      }
+      if (typeof i.id !== 'string' || !MENU_ID.test(i.id) || ids.has(i.id)) continue;
+      const label = plain(i.label, HEADER_ITEM_LABEL);
+      if (!label) continue;
+      ids.add(i.id);
+      count += 1;
+      const row = { id: i.id, label };
+      if (i.current === true && !current) { current = true; row.current = true; }
+      if (i.disabled === true) row.disabled = true;
+      if (!deep && Array.isArray(i.items)) {
+        const kids = level(i.items, true);
+        if (kids.some((k) => k.id)) row.items = kids;
+      }
+      out.push(row);
+    }
+    while (out.length && out[out.length - 1].divider) { out.pop(); count -= 1; }
+    return out;
+  };
+  const out = level(items, false);
+  return out.some((r) => r.id) ? out : [];
+}
+// The module is untrusted: a getter that throws, a cyclic object or a hostile value drops that item, it never throws out of here.
 export function cleanHeaderItems(items) {
   let select = false;
   const out = [];
   for (const i of (Array.isArray(items) ? items : []).slice(0, 10)) {
+    try {
     if (i && i.kind === 'select') {
       const id = String(i.id ?? '').slice(0, 40);
-      const label = str(i.label, HEADER_SELECT_LABEL);
+      const label = plain(i.label, HEADER_SELECT_LABEL);
       if (!id || !label || select) continue;
+      const menu = cleanMenuItems(i.items);
+      if (!menu.length) continue;
       select = true;
-      out.push({ kind: 'select', id, label, title: String(i.title ?? '').slice(0, 40), disabled: Boolean(i.disabled) });
+      out.push({ kind: 'select', id, label, title: plain(i.title, 40), disabled: Boolean(i.disabled), items: menu });
       continue;
     }
     const c = {
       id: String(i?.id ?? '').slice(0, 40),
-      title: String(i?.title ?? '').slice(0, 40),
+      title: plain(i?.title, 40),
       icon: ICON.test(i?.icon || '') ? i.icon : '',
       regular: Boolean(i?.regular),
       on: Boolean(i?.on),
@@ -335,6 +390,7 @@ export function cleanHeaderItems(items) {
       danger: Boolean(i?.danger),
     };
     if (c.id && c.icon) out.push(c);
+    } catch { /* this item is dropped */ }
   }
   return out;
 }
@@ -384,7 +440,7 @@ export function cleanShareResult(r, origin) {
 export function titlebarActions(header, toolbar) {
   const out = [];
   for (const h of header || []) {
-    if (h.kind === 'select') { out.push({ id: h.id, from: 'header', kind: 'select', label: h.label, tip: h.title || h.label, ...(h.disabled ? { disabled: true } : {}) }); continue; }
+    if (h.kind === 'select') { out.push({ id: h.id, from: 'header', kind: 'select', label: h.label, tip: h.title || h.label, items: h.items, ...(h.disabled ? { disabled: true } : {}) }); continue; }
     out.push({ id: h.id, from: 'header', label: h.title || h.id, icon: h.icon, ...(h.regular ? { regular: true } : {}),
       placement: h.overflow ? 'menu' : 'bar', ...(h.on ? { on: true } : {}), ...(h.disabled ? { disabled: true } : {}), ...(h.danger ? { danger: true } : {}),
       ...(h.send ? { send: h.send } : {}) });

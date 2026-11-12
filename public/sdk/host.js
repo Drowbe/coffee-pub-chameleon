@@ -3498,12 +3498,17 @@
     // with its id. Resolves true wherever the module is drawn (a window, its own page, a destination's page, a composite's
     // window); only a dashboard widget answers false.
     //
-    // One item may instead be a select, { kind: 'select', id, label, title?, disabled? }: a divider and a dropdown button after
+    // One item may instead be a select, { kind: 'select', id, label, title?, disabled?, items }: a divider and a dropdown button after
     // the title, `label` (up to 40 characters, cut with an ellipsis when there is no room) the current choice's words, then a
-    // caret. A click arrives as the 'header' event with its id and `x` (the button's left edge in the module's area), and the
-    // module opens its own menu: host.menu.show({ id, at: { x, y: 4 }, items }) (it opens at the top of the module's area: a menu
-    // cannot leave the module's box); Escape or a pick returns the keyboard to the button. Only the first select is kept; it is one of
-    // the ten items but not one of the five icons, and the label is cut before the title is.
+    // caret. The HOST draws its menu directly under the button (the same menu as the title bar's "..."), from `items`, which is
+    // data only (no functions): rows { id, label, current?, disabled?, items? }, { divider: true } and { heading: 'Words' }. A row
+    // with `items` is a category whose children open in a flyout beside it (a drill-in with Back on a phone): ONE level, deeper is
+    // dropped. `id` is 1 to 40 characters of a-z, 0-9, ".", "_" or "-", and none twice; `label` is plain text of up to 60
+    // characters (no HTML, no icon or class names; control characters are removed); at most one row is `current` (drawn as the
+    // chosen one of a set); at most 50 entries, children counted. A select with no row to pick is dropped, and only the first select
+    // is kept; it is one of the ten items but not one of the five icons, and the label is cut before the title is. A pick arrives as
+    // the 'header' event { id: <the select's id>, value: <the picked row's id> }; there is no event for the button itself. Escape or
+    // a pick returns the keyboard to the button.
     header: {
       set: (items) => call('header.set', { items }),
     },

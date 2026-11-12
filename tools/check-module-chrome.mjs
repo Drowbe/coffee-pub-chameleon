@@ -531,22 +531,94 @@ test('the toolbar row: items cleaned, the rest dropped', () => {
   const many = R.titlebarActions(R.cleanHeaderItems(Array.from({ length: 7 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: `H${i}` }))), []);
   assert.deepEqual(many.map((a) => a.placement), ['bar', 'bar', 'bar', 'bar', 'bar', 'menu', 'menu'], 'more than five icons: the rest in the menu');
   const frameJs0 = () => read('public/module-frame.js');
-  // The title bar's select (host.header.set, kind 'select'): a clean shape, only the first, its label cut, not an icon.
-  const sel = R.cleanHeaderItems([{ id: 'a', icon: 'star', title: 'A' }, { kind: 'select', id: 'boards-pick', label: `  Board\n 1 ${'x'.repeat(80)}`, title: 'Boards', disabled: 1, icon: 'star', danger: true }, { kind: 'select', id: 'second', label: 'Two' }, { kind: 'select', id: '', label: 'No id' }, { kind: 'select', id: 'nolabel', label: '  ' }]);
+  // The title bar's select (host.header.set, kind 'select'): a clean shape, only the first, its label cut, not an icon, and
+  // its menu `items` as data (the host draws it). No items: dropped.
+  const IT = [{ id: 'a', label: 'A', current: true }];
+  const sel = R.cleanHeaderItems([{ id: 'a', icon: 'star', title: 'A' }, { kind: 'select', id: 'boards-pick', label: `  Board\n 1 ${'x'.repeat(80)}`, title: 'Boards', disabled: 1, icon: 'star', danger: true, items: IT }, { kind: 'select', id: 'second', label: 'Two', items: IT }, { kind: 'select', id: '', label: 'No id', items: IT }, { kind: 'select', id: 'nolabel', label: '  ', items: IT }]);
   assert.deepEqual(sel.map((i) => i.id), ['a', 'boards-pick'], 'only the first select is kept; one with no id or no label is dropped');
-  assert.deepEqual(sel[1], { kind: 'select', id: 'boards-pick', label: sel[1].label, title: 'Boards', disabled: true }, 'a select is { kind, id, label, title, disabled } and nothing else (no icon, no danger)');
+  assert.deepEqual(sel[1], { kind: 'select', id: 'boards-pick', label: sel[1].label, title: 'Boards', disabled: true, items: [{ id: 'a', label: 'A', current: true }] }, 'a select is { kind, id, label, title, disabled, items } and nothing else (no icon, no danger)');
   assert.ok(sel[1].label.length === R.HEADER_SELECT_LABEL && sel[1].label.startsWith('Board 1 x'), `the label is one line, trimmed and cut to ${R.HEADER_SELECT_LABEL}`);
-  assert.equal(R.cleanHeaderItems(Array.from({ length: 12 }, (_, i) => ({ kind: 'select', id: `s${i}`, label: 'L' }))).length, 1, 'twelve selects give one');
-  assert.equal(R.cleanHeaderItems([...Array.from({ length: 10 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: 'H' })), { kind: 'select', id: 's', label: 'L' }]).some((i) => i.kind === 'select'), false, 'the select counts in the 10 items');
-  const withSel = R.titlebarActions(R.cleanHeaderItems([{ kind: 'select', id: 'pick', label: 'Board 1', title: 'Boards' }, ...Array.from({ length: 6 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: `H${i}` }))]), []);
+  assert.equal(R.cleanHeaderItems(Array.from({ length: 12 }, (_, i) => ({ kind: 'select', id: `s${i}`, label: 'L', items: IT }))).length, 1, 'twelve selects give one');
+  assert.equal(R.cleanHeaderItems([...Array.from({ length: 10 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: 'H' })), { kind: 'select', id: 's', label: 'L', items: IT }]).some((i) => i.kind === 'select'), false, 'the select counts in the 10 items');
+  const withSel = R.titlebarActions(R.cleanHeaderItems([{ kind: 'select', id: 'pick', label: 'Board 1', title: 'Boards', items: IT }, ...Array.from({ length: 6 }, (_, i) => ({ id: `h${i}`, icon: 'star', title: `H${i}` }))]), []);
   assert.deepEqual(withSel.map((a) => a.placement), [undefined, 'bar', 'bar', 'bar', 'bar', 'bar', 'menu'], 'the select is not one of the five icons beside the menu');
   assert.equal(withSel[0].kind, 'select');
+  assert.deepEqual(withSel[0].items, [{ id: 'a', label: 'A', current: true }], 'the frame gets the items');
+  // The select's menu items.
+  const one = (items) => R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items }]);
+  const itemsOf = (items) => (one(items)[0] || {}).items;
+  assert.equal(one(undefined).length, 0, 'a select with no items is dropped');
+  assert.equal(one([]).length, 0, 'a select with an empty list is dropped');
+  assert.equal(one([{ divider: true }, { heading: 'Only' }, { id: 'BAD ID', label: 'x' }, { id: 'ok', label: '' }, { id: 'n', label: 7 }, { id: 5, label: 'five' }]).length, 0, 'a select with nothing to pick is dropped');
+  assert.deepEqual(itemsOf([{ id: 'a', label: 'A', icon: 'star', className: 'x', onClick() {}, hint: 'h', danger: true, disabled: true, extra: 1 }]), [{ id: 'a', label: 'A', disabled: true }], 'unknown keys (an icon, a class, a function, a hint) are dropped');
+  assert.deepEqual(itemsOf([{ id: 'a', label: 'A', current: 'yes' }, { id: 'b', label: 'B', current: true }, { id: 'c', label: 'C', current: true }]), [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', current: true }, { id: 'c', label: 'C' }], 'current must be true and only the first one is kept');
+  assert.deepEqual(itemsOf([{ id: 'a', label: 'A' }, { id: 'a', label: 'Again' }, { id: 'b', label: 'B', items: [{ id: 'a', label: 'dup in child' }, { id: 'c', label: 'C' }] }]), [{ id: 'a', label: 'A' }, { id: 'b', label: 'B', items: [{ id: 'c', label: 'C' }] }], 'a duplicate id is dropped, in a child too');
+  assert.deepEqual(itemsOf([{ id: 'a', label: 'A' }, { divider: true }, { divider: true }, { heading: '  Group ' }, { id: 'b', label: 'B' }, { divider: true }]), [{ id: 'a', label: 'A' }, { divider: true }, { heading: 'Group' }, { id: 'b', label: 'B' }], 'dividers: never first, twice in a row or last; a heading is text');
+  const deep = itemsOf([{ id: 'm', label: 'M', items: [{ id: 'k', label: 'K', items: [{ id: 'g', label: 'G' }] }, { id: 'k2', label: 'K2' }] }]);
+  assert.deepEqual(deep, [{ id: 'm', label: 'M', items: [{ id: 'k', label: 'K' }, { id: 'k2', label: 'K2' }] }], 'one level of children: a grandchild is dropped');
+  assert.deepEqual(itemsOf([{ id: 'a', label: 'A' }, { id: 'm', label: 'M', items: [{ id: 'x', label: '' }] }]), [{ id: 'a', label: 'A' }, { id: 'm', label: 'M' }], 'a category with no usable child is a plain row');
+  for (const bad of ['', 'a'.repeat(41), 'A', 'a b', 'a/b', 'é', '<b>']) assert.equal(itemsOf([{ id: bad, label: 'x' }, { id: 'keep', label: 'K' }]).length, 1, `id ${JSON.stringify(bad)} is dropped`);
+  for (const good of ['a', 'a'.repeat(40), 'b.1', 'go-x_y', '0']) assert.ok(itemsOf([{ id: good, label: 'x' }]).some((r) => r.id === good), `id ${JSON.stringify(good)} is kept`);
+  assert.equal(itemsOf(Array.from({ length: 80 }, (_, i) => ({ id: `r${i}`, label: `R${i}` }))).length, R.HEADER_MENU_MAX, 'at most 50 entries');
+  const mixed = itemsOf([{ id: 'm', label: 'M', items: Array.from({ length: 70 }, (_, i) => ({ id: `c${i}`, label: 'C' })) }, ...Array.from({ length: 30 }, (_, i) => ({ id: `r${i}`, label: 'R' }))]);
+  assert.equal(mixed.reduce((n, r) => n + 1 + (r.items ? r.items.length : 0), 0), 50, 'the 50 count the children too');
+  // Hostile labels are text: no tags kept as markup, control characters out, long ones cut, a non-string dropped.
+  const hostile = itemsOf([{ id: 'h', label: '<img src=x onerror=alert(1)>' }, { id: 'c', label: 'a\u0000b\u0007c\u202ed\u2028e' }, { id: 'l', label: 'y'.repeat(5000) }, { id: 'o', label: { toString: () => 'obj' } }, { id: 'n', label: null }, { id: 'f', label: () => 'fn' }]);
+  assert.deepEqual(hostile.map((r) => r.id), ['h', 'c', 'l'], 'only string labels are kept');
+  assert.equal(hostile[0].label, '<img src=x onerror=alert(1)>', 'markup stays as plain text (the frame sets it with textContent; check-title-select.mjs proves it inert)');
+  assert.ok(!/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(hostile[1].label), 'control characters are removed');
+  assert.equal(hostile[2].label.length, R.HEADER_ITEM_LABEL, `a long label is cut to ${R.HEADER_ITEM_LABEL}`);
+  const hostSel = R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'y\u0000'.repeat(100), title: 'T'.repeat(500), items: IT }])[0];
+  assert.ok(hostSel.label.length === R.HEADER_SELECT_LABEL && hostSel.title.length === 40 && !/[\u0000-\u001f]/.test(hostSel.label), 'the select label (40) and title (40) are cut and clean too');
+  assert.equal(R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items: 'not a list' }]).length, 0, 'items that are not a list: dropped');
+  // An ordinary icon item's title is cleaned the same way.
+  const iconTitle = (title) => R.cleanHeaderItems([{ id: 'a', icon: 'star', title }])[0];
+  assert.equal(iconTitle('Pi‮n​s').title, 'Pins', 'icon title: override and zero-width space removed');
+  assert.equal(iconTitle('A B').title, 'A B', 'icon title: U+2028 becomes a space');
+  assert.equal(iconTitle('שלום').title, 'שלום', 'icon title: RTL letters stay');
+  assert.equal(iconTitle('x'.repeat(10240)).title.length, 40, 'icon title: 10 KB cut to 40');
+  assert.equal(iconTitle('‮​⁦').title, '', 'icon title: only invisible characters is empty');
+  assert.equal(iconTitle(undefined).title, '', 'icon title: missing is empty, the item stays');
+  // Invisible and direction characters, one case per class: gone from the select label, title, item labels and headings.
+  const classes = { 'bidi override (U+202A-202E)': '‪‫‬‭‮', 'bidi isolate (U+2066-2069)': '⁦⁧⁨⁩', 'marks (U+200E, U+200F, U+061C)': '‎‏؜', 'zero width (U+200B-200D, U+2060, U+FEFF)': '​‌‍⁠﻿' };
+  for (const [name, chars] of Object.entries(classes)) {
+    const s2 = one([{ heading: `H${chars}ead` }, { id: 'a', label: `A${chars}B` }]).length ? R.cleanHeaderItems([{ kind: 'select', id: 's', label: `L${chars}x`, title: `T${chars}t`, items: [{ heading: `H${chars}ead` }, { id: 'a', label: `A${chars}B` }] }])[0] : null;
+    assert.ok(s2 && s2.label === 'Lx' && s2.title === 'Tt' && s2.items[0].heading === 'Head' && s2.items[1].label === 'AB', `${name}: removed from label, title, heading and item label`);
+    assert.equal(one([{ id: 'a', label: chars }]).length, 0, `${name}: a label of only these is empty, so the item is dropped`);
+  }
+  const sep = one([{ id: 'a', label: 'A B C\u0085D' }])[0].items[0];
+  assert.equal(sep.label, 'A B C D', 'line and paragraph separators and U+0085 become spaces');
+  assert.equal(one([{ id: 'a', label: '  \u0085' }]).length, 0, 'line separators only: dropped');
+  assert.equal(one([{ id: 'a', label: 'שלום עולם مرحبا' }])[0].items[0].label, 'שלום עולם مرحبا', 'right-to-left letters (Hebrew, Arabic) survive');
+  assert.equal(one([{ id: 'a', label: 'Fun 🎉 🚀' }])[0].items[0].label, 'Fun 🎉 🚀', 'plain emoji survive');
+  assert.equal(one([{ id: 'a', label: '👩‍🚀' }])[0].items[0].label, '👩🚀', 'U+200D is stripped everywhere (the safe choice), so a joined emoji shows as separate emoji');
+  // Size caps, and an untrusted module never breaks the title bar.
+  const huge = R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'x'.repeat(10240), items: Array.from({ length: 5000 }, (_, i) => ({ id: `i${i}`, label: 'y'.repeat(10240) })) }])[0];
+  assert.ok(huge.label.length === R.HEADER_SELECT_LABEL && huge.items.length === R.HEADER_MENU_MAX && huge.items.every((r) => r.label.length === R.HEADER_ITEM_LABEL), '5000 items and 10 KB labels are cut to 50 entries and 60-character labels, without throwing');
+  const bad = Array.from({ length: 5000 }, () => ({ id: 'BAD ID', label: 'z' }));
+  assert.equal(R.cleanHeaderItems([{ kind: 'select', id: 's', label: 'L', items: [...bad, { id: 'late', label: 'Late' }] }]).length, 0, 'only the first 50 entries are looked at');
+  const cyc = { kind: 'select', id: 's', label: 'L', items: [{ id: 'a', label: 'A' }] };
+  cyc.items[0].items = cyc.items; cyc.self = cyc;
+  assert.doesNotThrow(() => R.cleanHeaderItems([cyc, cyc]), 'a cyclic items object does not throw');
+  assert.equal(R.cleanHeaderItems([cyc])[0].items[0].items, undefined, 'a cycle gives no children (one level, only rows with ids count)');
+  const evil = { kind: 'select', id: 's', label: 'L', items: [{ id: 'a', label: 'A' }] };
+  Object.defineProperty(evil, 'title', { get() { throw new Error('boom'); } });
+  const evilRow = { kind: 'select', id: 's2', label: 'L', items: [{ id: 'a', get label() { throw new Error('boom'); } }] };
+  const okIcon = { id: 'ok', icon: 'star', title: 'Ok' };
+  let evilOut;
+  assert.doesNotThrow(() => { evilOut = R.cleanHeaderItems([evil, evilRow, { get id() { throw new Error('boom'); } }, okIcon]); }, 'getters that throw do not throw out of the cleaner');
+  assert.deepEqual(evilOut.map((i) => i.id), ['ok'], 'the items that threw are dropped, the others stay');
+  assert.doesNotThrow(() => R.cleanHeaderItems({ get length() { throw new Error('boom'); } }), 'a non-array items value is no items');
+  assert.match(read('public/module-host.js'), /try \{ clean = cleanHeaderItems\(items\); \} catch/, 'the header.set handler also catches whatever the cleaner could not');
   const hostJs = read('public/module-host.js');
-  assert.match(hostJs, /\{ id: a\.id, \.\.\.\(a\.kind === 'select' && e\.el \? \{ x: xOf\(e\.el\) \} : \{\}\) \}/, 'a click on the select arrives as the header event with its id and x');
-  assert.match(hostJs, /async 'focus\.opener'\(\)[\s\S]*?doc\.activeElement !== frame[\s\S]*?o\.el\.focus\(\)/, 'a menu that closes with no anchor gives focus back to the control it answered, only while the keyboard is in the module');
-  assert.match(frameJs0(), /e\.type === 'keydown' && \(!doc\.activeElement \|\| doc\.activeElement === doc\.body\)\) b\.focus\(\)/, 'Escape that leaves the focus on the page returns it to the select button; a press elsewhere does not');
+  assert.match(hostJs, /if \(a\.kind === 'select'\) \{ if \(typeof e\.value === 'string'\) to\(a, 'header', \{ id: a\.id, value: e\.value \}, e\.el\); \}/, 'a pick in the select arrives as the header event with id and value, and the button itself sends nothing');
+  assert.ok(!/x: xOf\(e\.el\) \} : \{\}\) \}, e\.el\)/.test(hostJs.split("if (a.from === 'header')")[1].split('\n').slice(0, 4).join('\n')), 'the select\'s old x field is gone');
+  assert.match(hostJs, /async 'focus\.opener'\(\)[\s\S]*?doc\.activeElement !== frame[\s\S]*?o\.el\.focus\(\)/, 'a menu a module draws with no anchor gives focus back to the control it answered (toolbar and icon buttons), only while the keyboard is in the module');
+  const frameSrc2 = frameJs0();
+  assert.match(frameSrc2, /openHostMenu\(b, selectItems\(a, b\)\)/, 'the select opens the host menu under its button');
+  assert.ok(!/settleKey|wasOpen/.test(frameSrc2), 'the old "the module draws the menu" bookkeeping is gone (host-menu.js keeps aria-expanded and the focus)');
   assert.match(read('public/sdk/host.js'), /else if \(!outside && framed\)[^\n]*focus\.opener/, 'the shared menu asks for the focus back only when it was not closed by a press elsewhere');
-  assert.match(frameJs0(), /filter\(\(a\) => a\.kind !== 'select'\)/, 'the select is never an icon or a menu entry');
+  assert.match(frameSrc2, /filter\(\(a\) => a\.kind !== 'select'\)/, 'the select is never an icon or a menu entry');
   // The frame draws a destructive action last in its menu, red, never as an icon.
   const frameJs = read('public/module-frame.js');
   assert.match(frameJs, /if \(a\.placement !== 'bar' \|\| a\.danger\) continue;/, 'a destructive action is never an icon');
