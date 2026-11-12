@@ -211,8 +211,8 @@ try {
   assert.equal((await call('GET', A, { cookie: sam })).json.total, 7, 'sam sees only his own');
   assert.equal((await call('GET', A, { cookie: pat })).json.total, 5, 'and pat is unchanged');
   n += 2;
-  await expect('not in the space reads', 403, 'GET', A, { cookie: out });
-  await expect('not in the space reports', 403, 'PUT', `${A}/polls`, { cookie: out, body: good });
+  await expect('not in the space reads', 404, 'GET', A, { cookie: out });
+  await expect('not in the space reports', 404, 'PUT', `${A}/polls`, { cookie: out, body: good });
   await expect('nobody signed in reads', 401, 'GET', A);
   await expect('nobody signed in reports', 401, 'PUT', `${A}/polls`, { body: good });
   await expect('no such space', 404, 'GET', '/api/spaces/nope/attention', { cookie: pat });
