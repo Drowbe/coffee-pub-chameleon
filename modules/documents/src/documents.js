@@ -580,6 +580,8 @@
       }
       return b;
     });
+    const mi = all.findIndex((e) => e.node.id === 'read-meta'); // the line under the title is not in the editor; it hands the editor its height so the first page holds the same
+    if (mi >= 0) $('app').style.setProperty('--dl-meta-h', `${blocks[mi].height}px`);
     const r = dlPageBreaks(blocks, g.textH);
     const numbers = sheet.dataset.numbers === 'on';
     const frag = doc.createDocumentFragment();

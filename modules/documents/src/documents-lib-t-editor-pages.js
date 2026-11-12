@@ -75,7 +75,7 @@ function dlEditorRead(PM, view) {
     if (sheet) {
       const cs = getComputedStyle(sheet);
       const content = sheet.getBoundingClientRect().top / scale + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
-      out.head = Math.max(0, tops[0] - content);
+      out.head = Math.max(0, tops[0] - content) + (parseFloat(cs.getPropertyValue('--dl-meta-h')) || 0); // plus the reading view's line under the title, which the editor does not show
     }
     return out;
   } finally { root.classList.remove('dl-measuring'); }
@@ -102,7 +102,8 @@ function dlEditorPagesPlugin(PM, env) {
       const at = posOf(doc, s.beforeIndex);
       const h = `${Math.round(s.height * 100) / 100}px`;
       if (s.isManualBreak) {
-        decos.push(PM.Decoration.node(at, at + doc.child(s.beforeIndex).nodeSize, { class: 'dl-pgsp dl-pgsp-break', style: `height:${h}` }));
+        const end = Boolean(s.atEnd);
+        decos.push(PM.Decoration.node(at, at + doc.child(s.beforeIndex).nodeSize, { class: end ? 'dl-pgsp dl-pgsp-break dl-pgsp-end' : 'dl-pgsp dl-pgsp-break', style: `height:${h}`, 'data-num': String(s.pageNumber) }));
       } else {
         const rest = Math.max(0, s.height - 2 * (s.margin || 0) - DL_EDITOR_GAP);
         decos.push(PM.Decoration.widget(at, () => {
@@ -111,9 +112,10 @@ function dlEditorPagesPlugin(PM, env) {
           el.setAttribute('contenteditable', 'false');
           el.setAttribute('aria-hidden', 'true');
           el.style.height = h;
+          el.setAttribute('data-num', String(s.pageNumber));
           el.style.setProperty('--sp-top', `${rest + (s.margin || 0)}px`);
           return el;
-        }, { side: -1, ignoreSelection: true, key: `pg-${s.beforeIndex}-${h}-${s.margin || 0}`, stopEvent: () => true }));
+        }, { side: -1, ignoreSelection: true, key: `pg-${s.beforeIndex}-${h}-${s.margin || 0}-${s.pageNumber}`, stopEvent: () => true }));
       }
     }
     return decos.length ? PM.DecorationSet.create(doc, decos) : PM.DecorationSet.empty;
@@ -134,7 +136,10 @@ function dlEditorPagesPlugin(PM, env) {
       return {
         update(view, prev) {
           const now = key.getState(view.state);
-          if (view.dom && view.dom.style && key.getState(prev) !== now) view.dom.style.paddingBottom = now.on && now.lastPad ? `${now.lastPad}px` : '';
+          if (view.dom && view.dom.style && key.getState(prev) !== now) {
+            view.dom.style.paddingBottom = now.on && now.lastPad ? `${now.lastPad}px` : '';
+            if (now.on) view.dom.setAttribute('data-lastnum', String(now.pages)); else view.dom.removeAttribute('data-lastnum');
+          }
           if (on && prev.doc !== view.state.doc) ctl.schedule(view);
         },
         destroy() { if (cancel) cancel(); cancel = null; current = null; },
@@ -167,7 +172,7 @@ function dlEditorPagesPlugin(PM, env) {
       const g = dlPageGeometry(sizeKey);
       const head = blocks.head > 0 ? 1 : 0; // the title above the editor stands in as the first block (a heading, so it stays with what follows)
       const made = dlEditorPages(head ? [{ height: blocks.head, kind: 'heading' }, ...blocks] : blocks, { textH: g.textH, margin: g.margin, gap: DL_EDITOR_GAP });
-      const spacers = made.spacers.map((s) => ({ ...s, beforeIndex: s.beforeIndex - head, margin: g.margin, height: Math.round(s.height * 100) / 100 }));
+      const spacers = made.spacers.map((s) => ({ ...s, atEnd: s.isManualBreak && s.beforeIndex - head === (blocks.length - 1) && s.pageNumber === made.pages, beforeIndex: s.beforeIndex - head, margin: g.margin, height: Math.round(s.height * 100) / 100 }));
       const same = was.on && was.sizeKey === sizeKey && was.pages === made.pages && Math.abs(was.lastPad - made.lastPad) < 0.5
         && was.spacers.length === spacers.length && spacers.every((s, i) => s.beforeIndex === was.spacers[i].beforeIndex && Math.abs(s.height - was.spacers[i].height) < 0.5 && s.isManualBreak === was.spacers[i].isManualBreak);
       if (same) return false;
