@@ -4,6 +4,8 @@ import { sameSiteNext } from '/next-address.js';
 const $ = (id) => document.getElementById(id);
 loadBranding().then((b) => {
   $('register-note').hidden = !b.allowRegistration;
+  // The guest door: both switches are on (the host's and the owner's), so branding says so.
+  $('guest-door').hidden = b.guestDoor !== true;
   // The policy says everyone signs in in two steps: say so before the password is typed.
   if (b.mfaRequired && b.mfaOffered !== false) { $('mfa-note').textContent = 'You will be asked for a code from your authenticator app after this.'; $('mfa-note').hidden = false; }
 });

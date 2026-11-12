@@ -1315,6 +1315,23 @@ export function createSpaceSetup(deps) {
     ]);
     if (!state || state.space.id !== space.id) return;
     if (record) takeServerSpace(record);
+    // "Anyone including guests" shows only while the guest door is on (the host's switch and the owner's), or while this
+    // space already has it, so an owner can see and change what is set.
+    const door = await api('GET', '/api/branding').then((b) => Boolean(b.guestDoor)).catch(() => false);
+    if (!state || state.space.id !== space.id) return;
+    const choices = q('#setup-entry');
+    if (choices && !choices.querySelector('[value="guests"]') && (door || state.draft.entry === 'guests')) {
+      const radio = doc.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'setup-entry';
+      radio.value = 'guests';
+      const label = doc.createElement('label');
+      label.className = 'setup-choice';
+      label.insertAdjacentHTML('beforeend', `<i class="fa-solid fa-globe fa-fw" aria-hidden="true"></i><span class="setup-choice-name">Anyone, including ${esc(word('guest', { many: true }))}</span>`);
+      label.prepend(radio);
+      choices.append(label);
+      for (const radio of choices.querySelectorAll('input')) radio.checked = radio.value === state.draft.entry;
+    }
     if (q('#setup-budget-currency')) state.currencies = await api('GET', '/api/currencies').then((r) => r.currencies || null).catch(() => null);
     if (!state || state.space.id !== space.id) return;
     state.users = users;

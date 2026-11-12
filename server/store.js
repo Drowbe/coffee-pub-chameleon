@@ -304,6 +304,11 @@ const DEFAULT_SETTINGS = {
   // account is a normal user, added automatically like everyone is to the
   // Lobby, with no password requirement beyond what they pick.
   allowRegistration: false,
+  // The guest door (plan-access-bundle.md, step 4): the owner's switch for the "Continue as guest" button. It works only
+  // while the host's switch is on (server/guest-door.js). guestEpoch is folded into every guest session's signature;
+  // raising it ends them all.
+  guestDoor: false,
+  guestEpoch: 0,
   // Two-step sign-in policy (documentation/plans/plan-mfa.md): off by default (anyone may still enrol and is
   // then asked; this only makes it mandatory). Whether the feature is offered at all is the server's own
   // ENABLE_MFA, not a per-environment setting. Bites at the next sign-in, never an already-open session.
@@ -1004,6 +1009,13 @@ class Store {
 
   // --- secrets ------------------------------------------------------------
 
+  // Ends every guest session of this environment at once (the guest door's and the guest links' passes).
+  endGuestSessions() {
+    this.data.settings.guestEpoch = (Number(this.data.settings.guestEpoch) || 0) + 1;
+    this.save();
+    return this.data.settings.guestEpoch;
+  }
+
   get sessionSecret() {
     return this.data.secrets.session;
   }
@@ -1243,6 +1255,7 @@ class Store {
     }
     if (patch.loginText !== undefined) s.loginText = String(patch.loginText ?? '').trim().slice(0, 1000);
     if (patch.allowRegistration !== undefined) s.allowRegistration = Boolean(patch.allowRegistration);
+    if (patch.guestDoor !== undefined) s.guestDoor = patch.guestDoor === true;
     if (patch.mfaRequired !== undefined) s.mfaRequired = Boolean(patch.mfaRequired);
     if (patch.maxQuality !== undefined && QUALITY_OPTIONS.includes(Number(patch.maxQuality))) s.maxQuality = Number(patch.maxQuality);
     if (patch.allowScreenShare !== undefined) s.allowScreenShare = Boolean(patch.allowScreenShare);

@@ -70,6 +70,18 @@
         <button class="btn btn-primary" id="save-registration" type="button">Save</button>
         <span class="status" id="registration-status"></span>
       </div>
+      <!-- The door for people without an account (plan-access-bundle.md, step 4): shown only while the host has turned it on. -->
+      <div id="guest-door-section" hidden>
+        <h2 data-fill>{Guest} door</h2>
+        <div class="row">
+          <label class="sdk-choice-row"><input type="checkbox" id="set-guest-door"><span class="sdk-choice-text" data-fill>Let anyone come in as {a guest} from the sign-in page: a name, no account, for 24 hours, into the {spaces} you open to {guests}</span></label>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" id="save-guest-door" type="button">Save</button>
+          <button class="btn" id="end-guest-sessions" type="button" data-fill>End all {guest} sessions now</button>
+          <span class="status" id="guest-door-status"></span>
+        </div>
+      </div>
       <p class="hint" data-fill>Or invite someone straight into specific {spaces} without opening sign-up to everyone:</p>
       <div class="row">
         <span class="field-label" data-fill>{Spaces}</span>

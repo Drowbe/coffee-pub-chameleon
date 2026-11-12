@@ -609,6 +609,7 @@ function renderPlanForm(t) {
   pick.replaceChildren(new Option('(none named)', ''), ...PLAN_ORDER(settings.plans).map((id) => new Option(settings.plans[id].name || id, id)));
   pick.value = p.name && settings.plans[p.name] ? p.name : '';
   fillCaps(form, p);
+  form.elements.guestDoor.checked = t.guestDoor === true;
 }
 function fillCaps(form, p) {
   form.elements.members.value = p.members || '';
@@ -649,7 +650,7 @@ $('plan-form').addEventListener('submit', async (e) => {
   };
   say($('plan-status'), 'Saving…');
   try {
-    await api('PATCH', `/api/host/environments/${encodeURIComponent(page.slug)}`, { name: f.name.value.trim(), plan });
+    await api('PATCH', `/api/host/environments/${encodeURIComponent(page.slug)}`, { name: f.name.value.trim(), plan, guestDoor: f.guestDoor.checked });
     planDirty = false;
     await reloadEnvironments();
     say($('plan-status'), 'Saved.');

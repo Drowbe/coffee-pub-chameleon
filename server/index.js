@@ -85,6 +85,7 @@ const callNames = require('./call-names');
 const { mountOldLinks } = require('./old-links');
 const { currencyCodes } = require('./currencies');
 const agreementsLib = require('./agreements');
+const guestDoorLib = require('./guest-door');
 
 const {
   PORT = 3000,
@@ -205,6 +206,16 @@ const {
   // too big stops the start.
   TERMS_FILE = '',
   NDA_FILE = '',
+  // The guest door (plan-access-bundle.md, step 4; server/guest-door.js). ENABLE_GUEST_DOOR is the host's switch on a
+  // single-environment install (off unless 'true'; on a hosted server the host console's per-environment switch is the
+  // host's); the owner's own switch is settings.guestDoor. A guest session lasts GUEST_SESSION_HOURS (24); an address
+  // may open GUEST_DOOR_PER_ADDRESS new sessions in 15 minutes (5); GUESTS_PER_SPACE (10) and GUESTS_PER_ENVIRONMENT
+  // (50) guests may be here at once.
+  ENABLE_GUEST_DOOR = 'false',
+  GUEST_SESSION_HOURS = '',
+  GUEST_DOOR_PER_ADDRESS = '',
+  GUESTS_PER_SPACE = '',
+  GUESTS_PER_ENVIRONMENT = '',
 } = process.env;
 // The product's own name -- configuration, never code: PRODUCT_NAME, or the default when it is unset, empty or only
 // spaces. One rule, productName() in server/product-name.js, for everything the server answers and says.
@@ -1544,14 +1555,12 @@ function hasStreamAccess(req) {
   return isOwner(req) || hasStreamKey(req);
 }
 
-// A guest's reads of pictures (/img/...): any request carrying a space's
-// current guest token, on top of a real session or the stream key. Not
-// scoped to that one space -- same broad-but-low-stakes trust as the stream
-// key above. A guest's presence read does not use this: presenceViewer()
-// below scopes it to the guest link's own space (server/presence-view.js).
+// A guest's reads of pictures (/img/...): a guest the one resolver (guestOf) knows, a guest link's or the guest door's,
+// on top of a real session or the stream key. The shared guest and default sets are the same for every guest; a person's
+// own picture and a space's are scoped to what the guest may enter (guestMaySeePerson, guestMaySeeSpace). A guest's
+// presence read does not use this: presenceViewer() below scopes it to one space (server/presence-view.js).
 function hasGuestAccess(req) {
-  const token = req.query.guest;
-  return typeof token === 'string' && !!store.spaceByGuestToken(token);
+  return Boolean(guestOf(req));
 }
 
 function requireUser(req, res, next) {
@@ -1686,7 +1695,7 @@ function branding() {
   const s = store.settings;
   // The template's ordered phases, for the phase chip (plan-one-bar.md, step 3); [] with no template or none in it.
   const phases = (Array.isArray(store.templatePhases) ? store.templatePhases : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
-  return { environmentName: s.environmentName, productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, studio: studioView(STUDIO), hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
+  return { environmentName: s.environmentName, productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, studio: studioView(STUDIO), hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), guestDoor: guestDoorOn(), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
 }
 
 function initials(name) {
@@ -2344,6 +2353,7 @@ hostRouter.patch('/api/host/environments/:slug', requireHostAdmin, async (req, r
       if (problem) throw new HostError(problem);
     }
     let environment = Object.keys(rest).length || template === undefined ? hostRegistry.updateEnvironment(req.params.slug, rest) : hostRegistry.findEnvironment(req.params.slug);
+    if (rest.guestDoor !== undefined) envContext.run(environmentFor(req.params.slug), () => liveAccessChanged()); // the door shut, say: its guests' streams end now
     if (template === undefined) return res.json({ environment });
     const env = environmentFor(req.params.slug);
     await switchTemplate(env, req.params.slug, template, 'host');
@@ -3131,7 +3141,7 @@ if (BASE_DOMAIN) {
 const AGREE_FIRST = 'Agree to the terms first.';
 const AGREEMENT_OPEN = new Set([
   'GET /api/agreements', 'POST /api/agreements/accept', 'POST /api/login', 'POST /api/logout', 'GET /healthz', 'GET /api/branding',
-  'GET /agree', 'GET /logout', 'GET /login/first-password',
+  'GET /agree', 'GET /logout', 'GET /login/first-password', 'POST /api/guest-door', 'DELETE /api/guest-door',
   'GET /theme.css', 'GET /img/site/icon', 'GET /img/site/background', 'GET /favicon.ico', 'GET /manifest.webmanifest',
 ]);
 // A file in one of the open folders, or a script or stylesheet at the root: plain names only, so nothing with "..",
@@ -3146,7 +3156,10 @@ const mustAgree = (user) => agreementTexts.required && !agreementExempt(user) &&
 function agreementGate(req, res, next) {
   if (!agreementTexts.required || !envContext.getStore()) return next(); // no text set, or no environment (the product host)
   const user = currentUser(req);
-  if (!user || !mustAgree(user) || demoRunRequest(req)) return next();
+  // No account: a guest from the guest door whose session is of older texts is asked again too (guestOf reads such a
+  // session as nobody; POST /api/guest-door, which makes the new one, stays open).
+  const staleGuest = !user && (() => { const session = doorSessionOf(req); return Boolean(session) && doorSessionStale(session); })();
+  if (user ? !mustAgree(user) || demoRunRequest(req) : !staleGuest) return next();
   const reading = req.method === 'GET' || req.method === 'HEAD';
   const p = framingPath(req.path);
   if (AGREEMENT_OPEN.has(`${reading ? 'GET' : req.method} ${p}`)) return next();
@@ -3258,6 +3271,15 @@ app.get('/', (req, res) => {
 // A guest link: the same page, in guest mode (space.js reads the token from
 // the URL itself -- see guestToken there). No account, so no redirect to
 // sign in; a dead or turned-off link is handled client-side instead.
+// The guest door's landing (public/guest.html): the spaces open to a guest and what a guest can't do. A visitor with no
+// guest session goes to the agreement and name page (/agree), which enters through the door.
+app.get('/guest', (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', ...NOT_FRAMED });
+  if (currentUser(req)) return res.redirect('/');
+  const guest = guestOf(req);
+  if (!guest || guest.kind !== 'door') return res.redirect(guestDoorOn() ? '/agree?next=%2Fguest' : '/login');
+  res.sendFile(page('guest.html'));
+});
 app.get('/guest/:token', (_req, res) => {
   res.set(NOT_FRAMED).sendFile(page('space.html'));
 });
@@ -3293,10 +3315,14 @@ app.get('/login/first-password', (req, res, next) => {
 // signed out goes to sign in, and anyone with nothing left to agree to goes on to `next`. With no text set there is no
 // such page.
 app.get('/agree', (req, res, next) => {
-  if (!agreementTexts.required) return next();
-  const to = auth.safeNext(req.query.next);
   const user = currentUser(req);
+  // Where the guest door is open, someone with no account stays here: the same page, with the name asked as well, enters
+  // as a guest (POST /api/guest-door), with or without texts to agree to.
+  const doorOpen = !user && guestDoorOn();
+  if (!agreementTexts.required && !doorOpen) return next();
+  const to = auth.safeNext(req.query.next);
   res.set('Cache-Control', 'no-store');
+  if (doorOpen) return res.sendFile(page('login-step.html'));
   if (!user) return res.redirect(to === '/' ? '/login' : `/login?next=${encodeURIComponent(to)}`);
   if (!mustAgree(user)) return res.redirect(to);
   res.sendFile(page('login-step.html'));
@@ -3383,9 +3409,13 @@ app.get('/img/site/background', (_req, res) => {
 
 // A space's picture: nothing until one is set.
 app.get('/img/space/:id', (req, res) => {
-  if (!currentUser(req) && !hasStreamAccess(req)) return res.status(403).end();
-  // A signed-in person is shown the picture of a space they may enter and no other's (the access key: any).
-  if (!hasStreamKey(req) && !spaceAccess.mayEnter(accountViewer(req), store.spaceById(req.params.id))) return res.status(404).end();
+  const guest = !currentUser(req) && !hasStreamAccess(req) ? guestOf(req) : null;
+  if (!currentUser(req) && !hasStreamAccess(req) && !guest) return res.status(403).end();
+  // A signed-in person is shown the picture of a space they may enter and no other's (the access key: any); a guest, the
+  // picture of a space their link or the guest door lets them into.
+  if (guest) {
+    if (!guestMaySeeSpace(guest, store.spaceById(req.params.id))) return res.status(404).end();
+  } else if (!hasStreamKey(req) && !spaceAccess.mayEnter(accountViewer(req), store.spaceById(req.params.id))) return res.status(404).end();
   const file = store.spaceImagePath(req.params.id);
   if (file) return sendImage(res, file);
   res.status(404).end();
@@ -3429,6 +3459,9 @@ app.get('/img/:key/:slot', (req, res) => {
   if (!currentUser(req) && !hasStreamAccess(req) && !hasGuestAccess(req)) return res.status(403).end();
   const user = store.userByKey(req.params.key);
   if (!user) return res.status(404).end();
+  // A guest is shown only a person who is in a space they may enter (and, with ?space=, only that space's picture of them
+  // when it is one of those): nobody else in the environment, however the picture is asked for.
+  if (!currentUser(req) && !hasStreamAccess(req) && !guestMaySeePerson(guestOf(req), user, req)) return res.status(404).end();
   const wanted = LEGACY_SLOTS[req.params.slot] || req.params.slot;
   const slot = SLOTS.includes(wanted) ? wanted : 'profile';
   const spaceId = slot !== 'profile' && typeof req.query.space === 'string' ? req.query.space : null;
@@ -3558,7 +3591,9 @@ app.get('/api/agreements', (req, res) => {
   agreementReadLimiter.fail(ip);
   res.set('X-Content-Type-Options', 'nosniff');
   const user = currentUser(req);
-  res.set('Cache-Control', 'no-store').json({ required: user ? mustAgree(user) : agreementTexts.required, docs: agreementTexts.docs });
+  // `mode: 'guest'` only for someone with no account session where the guest door is open (the page asks for a name too
+  // and enters through POST /api/guest-door); otherwise the answer is as it always was.
+  res.set('Cache-Control', 'no-store').json({ required: user ? mustAgree(user) : agreementTexts.required, docs: agreementTexts.docs, ...(!user && guestDoorOn() ? { mode: 'guest' } : {}) });
 });
 // Agreeing: { versions: { <text id>: "<version>" } }, for the signed-in account and nobody else (the body names no
 // person, and one it names is not read). The versions must be exactly the current ones, every text and nothing more:
@@ -3917,6 +3952,17 @@ app.post('/api/call/join', async (req, res) => {
     const pass = typeof req.body?.pass === 'string' ? readGuestPass(guestLink, req.body.pass) : null;
     if (!pass) return res.status(403).json({ error: `that ${word('guest')} pass is not valid; enter again` });
     caller = { identity: pass.id, name: pass.name, media: Boolean(store.roleSet('guest').conference) };
+  } else if (guestOf(req)) {
+    // A guest from the guest door: the space they ask for, when they may enter it, and room in it.
+    const door = guestOf(req);
+    const theSpace = asked ? store.spaceById(asked) : null;
+    if (!theSpace || !spaceAccess.mayEnter(doorViewer(), theSpace)) return res.status(404).json({ error: `no such ${word('space')}` });
+    const full = guestSpaceFull(req, theSpace.id, door.id);
+    if (full) return res.status(403).json({ error: full });
+    guestRegisterTouch(door);
+    spaceId = theSpace.id;
+    identity = `guest-door:${door.id}`;
+    caller = { identity: door.id, name: `${door.name} (${word('guest')})`, media: Boolean(store.roleSet('guest').conference) };
   } else {
     return res.status(401).json({ error: 'sign in first' });
   }
@@ -3930,24 +3976,26 @@ app.post('/api/call/join', async (req, res) => {
   res.json({ ok: true, token, livekitUrl: livekitWsUrl(req), call });
 });
 
-// The guest pass (plan-realtime-optional-livekit.md, "Requests a page makes"): what POST /api/guest-join hands a guest,
-// so the live stream, presence and the call know them by one id and the name they gave. `<what>.<signature>`: `what` is
-// { id, name } as base64url JSON, signed (HMAC-SHA256, a key made from the install's secrets key) with the environment and
+// The guest pass (plan-realtime-optional-livekit.md, "Requests a page makes"): what POST /api/guest-join hands a guest who
+// came by a guest link, so the live stream, presence and the call know them by one id and the name they gave.
+// `<what>.<signature>`: `what` is { id, name, t: issued at, v: the texts' versions agreed to, e: the environment's
+// guestEpoch } as base64url JSON, signed (HMAC-SHA256, a key made from the install's secrets key) with the environment and
 // the guest link's token, so a guest cannot speak as another guest, nor use it in another environment, and it dies with
-// the link (turned off or made again).
+// the link (turned off or made again), with GUEST_SESSION_HOURS, with a new epoch and with a new text.
 function guestPassKey() {
   return crypto.createHmac('sha256', secretsKeyBuf()).update('pass').digest();
 }
 function guestPassSignature(link, what) {
   return crypto.createHmac('sha256', guestPassKey()).update(`${currentEnvironment().slug || ''}\n${link}\n${what}`).digest('base64url');
 }
-function makeGuestPass(link, id, name) {
-  const what = Buffer.from(JSON.stringify({ id, name })).toString('base64url');
+function makeGuestPass(link, id, name, versions = {}) {
+  const what = Buffer.from(JSON.stringify({ id, name, t: Date.now(), v: versions, e: guestEpoch() })).toString('base64url');
   return `${what}.${guestPassSignature(link, what)}`;
 }
-// { id, name } from a pass for this guest link, or null when it is not one.
+// { id, name } from a pass for this guest link, or null when it is not one, has run out, is of an older epoch or was made
+// before the current texts.
 function readGuestPass(link, pass) {
-  if (typeof link !== 'string' || !link || typeof pass !== 'string' || pass.length > 400) return null;
+  if (typeof link !== 'string' || !link || typeof pass !== 'string' || pass.length > 600) return null;
   const [what, signature, extra] = pass.split('.');
   if (!what || !signature || extra !== undefined) return null;
   const want = Buffer.from(guestPassSignature(link, what));
@@ -3955,8 +4003,104 @@ function readGuestPass(link, pass) {
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return null;
   let said = null;
   try { said = JSON.parse(Buffer.from(what, 'base64url').toString('utf8')); } catch { return null; }
-  if (!said || typeof said.id !== 'string' || !/^guest-[A-Za-z0-9_-]{4,40}$/.test(said.id) || typeof said.name !== 'string' || !said.name) return null;
+  if (!said || typeof said.id !== 'string' || !guestDoorLib.GUEST_ID_RE.test(said.id) || typeof said.name !== 'string' || !said.name) return null;
+  if (typeof said.t !== 'number' || said.t > Date.now() + 60000 || Date.now() - said.t >= currentEnvironment().guestLimits.hours * 3600000 || said.e !== guestEpoch()) return null;
+  if (agreementTexts.required && !agreementsLib.versionsMatch(said.v, agreementTexts.docs)) return null;
   return { id: said.id, name: said.name };
+}
+
+// --- the guest door and the one guest resolver (plan-access-bundle.md, step 4; server/guest-door.js) -------------------
+// Two switches, both off until turned on: the host's (ENABLE_GUEST_DOOR on a single install, the environment's record in
+// the host console when hosted) and the owner's (settings.guestDoor). With either off there are no door guests: a session
+// already open stops reading, and its live streams end (liveAccessChanged).
+function hostGuestDoorOn() {
+  if (!BASE_DOMAIN) return ENABLE_GUEST_DOOR === 'true';
+  const record = hostRegistry && hostRegistry.findEnvironment(currentEnvironment().slug);
+  return Boolean(record && record.guestDoor === true);
+}
+const guestDoorOn = () => hostGuestDoorOn() && store.settings.guestDoor === true;
+const guestEpoch = () => Number(store.settings.guestEpoch) || 0;
+const guestDoorClosed = () => `The ${word('guest')} door is closed.`;
+
+// The door guest's session in this request's cookie, in date and of this epoch, with the door on: { id, name, versions }.
+// `stale` is the same session with texts that have changed since (it reads as nobody, and the gate asks again).
+function doorSessionOf(req) {
+  if (!guestDoorOn()) return null;
+  const token = auth.guestToken(req);
+  if (!token) return null;
+  return guestDoorLib.read(store.sessionSecret, token, { slug: currentEnvironment().slug || '', epoch: guestEpoch(), hours: currentEnvironment().guestLimits.hours });
+}
+const doorSessionStale = (session) => agreementTexts.required && !agreementsLib.versionsMatch(session.versions, agreementTexts.docs);
+
+// THE resolver: who is the guest behind this request, whatever way they came, or null. Nothing else decides it.
+//   { kind: 'link', space, token, id, name }  a guest link (?guest=<token>); `id` and `name` only with a valid pass
+//                                            (?pass=, or `pass` in a body that names the link);
+//   { kind: 'door', id, name }               the guest_session cookie.
+// Never an account (currentUser is its own, and reads only app_session or the bearer header). A named link that is off or
+// wrong is nobody, whatever else the request carries. Asked fresh every time, so an expiry, a turned-off door or a new
+// epoch is seen at once by a long-lived stream's recheck.
+function guestOf(req) {
+  const token = typeof req.query.guest === 'string' && req.query.guest ? req.query.guest : typeof req.body?.guest === 'string' && req.body.guest ? req.body.guest : '';
+  if (token) {
+    const space = store.spaceByGuestToken(token);
+    if (!space) return null;
+    const raw = typeof req.query.pass === 'string' ? req.query.pass : typeof req.body?.pass === 'string' ? req.body.pass : null;
+    const pass = raw ? readGuestPass(token, raw) : null;
+    return { kind: 'link', space, token, id: pass ? pass.id : null, name: pass ? pass.name : null };
+  }
+  const session = doorSessionOf(req);
+  if (!session || doorSessionStale(session)) return null;
+  return { kind: 'door', id: session.id, name: session.name };
+}
+// The { id, name } a guest speaks as, or null (a guest link with no valid pass).
+function guestPassOf(req) {
+  const guest = guestOf(req);
+  return guest && guest.id ? { id: guest.id, name: guest.name } : null;
+}
+// What the limits count a guest under: their link, or themselves.
+function guestLimitKey(req) {
+  const guest = guestOf(req);
+  return guest && guest.kind === 'door' ? `door|${guest.id}` : `link|${req.query.guest}`;
+}
+// The viewer spaceAccess.mayEnter reads for a door guest.
+const doorViewer = () => ({ doorGuest: true, doorOn: guestDoorOn() });
+// The space a request is about, for a door guest: the one in the path (/api/spaces/<id>/...) or ?space=, or null.
+function askedSpaceId(req) {
+  const inPath = /^\/api\/spaces\/([^/]+)/i.exec(req.path);
+  if (inPath) { try { return decodeURIComponent(inPath[1]); } catch { return null; } }
+  if (typeof req.query.space === 'string' && req.query.space) return req.query.space;
+  return null;
+}
+// That space, when this door guest may enter it, else null. Seen, so the register knows where they are.
+function guestDoorSpace(req, guest) {
+  if (guest.kind !== 'door') return null;
+  const id = askedSpaceId(req);
+  const space = id ? store.spaceById(id) : null;
+  if (!space || !spaceAccess.mayEnter(doorViewer(), space)) return null;
+  guestRegisterTouch(guest);
+  return space;
+}
+function guestRegisterTouch(guest) {
+  if (guest.kind === 'door') currentEnvironment().guestRegister.touch(guest.id, guest.name);
+}
+// The sentence when a guest may not be in the space for want of room (GUESTS_PER_SPACE), else null: counted from the live
+// register's guests in the space (a guest link's too), not counting this guest's own other tabs.
+function guestSpaceFull(req, spaceId, guestId) {
+  const env = currentEnvironment();
+  const here = new Set(live.people(spaceId).filter((p) => p.guest && p.key !== guestId).map((p) => p.key));
+  return here.size >= env.guestLimits.perSpace ? `This ${word('space')} has as many ${word('guest', { many: true })} as it can take right now.` : null;
+}
+// Whether a guest may be told of this person: a link guest, one who is in their space; a door guest, one who is in a space
+// the guest may enter.
+function guestMaySeePerson(guest, user, req) {
+  const spaces = guest.kind === 'link' ? [guest.space] : store.spaces.filter((r) => spaceAccess.mayEnter(doorViewer(), r));
+  const asked = typeof req.query.space === 'string' && req.query.space ? req.query.space : null;
+  if (asked && !spaces.some((r) => r.id === asked)) return false;
+  return spaces.some((r) => (r.members || []).includes(user.key));
+}
+// A space's picture, to a guest: only of a space they may enter.
+function guestMaySeeSpace(guest, space) {
+  return Boolean(space) && (guest.kind === 'link' ? guest.space.id === space.id : spaceAccess.mayEnter(doorViewer(), space));
 }
 
 // Guests: no account, just a name and a space's guest link (see the
@@ -3966,16 +4110,115 @@ app.get('/api/guest-link/:token', (req, res) => {
   if (!theSpace) return res.status(404).json({ error: `that ${word('guest')} link is off or wrong` });
   res.json({ spaceId: theSpace.id, spaceName: theSpace.name });
 });
+// The address's new guest sessions this request would be the next of: 429 with the sentence when it is past the limit.
+function newGuestSessionRefusal(req) {
+  const limiter = currentEnvironment().newGuestSessions;
+  if (limiter.blocked(req.ip || 'unknown')) return `Too many ${word('guest', { many: true })} came from this address. Try again in a few minutes.`;
+  return null;
+}
+// The agreement a guest gives: the versions of the current texts, and the typed name. Answers null when it holds (or none
+// is asked), else { status, body }.
+function guestAgreementRefusal(versions) {
+  if (!agreementTexts.required) return null;
+  if (versions === undefined) return { status: 403, body: { error: AGREE_FIRST, agreementRequired: true } };
+  if (!agreementsLib.versionsMatch(versions, agreementTexts.docs)) return { status: 409, body: { error: 'The text has changed. Read it again, then agree.' } };
+  return null;
+}
 // A guest enters with a name: their pass (makeGuestPass), by which the live stream, presence and the call know them.
-// No call service is asked: the call's token comes from POST /api/call/join, with the pass.
+// No call service is asked: the call's token comes from POST /api/call/join, with the pass. Where texts are set, the
+// versions agreed to come with it and are recorded; at most GUEST_DOOR_PER_ADDRESS new sessions an address in 15 minutes
+// (the door's count too), 429 past it.
 app.post('/api/guest-join', (req, res) => {
   const theSpace = store.spaceByGuestToken(req.body?.token);
   if (!theSpace) return res.status(404).json({ error: `that ${word('guest')} link is off or wrong` });
   const name = cleanText(req.body?.name, 40);
   if (!name) return res.status(400).json({ error: 'a name is required' });
+  const refused = newGuestSessionRefusal(req);
+  if (refused) return res.status(429).json({ error: refused });
+  const nameClash = guestNameRefusal(name);
+  if (nameClash) return res.status(400).json({ error: nameClash });
+  const disagree = guestAgreementRefusal(req.body?.versions);
+  if (disagree) return res.status(disagree.status).json(disagree.body);
   const id = `guest-${randomToken(8)}`;
-  const guest = { id, name, pass: makeGuestPass(req.body.token, id, name) };
+  try {
+    if (agreementTexts.required) currentEnvironment().guestAgreements.record({ guest: id, name, docs: agreementTexts.docs });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not record your agreement; try again' });
+  }
+  currentEnvironment().newGuestSessions.count(req.ip || 'unknown');
+  const guest = { id, name, pass: makeGuestPass(req.body.token, id, name, agreementTexts.versions) };
   res.json({ spaceId: theSpace.id, spaceName: theSpace.name, permissions: store.roleSet('guest'), guest });
+});
+
+// A typed name that is an account's (its display name or its login, however it is cased or spaced) is refused: a guest
+// must not pass as a member. The sentence, or null.
+function guestNameRefusal(name) {
+  const mine = guestDoorLib.nameKey(name);
+  if (store.users.some((u) => guestDoorLib.nameKey(u.displayName) === mine || guestDoorLib.nameKey(u.login) === mine)) {
+    return `That name belongs to ${word('member', { a: true })} here. Type another.`;
+  }
+  return null;
+}
+// What a guest from the door may be told: the spaces they may enter (id, name, whether it has a picture) and whether any.
+function doorSpacesFor() {
+  return store.spaces.filter((r) => spaceAccess.mayEnter(doorViewer(), r)).map((r) => ({ id: r.id, name: r.name, hasImage: Boolean(r.hasImage), state: 'open' }));
+}
+// What a guest can't do, as the landing says it (the guest role, read now; the list is the plan's, "What a guest can do").
+const guestRefusals = () => [`start ${word('aside', { many: true })} or private conversations`, 'mute or remove anyone', 'use AI', 'open library files', 'save or change layouts', 'see the bell, the status line, the calendar or the map', 'have a profile'];
+
+// POST /api/guest-door { name, versions }: the door. 403 with it closed (either switch), 429 past the address's limit,
+// 403 when full, 400 for a missing name or a member's, 409 when the texts changed; else the agreement is recorded and the
+// guest_session cookie is set.
+app.post('/api/guest-door', (req, res) => {
+  if (currentUser(req)) return res.status(409).json({ error: `You are signed in already. Sign out to come in as ${word('guest', { a: true })}.` });
+  if (!guestDoorOn()) return res.status(403).json({ error: guestDoorClosed() });
+  const refused = newGuestSessionRefusal(req);
+  if (refused) return res.status(429).json({ error: refused });
+  const name = guestAgreementsName(req.body?.name);
+  if (!name) return res.status(400).json({ error: 'A name is required.' });
+  const clash = guestNameRefusal(name);
+  if (clash) return res.status(400).json({ error: clash });
+  const disagree = guestAgreementRefusal(req.body?.versions);
+  if (disagree) return res.status(disagree.status).json(disagree.body);
+  const env = currentEnvironment();
+  if (env.guestRegister.inEnvironment() >= env.guestLimits.perEnvironment) return res.status(403).json({ error: `This ${word('environment')} has as many ${word('guest', { many: true })} as it can take right now.` });
+  const id = `guest-${randomToken(8)}`;
+  try {
+    if (agreementTexts.required) env.guestAgreements.record({ guest: id, name, docs: agreementTexts.docs });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not record your agreement; try again' });
+  }
+  env.newGuestSessions.count(req.ip || 'unknown');
+  const token = guestDoorLib.issue(store.sessionSecret, { slug: env.slug || '', id, name, versions: agreementTexts.versions, epoch: guestEpoch() });
+  auth.setGuestCookie(req, res, token, env.guestLimits.hours);
+  env.guestRegister.touch(id, name);
+  res.set('Cache-Control', 'no-store').status(201).json({ ok: true, guest: { id, name } });
+});
+const guestAgreementsName = (value) => agreementsLib.cleanGuestName(value);
+
+// GET /api/guest-door: who this guest is, the spaces open to them and the refusals the landing lists. 401 for anyone
+// without a guest session.
+app.get('/api/guest-door', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const guest = guestOf(req);
+  if (!guest || guest.kind !== 'door') return res.status(401).json({ error: guestDoorOn() ? `Enter as ${word('guest', { a: true })} first.` : guestDoorClosed() });
+  currentEnvironment().guestRegister.touch(guest.id, guest.name);
+  res.json({ guest: { id: guest.id, name: guest.name }, spaces: doorSpacesFor(), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
+});
+// DELETE /api/guest-door: ends this guest's session (and clears the cookie).
+app.delete('/api/guest-door', (req, res) => {
+  const session = auth.guestToken(req) ? guestDoorLib.read(store.sessionSecret, auth.guestToken(req), { slug: currentEnvironment().slug || '', epoch: guestEpoch(), hours: currentEnvironment().guestLimits.hours }) : null;
+  if (session) currentEnvironment().guestRegister.end(session.id);
+  auth.clearGuestCookie(req, res);
+  res.set('Cache-Control', 'no-store').json({ ok: true });
+});
+// POST /api/guest-door/end-all (owners and the admin): every guest session of this environment ends now, the door's and the
+// guest links' (guestEpoch goes up).
+app.post('/api/guest-door/end-all', requireOwner, (req, res) => {
+  store.endGuestSessions();
+  currentEnvironment().guestRegister.guests.clear();
+  liveAccessChanged();
+  res.json({ ok: true });
 });
 
 // A user may replace or clear their own profile photo. This is separate from
@@ -4125,8 +4368,10 @@ function presenceViewer(req) {
   if (hasStreamKey(req)) return { all: true };
   const user = currentUser(req);
   if (user) return { key: user.key, owner: hasOwnerRights(user) };
-  const guestSpace = typeof req.query.guest === 'string' ? store.spaceByGuestToken(req.query.guest) : null;
-  return guestSpace ? { guestSpace: guestSpace.id } : null;
+  const guest = guestOf(req);
+  if (guest && guest.kind === 'link') return { guestSpace: guest.space.id };
+  const doorSpace = guest ? guestDoorSpace(req, guest) : null;
+  return doorSpace ? { guestSpace: doorSpace.id } : null;
 }
 app.get('/api/presence', async (req, res) => {
   const viewer = presenceViewer(req);
@@ -4710,9 +4955,12 @@ app.delete('/api/modules/:id', requireOwner, (req, res) => {
 function moduleViewer(req) {
   const user = currentUser(req);
   if (user) return { user, guestSpace: null };
-  const token = req.query.guest;
-  const guestSpace = typeof token === 'string' ? store.spaceByGuestToken(token) : null;
-  if (guestSpace) return { user: null, guestSpace };
+  const guest = guestOf(req);
+  if (guest && guest.kind === 'link') return { user: null, guestSpace: guest.space };
+  // A door guest is in the one space this request asks about, when they may enter it (and each module route compares that
+  // space with the one it works on, as for a guest link's). Asking about none, or a closed one, is not a guest of anything.
+  const doorSpace = guest ? guestDoorSpace(req, guest) : null;
+  if (doorSpace) return { user: null, guestSpace: doorSpace, door: guest };
   return hasStreamKey(req) ? { user: null, guestSpace: null, keyed: true } : null;
 }
 
@@ -5388,8 +5636,8 @@ setInterval(() => {
 function liveStreamKeys(req, who) {
   const slug = chatSlug();
   if (who.user) return [[`${slug}|person|${who.user.key}`, liveStreamsPerPerson]];
-  const token = req.query.guest;
-  return [[`${slug}|guest|${token}|${req.ip || 'unknown'}`, liveStreamsPerGuestAddress], [`${slug}|link|${token}`, liveStreamsPerGuestLink]];
+  const key = guestLimitKey(req);
+  return [[`${slug}|guest|${key}|${req.ip || 'unknown'}`, liveStreamsPerGuestAddress], [`${slug}|${key}`, liveStreamsPerGuestLink]];
 }
 
 // A shared AI answer as someone other than its asker may read it: the pointers it keeps (`numbered`, `used`, what was attached,
@@ -5623,8 +5871,12 @@ app.get('/api/live', (req, res) => {
   if (found.error) return res.status(found.status).json({ error: found.error });
   const guest = !found.who.user;
   // A guest is who their pass says (POST /api/guest-join), the same id on the call.
-  const pass = guest && typeof req.query.pass === 'string' ? readGuestPass(req.query.guest, req.query.pass) : null;
+  const pass = guest ? guestPassOf(req) : null;
   if (guest && !pass) return res.status(403).json({ error: `that ${word('guest')} pass is not valid; enter again` });
+  if (guest && spaceId) {
+    const full = guestSpaceFull(req, spaceId, pass.id);
+    if (full) return res.status(403).json({ error: full });
+  }
   const you = guest ? pass.id : found.who.user.key;
   const name = guest ? pass.name : found.who.user.displayName;
   const env = currentEnvironment();
@@ -5877,7 +6129,7 @@ app.patch('/api/spaces/:id/chat/:messageId', (req, res) => {
 
 // A guest's pass on a chat request (?guest=<token>&pass=<pass>): { id, name }, or null when there is no valid one.
 function chatGuestPass(req) {
-  return typeof req.query.pass === 'string' ? readGuestPass(req.query.guest, req.query.pass) : null;
+  return guestPassOf(req);
 }
 
 // One person's chat writes in the last ten seconds (posting, and changing who sees a message): 30 at most.
@@ -5899,7 +6151,7 @@ app.post('/api/spaces/:id/chat', (req, res) => {
   if (!who.user && !pass) return res.status(403).json({ error: `that ${word('guest')} pass is not valid; enter again` });
   if (!who.user) {
     const slug = chatSlug();
-    const { wait, which } = guestPostWait([[`${slug}|link|${req.query.guest}`, guestChatPostsPerMinute], [`${slug}|ip|${req.ip || 'unknown'}`, guestChatPostsPerAddress]]);
+    const { wait, which } = guestPostWait([[`${slug}|${guestLimitKey(req)}`, guestChatPostsPerMinute], [`${slug}|ip|${req.ip || 'unknown'}`, guestChatPostsPerAddress]]);
     if (wait) {
       const after = `try again in ${wait} ${wait === 1 ? 'second' : 'seconds'}`;
       const guests = word('guest', { many: true, cap: true });
@@ -6090,7 +6342,7 @@ function chatPictureFirst(req, res, next) {
   if (Number.isFinite(declared) && declared > chatPictureMaxBytes) return res.status(413).json({ error: `that picture is over ${chatPictureMaxSaid}` });
   const pass = found.who.user ? null : chatGuestPass(req);
   if (!found.who.user && !pass) return res.status(403).json({ error: `that ${word('guest')} pass is not valid; enter again` });
-  req.chatPicture = { ...found, pass, sender: found.who.user ? `person|${found.who.user.key}` : `link|${req.query.guest}` };
+  req.chatPicture = { ...found, pass, sender: found.who.user ? `person|${found.who.user.key}` : guestLimitKey(req) };
   const wait = chatPictureWait(req.chatPicture.sender, Number.isFinite(declared) ? declared : 0);
   if (wait) return tooManyPictures(res, wait);
   next();
@@ -6104,7 +6356,7 @@ app.post('/api/spaces/:id/chat/pictures', chatPictureFirst, rawChatPicture, (req
   if (wait) return tooManyPictures(res, wait);
   if (!who.user) {
     const slug = chatSlug();
-    const { wait: guestWait } = guestPostWait([[`${slug}|link|${req.query.guest}`, guestChatPostsPerMinute], [`${slug}|ip|${req.ip || 'unknown'}`, guestChatPostsPerAddress]]);
+    const { wait: guestWait } = guestPostWait([[`${slug}|${guestLimitKey(req)}`, guestChatPostsPerMinute], [`${slug}|ip|${req.ip || 'unknown'}`, guestChatPostsPerAddress]]);
     if (guestWait) return res.status(429).set('Retry-After', String(guestWait)).json({ error: `too many messages; try again in ${guestWait} ${guestWait === 1 ? 'second' : 'seconds'}` });
   }
   if (chatPostLimited(who.user ? who.user.key : `guest:${space.id}`)) return res.status(429).json({ error: 'too many messages, slow down' });
@@ -11012,7 +11264,7 @@ function sweepModuleLive() {
 // A guest's identity on a module route: the id and name on their pass for the guest link in ?guest=, or null (no pass, or
 // one that is not for this link in this environment).
 function moduleGuestPass(req) {
-  return typeof req.query.guest === 'string' && typeof req.query.pass === 'string' ? readGuestPass(req.query.guest, req.query.pass) : null;
+  return guestPassOf(req);
 }
 // That guest as live messages know them, { key, name, guest: true }, or null.
 function guestLiveMe(req) {
@@ -11251,7 +11503,7 @@ app.get('/api/currencies', requireUser, (_req, res) => res.json({ currencies: cu
 // calendarFeeds until an owner sets it); `publishedCalendarFeed`: { on, made, readAt }, the published calendar's one
 // address as it stands (plan-space-calendars.md, section 2), never its hash. `topBarReasons`: { calendar, map }, why
 // each cannot show whatever its switch (one sentence), or null.
-const ownerSettings = () => ({ ...branding(), ownWords: store.ownWords(), ownVerbs: store.ownVerbs(), templateVerbs: store.templateVerbsView(), ownHomeIcon: store.settings.homeIcon || null, template: templateView(store, currentEnvironment()), templateWords: store.templateWordsView(), templateHomeIcon: store.templateHomeIcon || null, spaceDefaults: store.settings.spaceDefaults || null, showCalendar: store.settings.showCalendar === true, showMap: store.settings.showMap === true, calendarFeeds: store.settings.calendarFeeds === true, otherCalendars: store.otherCalendarsOn(), publishedCalendar: store.settings.publishedCalendar === true, publishedCalendarFeed: feedView(store.publishedCalendarFeed), topBarReasons: destinationReasons() });
+const ownerSettings = () => ({ ...branding(), guestDoorHost: hostGuestDoorOn(), ownWords: store.ownWords(), ownVerbs: store.ownVerbs(), templateVerbs: store.templateVerbsView(), ownHomeIcon: store.settings.homeIcon || null, template: templateView(store, currentEnvironment()), templateWords: store.templateWordsView(), templateHomeIcon: store.templateHomeIcon || null, spaceDefaults: store.settings.spaceDefaults || null, showCalendar: store.settings.showCalendar === true, showMap: store.settings.showMap === true, calendarFeeds: store.settings.calendarFeeds === true, otherCalendars: store.otherCalendarsOn(), publishedCalendar: store.settings.publishedCalendar === true, publishedCalendarFeed: feedView(store.publishedCalendarFeed), topBarReasons: destinationReasons() });
 app.get('/api/settings', requireOwner, (_req, res) => res.json({ settings: ownerSettings(), streamKey: store.streamKey }));
 // `template` ("none" for none) switches the environment's template (the switching addendum): taken out of the body
 // before the settings; an unknown one refuses the whole change. With it, the answer also carries `template` and `offer`.
@@ -11264,7 +11516,9 @@ app.patch('/api/settings', requireOwner, async (req, res) => {
     const problem = templateSwitchProblem(currentEnvironment(), template);
     if (problem) return res.status(400).json({ error: problem });
   }
+  if (rest.guestDoor === true && !hostGuestDoorOn()) return res.status(403).json({ error: `The host has not turned on the ${word('guest')} door for this ${word('environment')}.` });
   if (template === undefined || Object.keys(rest).length) watchTheme(() => store.updateSettings(rest));
+  if (rest.guestDoor !== undefined) liveAccessChanged(); // the door shut, say: its guests' streams end now
   if (template === undefined) return res.json({ settings: ownerSettings() });
   const env = currentEnvironment();
   await switchTemplate(env, env.slug, template, currentUser(req).key);

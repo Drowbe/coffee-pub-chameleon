@@ -178,6 +178,20 @@ function setPendingCookie(req, res, token) {
   res.cookie(PENDING_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: isSecure(req), maxAge: PENDING_MINUTES * 60000, path: '/' });
 }
 
+// The guest door's cookie (plan-access-bundle.md, step 4; server/guest-door.js): its own name, its own signing key and its
+// own reader, so it can never be read as an account's session, and the bearer header never carries it. HttpOnly, SameSite
+// and, over https, Secure; no Domain, so it belongs to the one environment's address; as long as the guest's session.
+const GUEST_COOKIE = 'guest_session';
+function setGuestCookie(req, res, token, hours) {
+  res.cookie(GUEST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: isSecure(req), maxAge: hours * 3600000, path: '/' });
+}
+function clearGuestCookie(req, res) {
+  res.clearCookie(GUEST_COOKIE, { httpOnly: true, sameSite: 'lax', secure: isSecure(req), path: '/' });
+}
+function guestToken(req) {
+  return parseCookies(req.get('cookie'))[GUEST_COOKIE] || null;
+}
+
 // Session token from the cookie or, for the Studio app, a bearer header. `cookieName` picks an environment's own
 // (the default) or the host admin's (auth.HOST_COOKIE) -- never both read from the same request's bearer header,
 // since only an environment's session is ever handed out as a bearer token. An environment's own cookie falls back to its
@@ -369,6 +383,10 @@ module.exports = {
   clearSessionCookie,
   sessionToken,
   isSecure,
+  GUEST_COOKIE,
+  setGuestCookie,
+  clearGuestCookie,
+  guestToken,
   totpSecret,
   totpCode,
   totpVerify,
