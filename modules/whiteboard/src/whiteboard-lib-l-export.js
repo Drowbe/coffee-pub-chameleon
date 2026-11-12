@@ -83,7 +83,8 @@
   // A file name: the board's name, the day and the time ("Whiteboard 2026-11-09 1405.png"), with nothing a computer's
   // file names refuse.
   function wbExportName(base, date, ext = 'png') {
-    const name = String(base || '').replace(/[\\/:*?"<>|\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Whiteboard';
+    // Also left out: the bidi and invisible marks, and dots at the start or end (no hidden file, no "..", no trailing dot).
+    const name = Array.from(String(base || '').replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f\u200B-\u200F\u202A-\u202E\u2028\u2029\u2060\u2066-\u2069\uFEFF]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^[. ]+|[. ]+$/g, '')).slice(0, 80).join('').trim() || 'Whiteboard';
     const d = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
     const two = (n) => String(n).padStart(2, '0');
     return `${name} ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}${two(d.getMinutes())}.${ext}`;

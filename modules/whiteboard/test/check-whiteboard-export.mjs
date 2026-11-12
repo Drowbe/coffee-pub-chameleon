@@ -64,6 +64,11 @@ t('name', () => assert.equal(wbExportName('Whiteboard', d), 'Whiteboard 2026-11-
 t('name hostile chars', () => assert.equal(wbExportName('a/b\\c:d*e?"<x>|\u0000y', d), 'a b c d e x y 2026-11-09 1405.png'));
 t('name empty', () => assert.equal(wbExportName('  ', d, 'png'), 'Whiteboard 2026-11-09 1405.png'));
 t('name long', () => assert.ok(wbExportName('x'.repeat(500), d).length <= 100));
+t('name: the board name, cleaned', () => assert.equal(wbExportName('Plan B', d), 'Plan B 2026-11-09 1405.png'));
+t('name: dots only / hidden / dotdot', () => { for (const n of ['..', '.', '...', '.hidden', '../../etc/passwd']) { const r = wbExportName(n, d); assert.ok(!r.startsWith('.') && !r.includes('/') && !r.includes('..'), r); } });
+t('name: bidi and invisible marks go', () => assert.equal(wbExportName('a\u202Eb\u200Fc\u2066d\uFEFFe', d), 'a b c d e 2026-11-09 1405.png'));
+t('name: very long in emoji stays whole characters', () => { const r = wbExportName('😀'.repeat(300), d); assert.ok(r.length <= 200); assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(r)); });
+t('name: null / undefined', () => { assert.equal(wbExportName(null, d), 'Whiteboard 2026-11-09 1405.png'); assert.equal(wbExportName(undefined, d), 'Whiteboard 2026-11-09 1405.png'); });
 t('xml safe controls', () => assert.equal(wbXmlSafe('a\u0000b\u0008c\u000Bd\u001Fe\tf\ng\rh'), 'abcde\tf\ng\rh'));
 t('xml safe surrogates', () => assert.equal(wbXmlSafe('ok😀 lone\uD800x \uDC00y ￾￿'), 'ok😀 lonex y '));
 t('xml safe keeps markup chars (escaped by the serialiser)', () => assert.equal(wbXmlSafe('</foreignObject><script>'), '</foreignObject><script>'));

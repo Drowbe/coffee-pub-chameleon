@@ -35,7 +35,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const NAMES = ['createSync', 'createBoardSession', 'wbClean', 'wbCleanBoard', 'wbCleanBoardRecord', 'wbBoardList', 'wbKnownBoardIds', 'wbNewBoardId', 'wbNextOrder',
   'wbCanCreateBoard', 'wbLanding', 'wbBlockPrefix', 'wbSettingsPrefix', 'wbPresentKey', 'wbDropPending', 'wbSweepPending', 'wbPerBoard', 'createHistory',
-  'WB_BOARD_MAX', 'WB_BOARD_FIRST', 'WB_BOARD_LAST', 'WB_BOARD_NAME_MAX', 'WB_BOARD_ID'];
+  'WB_BOARD_MAX', 'wbBoardNameProblem', 'wbPurgePlan', 'WB_BOARD_FIRST', 'WB_BOARD_LAST', 'WB_BOARD_NAME_MAX', 'WB_BOARD_ID'];
 let L = {};
 try {
   const parts = fs.readdirSync(src).filter((f) => /^whiteboard-lib-[a-z]-.*\.js$/.test(f)).sort().map((f) => fs.readFileSync(path.join(src, f), 'utf8'));
@@ -483,6 +483,19 @@ const entryKey = (board, kind = 'block') => `wb-pending:sp1:${kind === 'block' ?
   a.record('x', null, blk('x')); a.close();
   ok(a.canUndo() && !h.get('b2').canUndo(), 'a step on main is not undoable on b2');
   ok(h.drop('b2') === true && !h.has('b2') && h.get('b2') !== b && h.get('main') === a, 'dropping a board\'s history leaves the others');
+}
+
+// ---- the list written by this page (job 2; the switcher's own checks are in check-whiteboard-boards-ui.mjs) -------------------------
+{
+  const srv = makeServer(); const store = makeStore();
+  const { session, log } = open(srv, store);
+  await session.loadList(); session.start('main');
+  const c = session.saveRecord(rec('b7', { name: 'Seven', order: 1 }));
+  await settle();
+  ok(c && srv.data.has('board:b7') && log.lists[log.lists.length - 1] === 'main,b7' && session.visible().map((b) => b.id).join() === 'main,b7', 'saveRecord holds the record, reports the list and writes board:<id>');
+  session.saveRecord({ ...rec('b7', { name: 'Seven', order: 1 }), deleted: true, trashedAt: '2026-11-12T10:00:00.000Z' });
+  ok(session.visible().map((b) => b.id).join() === 'main' && L.wbBoardNameProblem('seven', session.visible()) === '', 'a trashed board leaves the list, and its name is free again');
+  ok(L.wbPurgePlan(session.records(), Date.parse('2026-11-19T10:00:00.000Z')).join() === 'b7' && L.wbPurgePlan(session.records(), Date.parse('2026-11-19T09:59:00.000Z')).length === 0, 'the plan on the stored record: due at 7 days, not a minute before');
 }
 
 finish();
