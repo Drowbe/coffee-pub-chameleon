@@ -4,9 +4,9 @@
 (the destination, the setting, the panel rule, the templates and the checks) and experience-design builds To-do's side
 (the main part, its settings and the pages). content-manager documents after.
 
-**Status:** Draft for Thomas, 2026-11-12, by product-planner. Nothing is built or decided except Thomas's words below.
-Thomas answered the planning question on 2026-11-12: a real To-do destination, plus a "show in the calendar" module
-setting that decides the Calendar's panel.
+**Status:** Draft for Thomas, 2026-11-12, by product-planner. Nothing is built. Thomas decided the shape on 2026-11-12 (a real To-do destination, plus a
+"show in the calendar" module setting that decides the Calendar's panel) and answered questions 1 and 2 the same day
+(decisions 2 and 3 below). Questions 3, 4 and 5 are still open.
 
 ## The brief
 
@@ -68,8 +68,33 @@ Read as code on 2026-11-12 (the spike; I re-checked `server/destinations.js` and
 
 ## Decisions
 
-Thomas decided the shape (2026-11-12): a real destination, a Manage switch like Calendar and Map, a composite entry, and
-the "show in the calendar" setting. The mechanism for that setting, and every default below, is open.
+1. **The shape (Thomas, 2026-11-12):** a real destination, a Manage switch like Calendar and Map, a composite entry,
+   and the "show in the calendar" setting.
+2. **The setting is tied to the To-do panel by a flag on the panel part that names the module's setting** (question 1,
+   option A; Thomas took the suggested option). The part reads `{ id: "calendar", part: "panel", showWhenSetting: "inCalendar" }`.
+   `panelsOf` reads that module's environment settings and drops the part when the value is false. `cleanDestinationParts`
+   checks that the name is a boolean setting of the same manifest. Reason: one rule in the host that any module can use
+   later, and no special case for the Calendar.
+3. **"Only when the Calendar is installed" is a `needsModule` field on the setting** (question 2, option 2; Thomas took
+   the suggested option). The setting reads `needsModule: "calendar"`. The settings form and the module-config route hide
+   it, and count it as off, when that module is not installed. Reason: it says what it means, and the route already knows
+   which modules are installed.
+
+**This is a core change.** Decisions 2 and 3 touch `server/modules.js` (`cleanDestinationParts`, `cleanSettings`),
+`server/destinations.js` (`panelsOf`) and `public/module-config.js`. Under CLAUDE.md that is not a module-lane change: it
+is held for an independent read before it is called done, and the full `npm run check` applies.
+
+What these change in the build:
+
+- **J4** is now fixed: add `showWhenSetting` on destination parts (read by `panelsOf`, checked by `cleanDestinationParts`)
+  and `needsModule` on settings (checked by `cleanSettings`: a known module id). Both need cases in `check-destinations`
+  and `check-modules`, including that the Calendar's Agenda stays when the flag is absent. It is followed by the
+  independent read.
+- **J3** declares the boolean setting `inCalendar` in To-do's manifest with `needsModule: "calendar"`, and puts
+  `showWhenSetting: "inCalendar"` on the `calendar` panel part. Its default is not decided (question 3); build it with
+  the suggested default, on, and change it if Thomas says otherwise.
+- **J2** reads `needsModule` in `public/module-config.js` so the setting is hidden when the Calendar is missing.
+- Options B and C under "The setting" are dropped, and so is the `showWhen` form named in option (1) there.
 
 ## The contract
 
@@ -102,8 +127,10 @@ the "show in the calendar" setting. The mechanism for that setting, and every de
 ## The "show in the Calendar" setting: options
 
 The setting is To-do's first. Its job is to decide whether the Calendar's panel appears. There is no mechanism today.
+Decided (decisions 2 and 3): option A, and `needsModule` for the install rule. B, C and the other install forms are
+kept so the reasoning stays visible.
 
-**Option A. A flag on the panel part naming a module setting (suggested).** The manifest part reads
+**Option A. A flag on the panel part naming a module setting (decided).** The manifest part reads
 `{ id: "calendar", part: "panel", showWhenSetting: "inCalendar" }`. `panelsOf` reads that module's environment settings
 and drops the part when the value is false. `cleanDestinationParts` checks the name is a boolean setting of the same
 manifest. Cost: S to M; one rule in the host, usable by any module later. Rules out: nothing. Weakness: `panelsOf` now
@@ -123,7 +150,7 @@ because it is To-do's choice.
 **"Only shown when Calendar is installed".** `showWhen` cannot express this: it names only a setting of the same module.
 Options: (1) a new `showWhen` form `{ module: "calendar", enabled: true }` handled by the settings form (the module's
 server answer already knows the registry); (2) a manifest field `settings[].needsModule: "calendar"`, which the form and
-the module-config route read; (3) always show it and add a help line "Needs the Calendar". I suggest (2): it says what
+the module-config route read; (3) always show it and add a help line "Needs the Calendar". Thomas chose (2): it says what
 it means, and the form's route already knows which modules are installed. This is a small new thing in
 `cleanSettings` and `public/module-config.js`.
 
@@ -224,15 +251,16 @@ reads: "To-do", "Show in the Calendar", "Needs the Calendar". Names in code: `to
 
 ## Open questions for Thomas
 
-Nothing here is decided.
+Questions 1 and 2 are answered (decisions 2 and 3) and removed. The numbers of the rest are kept so earlier messages
+still match. The suggested options below are not yet confirmed.
 
-1. **The mechanism for the setting.** (a) A flag on the panel part naming the module's setting (suggested). (b) A host
-   rule with a fixed setting name. (c) Hide the panel in the page only.
-2. **"Only when the Calendar is installed".** (a) A `needsModule` field on the setting (suggested). (b) A new `showWhen`
-   form naming a module. (c) Always show it, with a help line.
 3. **The default.** (a) On, so the list stays in the Calendar as it is now (suggested). (b) Off, so a new install gets a
    plain list.
 4. **The `/todo` destination in new environments.** (a) Off for travel and games, on for others (suggested). (b) Off
    everywhere until an owner turns it on. (c) On everywhere.
 5. **A saved layout that names `todo` while the setting is on.** (a) Opens the Calendar, as now (suggested). (b) Opens
    `dest:todo`, the list alone.
+
+What the open questions block: question 3 blocks nothing in J1 to J4; it sets the default value of `inCalendar` in J3
+(built as on until Thomas says). Question 4 blocks J1's template files and their version rises. Question 5 blocks J5
+(the layout mapping in `opens-with.js` and `layouts.js`). The mechanism and the install rule are settled, so J4 can start.
