@@ -630,7 +630,7 @@ try {
     assert.deepEqual(answer(await asModerator('PATCH', `/api/spaces/${trip.id}`, { name: 'Porto' })), [403, ownersOnly], 'the name is not a moderator\'s');
     assert.deepEqual(answer(await asModerator('PATCH', `/api/spaces/${trip.id}`, { name: 'Porto', phases: moved })), [403, ownersOnly], 'not with phases beside it either');
     assert.deepEqual(answer(await asMember('PATCH', `/api/spaces/${trip.id}`, { phases: moved })), [403, ownersOnly], 'a member');
-    assert.deepEqual(answer(await call(server, 'PATCH', `/api/spaces/${trip.id}`, { cookie: outsider.cookie, body: { phases: moved } })), [403, ownersOnly], 'someone not in the space');
+    assert.deepEqual(answer(await call(server, 'PATCH', `/api/spaces/${trip.id}`, { cookie: outsider.cookie, body: { phases: moved } })), [404, { error: 'no such trip' }], 'someone not in the space');
     assert.deepEqual(answer(await call(server, 'PATCH', `/api/spaces/${trip.id}`, { body: { phases: moved } })), [401, { error: 'sign in first' }]);
     assert.deepEqual(answer(await asModerator('PATCH', '/api/spaces/nope', { phases: moved })), [404, { error: 'no such trip' }]);
     assert.equal(stored().name, 'Lisbon');
@@ -667,7 +667,7 @@ try {
     }
     assert.deepEqual(answer(await asMember('PATCH', url, { opensWith: ['todo'] })), [403, ownersOnly], 'a member: Opens with');
     assert.deepEqual(answer(await asMember('PATCH', url, { defaultLayout: layout.id })), [403, ownersOnly], 'a member: the default layout');
-    assert.deepEqual(answer(await call(server, 'PATCH', url, { cookie: outsider.cookie, body: { opensWith: ['todo'] } })), [403, ownersOnly], 'someone not in the space');
+    assert.deepEqual(answer(await call(server, 'PATCH', url, { cookie: outsider.cookie, body: { opensWith: ['todo'] } })), [404, { error: 'no such trip' }], 'someone not in the space');
     assert.deepEqual([stored().name, stored().opensWith, 'defaultLayout' in stored()], ['Lisbon', ['todo'], false], 'the refusals changed nothing');
     // The admin, unchanged: anything at once.
     const own = await asAdmin('PATCH', url, { description: 'May', opensWith: null });
@@ -696,7 +696,7 @@ try {
     assert.deepEqual(stored().phases, r.json.phases, 'nothing moved');
     assert.deepEqual(answer(await asMember('POST', `/api/spaces/${trip.id}/phases/cover`, { day: 'tomorrow' })), [400, { error: 'Send the day to cover as YYYY-MM-DD.' }]);
     assert.deepEqual(answer(await asMember('POST', `/api/spaces/${trip.id}/phases/cover`, {})), [400, { error: 'Send the day to cover as YYYY-MM-DD.' }]);
-    assert.deepEqual(answer(await call(server, 'POST', `/api/spaces/${trip.id}/phases/cover`, { cookie: outsider.cookie, body: { day: d(50) } })), [403, refusal]);
+    assert.deepEqual(answer(await call(server, 'POST', `/api/spaces/${trip.id}/phases/cover`, { cookie: outsider.cookie, body: { day: d(50) } })), [404, { error: 'no such trip' }]);
     assert.deepEqual(answer(await call(server, 'POST', `/api/spaces/${trip.id}/phases/cover`, { body: { day: d(50) } })), [401, { error: 'sign in first' }]);
     assert.deepEqual(answer(await asMember('POST', '/api/spaces/nope/phases/cover', { day: d(50) })), [404, { error: 'no such trip' }]);
     assert.equal((await asAdmin('PATCH', '/api/modules/todo', { enabled: false })).status, 200, 'To-do off');

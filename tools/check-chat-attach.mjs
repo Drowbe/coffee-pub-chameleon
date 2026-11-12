@@ -372,7 +372,7 @@ try {
     assert.equal(fake.seen.length, 0);
   });
 
-  await test('server: the same rules as typing: signed out 401, a guest 403, not in the space 403, the AI off for the space 403; no owner switch is needed', async () => {
+  await test('server: the same rules as typing: signed out 401, a guest 403, not in the space 404, the AI off for the space 403; no owner switch is needed', async () => {
     fake.clear();
     const payload = { attached: { label: 'L', text: 'words' } };
     assert.equal((await call('POST', A, { body: payload })).status, 401);
@@ -380,7 +380,7 @@ try {
     const g = await call('POST', `${A}?guest=${encodeURIComponent(guestLink)}`, { body: payload });
     assert.deepEqual([g.status, g.json.error], [403, "Guests can't use AI."]);
     const sp = (await call('POST', '/api/spaces', { cookie: owner, body: { name: 'Elsewhere', members: [pat.key] } })).json.space;
-    assert.equal((await call('POST', `/api/spaces/${sp.id}/ai`, { cookie: tok.sam, body: payload })).status, 403);
+    assert.equal((await call('POST', `/api/spaces/${sp.id}/ai`, { cookie: tok.sam, body: payload })).status, 404, 'not in the space answers as an unknown space');
     assert.equal(fake.seen.length, 0);
     // Words need no switch of their own: with every What AI may see switch off, they still go, and only what is sent is theirs.
     const sees = { attached: false, relevant: false, linked: false, lookup: false, history: false, chat: false, members: false };

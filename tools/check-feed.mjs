@@ -834,7 +834,7 @@ try {
   await test('space addresses: none for a guest, for someone not in the space, or for an owner who is not a member', async () => {
     assert.equal((await call('POST', `/api/me/spaces/${spaceA}/feed?guest=${guestToken}`, { body: {} })).status, 401);
     const bob = await call('POST', `/api/me/spaces/${spaceA}/feed`, { cookie: bobC, body: {} });
-    assert.deepEqual([bob.status, bob.json], [403, { error: 'You are not in this space.' }]);
+    assert.deepEqual([bob.status, bob.json], [404, { error: 'no such space' }]);
     const owner = await call('POST', `/api/me/spaces/${spaceA}/feed`, { cookie: admin, body: {} });
     assert.deepEqual([owner.status, owner.json], [403, { error: 'You are not in this space.' }], 'managing a space is not being in it');
     assert.equal((await call('POST', '/api/me/spaces/nowhere1/feed', { cookie: aliceC, body: {} })).status, 404);
@@ -996,7 +996,7 @@ try {
     assert.equal(stored().spaces.find((r) => r.id === spaceB).publishCalendar, false);
     assert.ok(!rfcEvents((await read(pubUrl)).text).some((e) => text(e, 'SUMMARY') === 'Session in B'), 'B left out');
     assert.ok(rfcEvents((await read(pubUrl)).text).some((e) => text(e, 'SUMMARY') === 'Session in A'), 'A still in');
-    assert.equal((await call('PATCH', `/api/spaces/${spaceB}`, { cookie: aliceC, body: { publishCalendar: true } })).status, 403, 'owners only');
+    assert.equal((await call('PATCH', `/api/spaces/${spaceB}`, { cookie: aliceC, body: { publishCalendar: true } })).status, 404, 'alice is not in space B, so it answers as an unknown space');
     const back = await call('PATCH', `/api/spaces/${spaceB}`, { cookie: admin, body: { publishCalendar: true } });
     assert.equal('publishCalendar' in back.json.space, false, 'in it again: stored as nothing');
     assert.equal('publishCalendar' in stored().spaces.find((r) => r.id === spaceB), false);

@@ -253,7 +253,7 @@ try {
     r = await call('GET', '/api/ai/catalog?space=nope', { cookie: tok.pat });
     assert.deepEqual([r.status, r.json.error], [404, 'No such space.']);
     r = await call('GET', `/api/ai/catalog?space=${other.id}`, { cookie: tok.pat });
-    assert.deepEqual([r.status, r.json.error], [403, 'You are not in this space.']);
+    assert.deepEqual([r.status, r.json.error], [404, 'No such space.']);
     const link = (await call('POST', `/api/spaces/${space.id}/guest-link`, { cookie: owner, body: {} })).json.space.guestToken;
     r = await call('GET', `${C}&guest=${encodeURIComponent(link)}`);
     assert.deepEqual([r.status, r.json.error], [403, "Guests can't use AI."]);
