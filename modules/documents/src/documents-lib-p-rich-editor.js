@@ -488,10 +488,11 @@
     } catch (err) { return c.textBetween(0, c.size, '\n\n'); }
   }
 
-  function dlRichEditor(PM, doc, lex, element) {
+  function dlRichEditor(PM, doc, lex, element, env) {
     const schema = dlRichSchema(PM);
     const N = schema.nodes;
-    const plugins = dlRichPlugins(PM);
+    const pages = dlEditorPagesPlugin(PM, { doc, ...env });
+    const plugins = [...dlRichPlugins(PM), pages.plugin];
     const fns = [];
     const selFns = [];
     const linkFns = [];
@@ -657,7 +658,12 @@
       caretBox: () => { try { return view ? view.coordsAtPos(now().selection.head) : null; } catch (err) { return null; } },
       // Copy's fallback for a browser without the clipboard: select what is there.
       selectAll: () => { dispatch(now().tr.setSelection(new PM.AllSelection(now().doc))); if (view) view.focus(); },
-      destroy: () => { fns.length = 0; selFns.length = 0; linkFns.length = 0; if (view) { view.destroy(); view = null; } },
+      // PAGES (documents-lib-t-editor-pages.js). setPaged(on, sizeKey): Paper above the narrow floor shows real pages while typing (spacers, decorations only); off
+      // (Fluid, narrow) holds none. pagesInfo() -> { pages, spacers } as last measured. measurePages() reads now (tests and fonts).
+      setPaged: (flag, size) => pages.setPaged(view, flag, size),
+      pagesInfo: () => pages.info(now()),
+      measurePages: () => pages.measure(view),
+      destroy: () => { pages.destroy(); fns.length = 0; selFns.length = 0; linkFns.length = 0; if (view) { view.destroy(); view = null; } },
       // What the last getText found: `same` false means a block was written that does not read back exactly as it stands.
       lastWrite: () => last,
       // For the page's checks and the tests: the editor's state, a change, a plain text put in as a paste puts it, and

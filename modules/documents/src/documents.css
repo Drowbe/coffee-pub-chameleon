@@ -138,6 +138,15 @@
 .rich .ProseMirror a { cursor: text; }
 .rich .ProseMirror > :last-child { margin-bottom: 0; }
 .rich .ProseMirror li { position: relative; }
+/* real pages while typing (Paper above the narrow floor; documents-lib-t-editor-pages.js): a spacer is a decoration, not text. Its height carries
+   the rest of the page, the margins and the gap; a plain grey band marks the gap (the page look comes in a later step). A manual break is its own spacer. */
+.sheet-edit[data-epaged] { background-image: none; }
+.rich .ProseMirror .dl-pgsp { display: block; box-sizing: border-box; margin: 0 calc(-1 * var(--doc-page-m)); user-select: none; pointer-events: none; background: linear-gradient(to bottom, transparent var(--sp-top, 0), var(--surface-page) var(--sp-top, 0), var(--surface-page) calc(var(--sp-top, 0) + var(--doc-gap, 16px)), transparent calc(var(--sp-top, 0) + var(--doc-gap, 16px))); }
+.rich .ProseMirror .dl-pgsp-break { margin-top: 0; margin-bottom: 0; background: linear-gradient(to bottom, transparent calc(100% - var(--doc-page-m) - var(--doc-gap, 16px)), var(--surface-page) calc(100% - var(--doc-page-m) - var(--doc-gap, 16px)), var(--surface-page) calc(100% - var(--doc-page-m)), transparent calc(100% - var(--doc-page-m))); }
+.rich .ProseMirror .dl-pgsp-break > * { display: none; }
+.rich .ProseMirror.dl-measuring .dl-pgsp:not(.dl-pgsp-break) { display: none !important; }
+.rich .ProseMirror.dl-measuring .dl-pgsp-break { height: auto !important; }
+.rich .ProseMirror:not(.dl-measuring) .dl-pgsp + *, .rich .ProseMirror:not(.dl-measuring) .dl-pgsp-break + * { margin-top: 0; }
 .rich .ProseMirror-hideselection *::selection { background: transparent; }
 .rich .ProseMirror-hideselection { caret-color: transparent; }
 .rich .ProseMirror [draggable][contenteditable="false"] { user-select: text; }
