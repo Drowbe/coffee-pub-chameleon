@@ -61,9 +61,9 @@ ok(/guestDoorHost !== true|const on = settings\.guestDoorHost === true/.test(adm
 const hostHtml = read('public/host.html');
 ok(/Allow \{guest\} sign-in on this \{environment\}\. \{Owners\} then choose which \{spaces\} are open to \{guests\}\./.test(hostHtml), 'host console: the environment box says it only makes the door available');
 const setupSrc = read('public/space-setup.js');
-ok(/\$\{esc\(word\('guest', \{ cap: true \}\)\)\} link<\/span>/.test(setupSrc) && /Lets you make a link that brings someone into this \$\{esc\(spaceWord\(\)\)\} with no account\. Separate from Who can enter\./.test(setupSrc) && !/Allow \$\{esc\(guests\)\}/.test(setupSrc), 'set up: the switch is the Guest link, separate from Who can enter');
+ok(/switchRow\('setup-allow-guests', esc\(`Invited \$\{guestsMany\}`\)\)/.test(setupSrc) && /switchRow\('setup-entry-guests', esc\(`Visiting \$\{guestsMany\}`\)\)/.test(setupSrc) && !/Lets you make a link that brings someone/.test(setupSrc), 'set up: Invited guests (the guest link) and Visiting guests are two of the four Who can enter switches');
 ok(/guests can see costs and booking codes|can see costs and booking codes/.test(setupSrc), 'set up: Guests can see costs and booking codes stays');
-ok(/setup-entry-hint/.test(read('public/space-setup.js')) && /can come in from the sign-in page/.test(read('public/space-setup.js')), 'set up: the hint names guests while the door is on');
+ok(/setup-entry-hint/.test(read('public/space-setup.js')) && /come in from the sign-in page with just a name/.test(read('public/space-setup.js')) && /The host has not turned/.test(read('public/space-setup.js')), 'set up: the hint names visiting guests, and one line says the host has not turned guest sign-in on');
 const html = read('public/space.html');
 ok(/id="guest-banner"/.test(html) && /id="guest-banner-leave"/.test(html) && /fa-solid fa-right-from-bracket/.test(html), 'space.html: banner with Leave, solid icon');
 
@@ -78,6 +78,6 @@ ok(/import '\/agreement-redirect\.js'/.test(read('public/shared.js')), 'shared.j
 ok(/import '\/agreement-redirect\.js'/.test(read('public/brand.js')), 'brand.js: every page that loads it redirects on agreementRequired');
 
 const setup = read('public/space-setup.js');
-ok(/api\('GET', '\/api\/branding'\)\.then\(\(b\) => Boolean\(b\.guestDoor\)\)/.test(setup) && /\(door \|\| state\.draft\.entry === 'guests'\)/.test(setup), 'set up: "including guests" only while the door is on');
+ok(/api\('GET', '\/api\/branding'\)/.test(setup) && /state\.door = Boolean\(branding\.guestDoor\)/.test(setup) && /closed \|\| state\.door === false/.test(setup), 'set up: Visiting guests is dimmed while the host\'s guest sign-in is off');
 
 console.log(`check-guest-pages: ${n} assertions passed`);

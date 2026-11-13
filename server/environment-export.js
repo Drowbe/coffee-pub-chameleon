@@ -44,7 +44,7 @@ const USER_LEFT_OUT = ['passwordHash', 'linkToken', 'mfa', 'externalCalendars', 
 const USER_SPACE_FIELDS = ['images', 'useDefaultImages', 'permissions', 'joined'];
 const USER_SPACE_LEFT_OUT = ['calendarFeed'];
 // A space (Store#sanitizeSpace).
-const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'entry', 'requestAccess', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
+const SPACE_FIELDS = ['id', 'name', 'description', 'members', 'createdAt', 'profile', 'link', 'linkIcon', 'allowGuests', 'entry', 'requestAccess', 'closed', 'opensWith', 'defaultLayout', 'aiOff', 'aiSees', 'publishCalendar', 'guestsSeeHidden', 'phases', 'budget'];
 const SPACE_LEFT_OUT = ['guestToken'];
 // An aside (Store#sanitizeAside).
 const ASIDE_FIELDS = ['id', 'members', 'origin', 'private', 'createdAt'];
