@@ -135,6 +135,109 @@ try {
     assert.ok(Array.isArray((space.space || space).opensWith), 'Opens with was saved');
   });
 
+  // Layouts (plan-workspaces.md, step 3): the owner's section in Settings, used with the keyboard; a member's bar follows it.
+  const cookieOf = (as) => cookies[as].map((c) => `${c.name}=${c.value}`).join('; ');
+  const layoutsAs = async (as) => (await fetch(`${server.base}/api/spaces/${ctx.trip}/layouts`, { headers: { cookie: cookieOf(as) } })).json();
+  const rowsOf = (tab) => tab.eval(`[...document.querySelectorAll('#setup-layout-rows .setup-layout-row')].map((r) => ({ id: r.dataset.layout, name: r.querySelector('.setup-layout-name').textContent, shown: r.querySelector('[data-layout-show]').checked, showDisabled: r.querySelector('[data-layout-show]').disabled, first: r.querySelector('input[type=radio]').checked, up: !r.querySelector('[data-move=up]').disabled, down: !r.querySelector('[data-move=down]').disabled }))`);
+  let layoutsBefore = null;
+  await test('Layouts: an owner sees a row per layout with Show in the bar, Move up, Move down and Opens first; the Workspace is on, locked and opens first; one radio group with First visit', async () => {
+    const tab = await inSpace('admin', 1280);
+    await openSetup(tab);
+    await tab.click('#setup-tab-modules');
+    await sleep(900);
+    const rows = await rowsOf(tab);
+    layoutsBefore = rows.map((r) => r.id);
+    assert.equal(rows[0].id, 'workspace');
+    assert.ok(rows.length >= 3, `Workspace and at least two more layouts: ${JSON.stringify(layoutsBefore)}`);
+    assert.deepEqual([rows[0].shown, rows[0].showDisabled, rows[0].first], [true, true, true], 'the Workspace is shown, cannot be turned off, and opens first');
+    assert.ok(rows.slice(1).every((r) => !r.showDisabled), 'the others can be turned off');
+    const heads = await tab.eval(`[...document.querySelectorAll('#setup-content-modules .setup-heading')].map((h) => h.textContent)`);
+    assert.equal(heads[0], 'Layouts');
+    assert.equal(heads[1], 'First visit');
+    const words = await tab.eval(`document.getElementById('setup-layout-rows').textContent.replace(/\\s+/g, ' ')`);
+    for (const w of ['Show in the bar', 'Opens first', 'Move up', 'Move down', 'The Workspace is always shown.']) assert.ok(words.includes(w), w);
+    const groups = await tab.eval(`[...new Set([...document.querySelectorAll('#space-setup input[type=radio][name=setup-first-visit]')].map((r) => r.name))].length`);
+    assert.equal(groups, 1, 'Opens first and First visit are one radio group');
+    assert.equal(await tab.eval(`document.querySelectorAll('#space-setup input[name=setup-first-visit]:checked').length`), 1, 'exactly one choice');
+  });
+  await test('Layouts: Move down by keyboard keeps the focus on the button and says where it went; hide the last one; Opens first on another; Save sends only tabs and defaultLayout', async () => {
+    const tab = await inSpace('admin', 1280);
+    await openSetup(tab);
+    await tab.click('#setup-tab-modules');
+    await sleep(900);
+    const [, second, third] = await rowsOf(tab);
+    // Tab to the second row's Move down and press Enter on it (a real key press, as a keyboard user would).
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${second.id}"] [data-move=down]').focus()`);
+    await tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' }, tab.sid);
+    await tab.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }, tab.sid);
+    await sleep(300);
+    const after = await rowsOf(tab);
+    assert.deepEqual(after.slice(1, 3).map((r) => r.id), [third.id, second.id], 'the second went below the third');
+    const focus = await tab.eval(`({ move: document.activeElement.dataset.move, row: document.activeElement.closest('[data-layout]')?.dataset.layout, live: document.getElementById('setup-layouts-live').textContent })`);
+    assert.equal(focus.row, second.id, 'the keyboard stays on the layout moved');
+    assert.ok(focus.move, 'on one of its Move buttons');
+    assert.equal(focus.live, `${second.name} moved to position 3.`);
+    assert.equal(await tab.eval(`!document.querySelector('#setup-tab-modules .setup-tab-dot').hidden`), true, 'Settings shows the unsaved dot');
+    // Hide the last layout; make the first of the others open first.
+    const last = after[after.length - 1];
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${last.id}"] [data-layout-show]').click()`);
+    await sleep(200);
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${third.id}"] input[type=radio]').click()`);
+    await sleep(200);
+    assert.equal(await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${last.id}"] input[type=radio]').disabled`), true, 'a hidden layout cannot open first');
+    // Hiding the one that opens first puts the Workspace back.
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${third.id}"] [data-layout-show]').click()`);
+    await sleep(200);
+    assert.equal((await rowsOf(tab)).find((r) => r.first).id, 'workspace', 'hiding what opens first puts the Workspace back');
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${third.id}"] [data-layout-show]').click()`); // shown again
+    await sleep(200);
+    await tab.eval(`document.querySelector('#setup-layout-rows [data-layout="${third.id}"] input[type=radio]').click()`);
+    await sleep(200);
+    if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, 'layouts-edited-1280.png'), await tab.shoot(false)); }
+    await tab.eval(`document.querySelector('.action-bar-save').click()`);
+    await sleep(1500);
+    const got = await (await fetch(`${server.base}/api/spaces/${ctx.trip}`, { headers: { cookie: cookieOf('admin') } })).json();
+    const space = got.space || got;
+    assert.deepEqual(space.tabs.hide, [last.id], 'the hidden one is saved');
+    assert.deepEqual(space.tabs.order.filter((id) => layoutsBefore.includes(id)).slice(0, 3), ['workspace', third.id, second.id], 'the order is saved');
+    assert.equal(space.defaultLayout, third.id, 'what opens first is saved');
+    assert.ok(Array.isArray(space.opensWith), 'and Opens with is untouched');
+  });
+  await test('Layouts: a member\'s bar follows the owner\'s order and hide, its Layout menu says Hidden in Set up, and the server refuses to turn it on', async () => {
+    const owner = await layoutsAs('admin');
+    const hideId = owner.tabs.hide[0];
+    const member = await layoutsAs('sam');
+    assert.deepEqual(member.system.map((l) => l.id), owner.tabs.order.filter((id) => member.system.some((l) => l.id === id)), 'the member\'s list is in the owner\'s order');
+    assert.equal(member.tabs, undefined, 'a member is not sent the owner\'s controls');
+    const tab = await inSpace('sam', 1280);
+    const bar = await tab.eval(`[...document.querySelectorAll('#layout-tabs > [data-layout-tab]')].map((b) => b.dataset.layoutTab)`);
+    assert.ok(!bar.includes(hideId), `the hidden layout is not in the bar: ${JSON.stringify(bar)}`);
+    const want = member.system.filter((l) => l.tab !== false).map((l) => l.id);
+    assert.deepEqual(bar.slice(0, want.length), want, 'the bar is in the owner\'s order');
+    const r = await fetch(`${server.base}/api/spaces/${ctx.trip}/layouts/${hideId}/favorite`, { method: 'PUT', headers: { cookie: cookieOf('sam') } });
+    assert.equal(r.status, 409, 'the owner\'s hide wins');
+    const sets = await tab.eval(`document.querySelector('[data-nav-tool="setup"]').getClientRects().length > 0`);
+    assert.equal(sets, true, 'a member has Set up (the Modules tab) and no Layouts section');
+    await tab.click('[data-nav-tool="setup"]');
+    await tab.waitFor('#space-setup');
+    await sleep(500);
+    assert.equal(await tab.eval(`Boolean(document.getElementById('setup-layout-rows'))`), false, 'no Layouts section for a member');
+  });
+  await test('Layouts: a moderator has the section and the same save; the Layout menu row of a hidden layout says why and its Favorite is off', async () => {
+    const tab = await inSpace('mia', 1280);
+    await openSetup(tab);
+    await tab.click('#setup-tab-modules');
+    await sleep(900);
+    const rows = await rowsOf(tab);
+    assert.equal(rows[0].id, 'workspace');
+    assert.ok(rows.length >= 3);
+    assert.ok((await tab.eval(`document.querySelector('#setup-layout-rows [data-move=up]:not(:disabled)')?.dataset.move`)), 'Move is there for a moderator');
+    const hidden = rows.find((r) => !r.shown);
+    assert.ok(hidden, 'the owner\'s hide shows as off');
+    await tab.eval(`document.querySelector('#layout-menu-button, [data-nav-tool=layouts]')?.click()`);
+    if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); fs.writeFileSync(path.join(SHOTS, 'layouts-moderator-1280.png'), await tab.shoot(false)); }
+  });
+
   await test('Manage: a gear button in the top bar for the admin, gone from the profile menu, absent for a member; Set up says "Trip Configuration"', async () => {
     const tab = await inSpace('admin', 1280);
     const b = await tab.eval(`(() => { const m = document.querySelector('[data-nav-tool="manage-tool"]'); const s = document.querySelector('[data-nav-tool="setup"]'); return { shown: Boolean(m && m.getClientRects().length), icon: m?.querySelector('i')?.className || '', label: m?.getAttribute('aria-label'), tip: m?.getAttribute('data-tip'), setupIcon: s?.querySelector('i')?.className || '', setupLabel: s?.getAttribute('aria-label'), setupTip: s?.getAttribute('data-tip'), next: m && s ? Boolean(m.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING) : false }; })()`);

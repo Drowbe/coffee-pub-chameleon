@@ -485,7 +485,7 @@ const refused = (input, pattern, label, options) => {
   // The first visit on the page (plan-layout-views.md, step 5): the list keeps the server's resolved firstVisit, a
   // system row is marked Default from it, and Make default sends `defaultLayout` alone (Opens with is never sent).
   assert.match(space, /firstVisit: got\.firstVisit && typeof got\.firstVisit\.layout === 'string' \? got\.firstVisit : null,/);
-  assert.match(space, /tag: l\.id !== 'workspace' && l\.id === layoutList\.firstVisit\?\.layout \? 'Default' : undefined,/);
+  assert.match(space, /tag: ownerHid \? 'Hidden in Set up' : l\.id !== 'workspace' && l\.id === layoutList\.firstVisit\?\.layout \? 'Default' : undefined,/);
   const defaultFn = space.slice(space.indexOf('async function setDefaultLayout('), space.indexOf('async function replaceLayout('));
   assert.match(defaultFn, /api\('PATCH', `\/api\/spaces\/\$\{encodeURIComponent\(id\)\}`, \{ defaultLayout: layoutId \}\)/);
   assert.equal((defaultFn.match(/api\('PATCH'/g) || []).length, 1, 'Make default sends one PATCH, `defaultLayout` alone: never Opens with');
@@ -494,7 +494,7 @@ const refused = (input, pattern, label, options) => {
   assert.match(setupSrc, /if \(nowLayout !== wasLayout\) patch\.defaultLayout = nowLayout;/, 'the layout goes only when it changed');
   // The layout tabs (plan-layout-views.md, steps 2 and 3) load the page's own copy, as a row in the menu does: a favorite
   // from the saved lists, Calendar and Map from GET's `system` list (their `modules`, the composite docked).
-  assert.match(space, /const layout = tab && tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/);
+  assert.match(space, /const layout = findSystemLayout\(id\) \|\| findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/);
   assert.match(space, /const findSystemLayout = \(id\) => layoutList\.system\.find\(\(l\) => l\.id === id\) \|\| null;/);
   assert.match(space, /system: Array\.isArray\(got\.system\) \? got\.system : \[\],/, 'GET\'s `system` list read for the tabs');
   n += 1;

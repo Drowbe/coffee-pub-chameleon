@@ -76,7 +76,7 @@ export const FIELD_TAB = Object.freeze({
   name: 'space', description: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
   members: 'members', allowGuests: 'members', entry: 'members', requestAccess: 'members', closed: 'members',
   phases: 'phases',
-  opensWith: 'modules', defaultLayout: 'modules',
+  opensWith: 'modules', defaultLayout: 'modules', tabs: 'modules',
   aiOff: 'modules', aiSees: 'modules',
 });
 // A module's settings, in the save's lists and its words, are `module:<id>`; they live on the Settings tab (id `modules`), as does the First visit section.
@@ -155,6 +155,71 @@ function budgetSent(v) {
 }
 const sameBudget = (a, b) => JSON.stringify(budgetSent(a)) === JSON.stringify(budgetSent(b));
 
+// The owner's tabs (plan-workspaces.md, "Owner controls"; server/layouts.js cleanTabs and tabsOf): the fixed layouts' ids in
+// their default order, and `tabs` whole as { order: [every id], hide: [ids] }. The Layouts section works on a draft that holds
+// `tabs` and `defaultLayout`; each helper answers a new draft and never changes the one it was given. Pure, for check-nav.
+export const LAYOUT_IDS = Object.freeze(['workspace', 'calendar', 'map', 'conference', 'whiteboard', 'documents']);
+// Whole tabs from what is stored or sent: unknown ids and repeats are dropped, any id left out is added at the end in the
+// default order, and the Workspace is never in hide.
+export function tabsWhole(raw) {
+  const have = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const list = (v) => (Array.isArray(v) ? v.filter((id, i) => LAYOUT_IDS.includes(id) && v.indexOf(id) === i) : []);
+  const order = list(have.order);
+  return { order: [...order, ...LAYOUT_IDS.filter((id) => !order.includes(id))], hide: LAYOUT_IDS.filter((id) => id !== 'workspace' && list(have.hide).includes(id)) };
+}
+const sameTabs = (a, b) => {
+  const x = tabsWhole(a);
+  const y = tabsWhole(b);
+  return x.order.join() === y.order.join() && x.hide.join() === y.hide.join();
+};
+// The rows of the Layouts section: the layouts this space can show (`system`, the server's list for this person), in the
+// owner's order, each { id, name, icon, shown, locked }. The Workspace is locked on (it can never be hidden). A name is the
+// layout's own (its default), not one person's rename.
+export function layoutRows(tabs, system = []) {
+  const here = new Map((Array.isArray(system) ? system : []).filter((l) => l && LAYOUT_IDS.includes(l.id)).map((l) => [l.id, l]));
+  const whole = tabsWhole(tabs);
+  return whole.order.filter((id) => here.has(id)).map((id) => {
+    const l = here.get(id);
+    return { id, name: String(l.defaultName || l.name || id), icon: l.defaultIcon || l.icon || '', shown: id === 'workspace' || !whole.hide.includes(id), locked: id === 'workspace' };
+  });
+}
+// Show or hide one layout in the bar. The Workspace and an unknown id are no change. Hiding the layout that opens first puts
+// the Workspace back as what opens first (the default must be a layout that is shown).
+export function withLayoutShown(draft = {}, id, on) {
+  if (id === 'workspace' || !LAYOUT_IDS.includes(id)) return draft;
+  const whole = tabsWhole(draft.tabs);
+  const hide = on ? whole.hide.filter((h) => h !== id) : [...whole.hide.filter((h) => h !== id), id];
+  const next = { ...draft, tabs: tabsWhole({ order: whole.order, hide }) };
+  if (!on && draft.defaultLayout === id) next.defaultLayout = null;
+  return next;
+}
+// Move one layout up (`by` -1) or down (+1) past its neighbour among the layouts this space can show (`available`, ids);
+// ids it cannot show keep their places. At the end of the list, or an unknown id, no change.
+export function withLayoutMoved(draft = {}, id, by, available = LAYOUT_IDS) {
+  const whole = tabsWhole(draft.tabs);
+  const here = whole.order.filter((x) => available.includes(x));
+  const at = here.indexOf(id);
+  const to = at + (by < 0 ? -1 : 1);
+  if (at < 0 || to < 0 || to >= here.length) return draft;
+  const order = [...whole.order];
+  const a = order.indexOf(here[at]);
+  const b = order.indexOf(here[to]);
+  [order[a], order[b]] = [order[b], order[a]];
+  return { ...draft, tabs: { order, hide: whole.hide } };
+}
+// "<name> moved to position N." for the live region: N counts the layouts this space can show, from 1.
+export function movedWords(draft = {}, id, name, available = LAYOUT_IDS) {
+  const at = tabsWhole(draft.tabs).order.filter((x) => available.includes(x)).indexOf(id);
+  return at < 0 ? '' : `${name} moved to position ${at + 1}.`;
+}
+// Pick what opens first: the Workspace is no default (null), a fixed layout the owner hid cannot be picked, anything else
+// (a fixed layout shown, or a shared layout's id) is.
+export function withOpensFirst(draft = {}, id) {
+  if (id === 'workspace' || !id) return { ...draft, defaultLayout: null };
+  if (LAYOUT_IDS.includes(id) && tabsWhole(draft.tabs).hide.includes(id)) return draft;
+  return { ...draft, defaultLayout: id };
+}
+
 // The PATCH body for what changed between `before` (the space as it was) and `after` (the panel's draft), each
 // { name, description, profile, link, linkIcon, publishCalendar, members, allowGuests, phases, opensWith, defaultLayout,
 // aiOff, budget }; a field left out of `after` is unchanged. The budget goes as null (none) or { amount, currency? }. The phase dates go whole, when any phase's start or end changed
@@ -184,6 +249,8 @@ export function setupPatch(before = {}, after = {}) {
   // What AI may see: null follows the environment's choice; else the space's own, whole.
   if (after.aiSees !== undefined && !sameAiSees(after.aiSees, before.aiSees)) patch.aiSees = after.aiSees ? fullSees(after.aiSees) : null;
   if (after.budget !== undefined && !sameBudget(after.budget, before.budget)) patch.budget = budgetSent(after.budget);
+  // The owner's tabs go whole ({ order, hide }) and only when the order or the hidden set changed.
+  if (after.tabs !== undefined && !sameTabs(after.tabs, before.tabs)) patch.tabs = tabsWhole(after.tabs);
   const wasLayout = layoutOrNull(before.defaultLayout);
   const nowLayout = after.defaultLayout === undefined ? wasLayout : layoutOrNull(after.defaultLayout);
   if (nowLayout !== wasLayout) patch.defaultLayout = nowLayout;
@@ -205,7 +272,7 @@ export function dirtyTabs(patch = {}, { image = false, modules = false, tabs: ha
 // Which field of a refused PATCH the server's sentence is about (store.updateSpace's sentences), else its first.
 const PROBLEM_FIELDS = [
   [/budget|currenc/i, 'budget'], [/may see/i, 'aiSees'], [/\bAI\b/, 'aiOff'], [/icon/i, 'linkIcon'], [/publish/i, 'publishCalendar'], [/link/i, 'link'], [/member/i, 'members'], [/guest/i, 'allowGuests'],
-  [/opens with/i, 'opensWith'], [/layout|first visit/i, 'defaultLayout'], [/profile/i, 'profile'], [/phase|date|\b(starts?|ends?)\b/i, 'phases'],
+  [/opens with/i, 'opensWith'], [/tabs|order|hide|always shown|listed twice|each layout once/i, 'tabs'], [/layout|first visit/i, 'defaultLayout'], [/profile/i, 'profile'], [/phase|date|\b(starts?|ends?)\b/i, 'phases'],
 ];
 export function problemField(patch = {}, problem = '') {
   const keys = Object.keys(patch);
@@ -220,7 +287,7 @@ export function problemField(patch = {}, problem = '') {
 const FIELD_WORDS = {
   name: 'the name', description: 'the description', profile: 'the faces in the call', link: 'the launch link', linkIcon: 'the link icon',
   publishCalendar: 'the published calendar', opensWith: 'Opens with', phases: 'the phase dates', aiOff: 'Turn AI off', aiSees: 'What AI may see',
-  defaultLayout: 'the first visit', image: 'the picture', imageRemoved: 'the picture', budget: 'the budget',
+  defaultLayout: 'the first visit', tabs: 'the layouts', image: 'the picture', imageRemoved: 'the picture', budget: 'the budget',
 };
 export function setupSaidWords({ saved = [], failed = null, problem = '' } = {}, { setUp = 'Set up', words = {} } = {}) {
   const wordOf = (f) => words[f] || FIELD_WORDS[f] || f;
@@ -255,13 +322,14 @@ function beforeOf(space = {}) {
     guestsSeeHidden: space.guestsSeeHidden === true,
     opensWith: listOrNull(space.opensWith),
     defaultLayout: space.defaultLayout || null,
+    tabs: tabsWhole(space.tabs),
     phases: datesCopy(space.phases),
     aiOff: space.aiOff === true,
     aiSees: space.aiSees && typeof space.aiSees === 'object' ? fullSees(space.aiSees) : null,
     budget: budgetText(space.budget),
   };
 }
-const copyOf = (b) => ({ ...b, members: [...b.members], opensWith: b.opensWith ? [...b.opensWith] : null, phases: datesCopy(b.phases), budget: { ...b.budget }, aiSees: b.aiSees ? { ...b.aiSees, modules: Array.isArray(b.aiSees.modules) ? [...b.aiSees.modules] : b.aiSees.modules } : null });
+const copyOf = (b) => ({ ...b, tabs: tabsWhole(b.tabs), members: [...b.members], opensWith: b.opensWith ? [...b.opensWith] : null, phases: datesCopy(b.phases), budget: { ...b.budget }, aiSees: b.aiSees ? { ...b.aiSees, modules: Array.isArray(b.aiSees.modules) ? [...b.aiSees.modules] : b.aiSees.modules } : null });
 // After a step of the save went through: each field it sent is now what the server answered, in both `before` and the
 // draft, so a value the server normalized (a link stored as https://example.com/ for https://example.com) is no
 // change and leaves no dot. The fields it did not send stay as they were. Answers { before, draft }, new objects.
@@ -273,7 +341,7 @@ export function takeSaved(before = {}, draft = {}, fields = [], answer = {}) {
     if (!(k in fresh)) continue;
     const v = fresh[k];
     nextBefore[k] = v;
-    nextDraft[k] = Array.isArray(v) ? [...v] : k === 'phases' ? datesCopy(v) : k === 'budget' ? { ...v } : v;
+    nextDraft[k] = Array.isArray(v) ? [...v] : k === 'tabs' ? tabsWhole(v) : k === 'phases' ? datesCopy(v) : k === 'budget' ? { ...v } : v;
   }
   return { before: nextBefore, draft: nextDraft };
 }
@@ -449,20 +517,29 @@ export function createSpaceSetup(deps) {
         <p class="setup-phases-status" id="setup-phases-status" role="status" aria-live="polite"></p></section>`;
   }
 
-  // First visit, a section of the Settings tab (plan-layout-views.md, step 5): one choice, radios of one name. The Workspace first, with its Opens
-  // with switches directly under it (always editable, whichever is picked: they are what the Workspace holds), then
-  // Calendar and Map while they are on here, then the shared layouts by name (paintLayouts).
+  // Layouts, a section of the Settings tab (plan-workspaces.md, step 3, decisions 4, 13 and 22): one row per fixed layout this
+  // space can show, in the owner's order, each with Show in the bar (the Workspace's is on and cannot be turned off), Move up
+  // and Move down (buttons, so no dragging), and Opens first: the radios of one name, `setup-first-visit`, that First visit's
+  // shared layouts share. One choice, the space's defaultLayout. Painted by paintLayoutRows(); a draft, saved with Save.
+  function layoutsSectionHtml() {
+    return `<section class="setup-section" data-section="layouts"><h3 class="setup-heading" id="setup-layouts-heading">Layouts</h3>
+        <p class="hint" id="setup-layouts-hint">Which layouts show in the bar at the top of this ${esc(spaceWord())}, in what order, and which opens first. Everyone in this ${esc(spaceWord())} sees them. Each person can hide more for themselves, but not bring back one you hid. Saved with Save.</p>
+        <ul class="setup-layout-rows" id="setup-layout-rows" aria-labelledby="setup-layouts-heading" aria-describedby="setup-layouts-hint"></ul>
+        <p class="visually-hidden" id="setup-layouts-live" role="status" aria-live="polite"></p></section>`;
+  }
+  // First visit, a section of the Settings tab (plan-layout-views.md, step 5; plan-workspaces.md, step 3): what a new person sees
+  // in the Workspace (its Opens with switches), and the shared layouts by name, which share Opens first's radios with the
+  // fixed layouts above (paintLayouts). Each person's own arrangement is remembered after the first visit.
   function firstVisitHtml() {
     return `<section class="setup-section" data-section="first-visit"><h3 class="setup-heading" id="setup-first-visit-heading">First visit</h3>
-        <p class="hint setup-first-visit-hint" id="setup-first-visit-hint">What someone sees the first time they enter this ${esc(spaceWord())}. After that, each person's own arrangement is remembered.</p>
+        <p class="hint setup-first-visit-hint" id="setup-first-visit-hint">What someone sees the first time they enter this ${esc(spaceWord())}. After that, each person's own arrangement is remembered. Opens first, above, picks the layout; a shared layout can be picked here.</p>
         <div class="setup-opens-with-layout" id="setup-opens-with-layout" hidden>
           <span class="setup-opens-with-layout-text" id="setup-opens-with-layout-text"></span>
           <button type="button" class="btn btn-small" id="setup-opens-with-layout-stop">Stop using it</button>
         </div>
         <fieldset class="setup-first-visit" id="setup-first-visit" aria-labelledby="setup-first-visit-heading" aria-describedby="setup-first-visit-hint">
-          <label class="setup-choice"><input type="radio" name="setup-first-visit" value="workspace" id="setup-first-workspace"><i class="fa-solid fa-columns fa-fw" aria-hidden="true" id="setup-workspace-icon"></i><span class="setup-choice-name" id="setup-workspace-name">Workspace</span></label>
           <div class="setup-workspace-content">
-            <p class="setup-subheading" id="setup-opens-with-label">A new person sees these open</p>
+            <p class="setup-subheading" id="setup-opens-with-label">In the Workspace, a new person sees these open</p>
             <div class="opens-with-list setup-opens-with" id="setup-opens-with" role="group" aria-labelledby="setup-opens-with-label" aria-describedby="setup-opens-with-hint"></div>
             <p class="hint" id="setup-opens-with-note" hidden></p>
             <p class="hint" id="setup-opens-with-hint">What opens the first time someone new enters, in the Workspace. Calendar takes in To-do.</p>
@@ -478,7 +555,7 @@ export function createSpaceSetup(deps) {
   // the server has an AI service, then a section per module with its settings for this space. A moderator sees the
   // module settings only. The settings are drawn by module-settings.js in its draft mode (no Save on each).
   function modulesTabHtml() {
-    const parts = [firstVisitHtml()];
+    const parts = [layoutsSectionHtml(), firstVisitHtml()];
     if (state.owner) {
       parts.push(sectionHtml('ai', '<i class="fa-solid fa-wand-magic-sparkles fa-fw" aria-hidden="true"></i> AI', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Turn AI off in this ${esc(spaceWord())}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-off"></label><p class="hint">${esc(modulesWord(true))} here can use the server's AI service to summarise and answer questions. Turned off, nobody here can, whatever the roles allow. Saved with Save.</p>`, { hidden: true }));
       parts.push(sectionHtml('ai-sees', 'What AI may see', `<p class="hint">What goes to the AI with a question in this ${esc(spaceWord())}. This only narrows it: the AI never sees what the person asking could not open. Saved with Save.</p><label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label" id="setup-ai-sees-follow-label">Same as the ${esc(word('environment'))}'s choice</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-sees-follow"></label><div id="setup-ai-sees-box"></div>`, { hidden: true }));
@@ -936,32 +1013,87 @@ export function createSpaceSetup(deps) {
     note.textContent = summary;
     note.hidden = !summary;
   }
-  // The choices after the Workspace: Calendar and Map while the layouts payload's `system` lists them, then the shared
-  // layouts by name, each with its icon. The one checked is the draft's; one no longer listed reads as the Workspace.
+  // The layouts that can be what opens first: the fixed ones the server lists for this space (Layouts section), then the shared
+  // layouts by name, each with its icon. `fixed` and `shared` are the two parts; the radios of both are one group.
   const iconOk = (icon) => /^[a-z0-9-]{1,40}$/.test(icon || '');
+  const fixedAvailable = () => layoutRows(state.draft.tabs, state.layouts.system);
   function layoutChoices() {
-    const { system, shared } = state.layouts;
+    const { shared } = state.layouts;
     return [
-      ...system.filter((l) => l.id === 'calendar' || l.id === 'map').map((l) => ({ id: l.id, name: l.name, icon: iconOk(l.icon) ? l.icon : 'object-group' })),
+      ...fixedAvailable().filter((r) => r.id !== 'workspace').map((r) => ({ id: r.id, name: r.name, icon: iconOk(r.icon) ? r.icon : 'object-group' })),
       ...shared.map((l) => ({ id: l.id, name: l.name, icon: iconOk(l.icon) && l.icon !== 'object-group' ? l.icon : 'user-group' })),
     ];
   }
-  function paintLayouts() {
-    const { layouts, draft } = state;
-    const workspace = layouts.system.find((l) => l.id === 'workspace');
-    q('#setup-workspace-name').textContent = workspace && workspace.name ? workspace.name : 'Workspace';
-    if (workspace && iconOk(workspace.icon)) q('#setup-workspace-icon').className = `fa-solid fa-${workspace.icon} fa-fw`;
-    const choices = layoutChoices();
-    q('#setup-first-visit-layouts').innerHTML = choices.map((c) => `<label class="setup-choice"><input type="radio" name="setup-first-visit" value="${escapeHtml(c.id)}"><i class="fa-solid fa-${escapeHtml(c.icon)} fa-fw" aria-hidden="true"></i><span class="setup-choice-name">${escapeHtml(c.name)}</span></label>`).join('');
+  const radioChecks = () => {
+    const { draft, layouts } = state;
+    const choices = [{ id: 'workspace' }, ...layoutChoices()];
     const picked = choices.some((c) => c.id === draft.defaultLayout) ? draft.defaultLayout : 'workspace';
     for (const r of el.querySelectorAll('input[name="setup-first-visit"]')) {
       r.checked = r.value === picked;
-      r.disabled = !layouts.canSetDefault;
+      const hid = LAYOUT_IDS.includes(r.value) && r.value !== 'workspace' && tabsWhole(draft.tabs).hide.includes(r.value);
+      r.disabled = !layouts.canSetDefault || hid;
     }
+  };
+  // The Layouts section's rows, from the draft: written fresh on each change, the keyboard put back where it was.
+  function paintLayoutRows(focus = null) {
+    const list = q('#setup-layout-rows');
+    if (!list) return;
+    const rows = fixedAvailable();
+    const can = state.layouts.canSetDefault;
+    list.innerHTML = rows.map((r, i) => {
+      const name = escapeHtml(r.name);
+      return `<li class="setup-layout-row" data-layout="${escapeHtml(r.id)}">
+        <div class="setup-layout-head"><i class="fa-solid fa-${iconOk(r.icon) ? escapeHtml(r.icon) : 'object-group'} fa-fw" aria-hidden="true"${r.id === 'workspace' ? ' id="setup-workspace-icon"' : ''}></i><span class="setup-layout-name"${r.id === 'workspace' ? ' id="setup-workspace-name"' : ''}>${name}</span>
+          <span class="setup-layout-move"><button type="button" class="btn btn-small" data-move="up" aria-label="Move ${name} up"${i === 0 || !can ? ' disabled' : ''}><i class="fa-solid fa-arrow-up" aria-hidden="true"></i> Move up</button><button type="button" class="btn btn-small" data-move="down" aria-label="Move ${name} down"${i === rows.length - 1 || !can ? ' disabled' : ''}><i class="fa-solid fa-arrow-down" aria-hidden="true"></i> Move down</button></span></div>
+        <div class="setup-layout-controls">
+          <label class="sdk-choice-row setup-layout-show"><span class="sdk-choice-text"><span class="sdk-choice-label">Show in the bar</span>${r.locked ? '<span class="sdk-choice-desc">The Workspace is always shown.</span>' : ''}</span><input type="checkbox" class="sdk-switch" role="switch" data-layout-show="${escapeHtml(r.id)}" aria-label="Show ${name} in the bar"${r.shown ? ' checked' : ''}${r.locked || !can ? ' disabled' : ''}></label>
+          <label class="setup-choice setup-layout-first"><input type="radio" name="setup-first-visit" value="${escapeHtml(r.id)}"${r.id === 'workspace' ? ' id="setup-first-workspace"' : ''} aria-label="${name} opens first"><span class="setup-choice-name">Opens first</span></label>
+        </div></li>`;
+    }).join('');
+    radioChecks();
+    if (focus) {
+      const row = list.querySelector(`[data-layout="${CSS.escape(focus.id)}"]`);
+      const mine = row && row.querySelector(`[data-move="${focus.move}"]:not(:disabled)`);
+      const other = row && row.querySelector('[data-move]:not(:disabled)');
+      (mine || other || row)?.focus();
+    }
+  }
+  function paintLayouts() {
+    const { layouts } = state;
+    paintLayoutRows();
+    const choices = layoutChoices().filter((c) => layouts.shared.some((l) => l.id === c.id));
+    q('#setup-first-visit-layouts').innerHTML = choices.map((c) => `<label class="setup-choice"><input type="radio" name="setup-first-visit" value="${escapeHtml(c.id)}"><i class="fa-solid fa-${escapeHtml(c.icon)} fa-fw" aria-hidden="true"></i><span class="setup-choice-name">${escapeHtml(c.name)}</span></label>`).join('');
+    radioChecks();
     const note = q('#setup-layout-note');
     note.textContent = layouts.shared.length ? '' : `A shared layout can be picked too: save one from the ${modulesWord(true)} tab, for everyone in this ${word('space')}.`;
     note.hidden = !note.textContent;
     paintLayoutLine();
+  }
+  // One of the Layouts section's controls changed or was pressed: the draft follows, the rows are drawn again.
+  function layoutsEvent(event) {
+    if (!state) return;
+    const t = event.target;
+    const live = q('#setup-layouts-live');
+    const available = fixedAvailable().map((r) => r.id);
+    if (event.type === 'click') {
+      const b = t.closest ? t.closest('[data-move]') : null;
+      if (!b || b.disabled) return;
+      const id = b.closest('[data-layout]').dataset.layout;
+      const name = (fixedAvailable().find((r) => r.id === id) || {}).name || id;
+      state.draft = withLayoutMoved(state.draft, id, b.dataset.move === 'up' ? -1 : 1, available);
+      paintLayoutRows({ id, move: b.dataset.move });
+      if (live) live.textContent = movedWords(state.draft, id, name, available);
+      return;
+    }
+    if (t.dataset && t.dataset.layoutShow) {
+      state.draft = withLayoutShown(state.draft, t.dataset.layoutShow, t.checked);
+      paintLayouts();
+      return;
+    }
+    if (t.name === 'setup-first-visit' && t.checked) {
+      state.draft = withOpensFirst(state.draft, t.value);
+      paintLayoutLine();
+    }
   }
   // While the first visit is a layout (a shared one, Calendar or Map), the line above the choices names it, with Stop
   // using it (the old page's, now a draft: the Workspace is picked, the Opens with switches stay as they are).
@@ -1301,12 +1433,11 @@ export function createSpaceSetup(deps) {
       state.draft.opensWith = setSwitch(state.draft.opensWith, event.target.dataset.opens, event.target.checked); // the first visit's choice stays as it is
       paintOpensWith();
     });
-    const firstVisit = q('#setup-first-visit');
-    if (firstVisit) firstVisit.addEventListener('change', (event) => {
-      if (event.target.name !== 'setup-first-visit' || !event.target.checked) return;
-      state.draft.defaultLayout = event.target.value === 'workspace' ? null : event.target.value; // Opens with stays as it is
-      paintLayoutLine();
-    });
+    const content = q('#setup-content-modules');
+    if (content) {
+      content.addEventListener('change', layoutsEvent);
+      content.addEventListener('click', layoutsEvent);
+    }
   }
   // Any edit in the panel: Save and the dots follow what changed (once, here; the panel is drawn again on each open).
   el.addEventListener('input', () => refresh());
@@ -1351,7 +1482,7 @@ export function createSpaceSetup(deps) {
     for (const k of Object.keys(fresh)) {
       if (k === 'opensWith' || k === 'defaultLayout') continue; // loadOptions has these from the first visit's own answer
       if (sameValue(state.draft[k], state.before[k])) {
-        state.draft[k] = Array.isArray(fresh[k]) ? [...fresh[k]] : k === 'phases' ? datesCopy(fresh[k]) : k === 'budget' ? { ...fresh[k] } : fresh[k];
+        state.draft[k] = Array.isArray(fresh[k]) ? [...fresh[k]] : k === 'tabs' ? tabsWhole(fresh[k]) : k === 'phases' ? datesCopy(fresh[k]) : k === 'budget' ? { ...fresh[k] } : fresh[k];
         state.before[k] = fresh[k];
       }
     }
@@ -1539,6 +1670,11 @@ export function createSpaceSetup(deps) {
       state.draft.defaultLayout = served;
       state.before.defaultLayout = served;
     }
+    // The owner's tabs as the server holds them, whole; a draft the person already changed is left alone.
+    if (layouts.tabs && sameValue(state.draft.tabs, state.before.tabs)) {
+      state.before.tabs = tabsWhole(layouts.tabs);
+      state.draft.tabs = tabsWhole(layouts.tabs);
+    }
     state.layouts = { system: Array.isArray(layouts.system) ? layouts.system : [], shared: Array.isArray(layouts.shared) ? layouts.shared : [], canSetDefault: layouts.canSetDefault !== false };
   }
 
@@ -1612,7 +1748,7 @@ export function createSpaceSetup(deps) {
   const FIELD_INPUT = {
     name: '#setup-name', description: '#setup-description', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
     publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', entry: '#setup-entry-accounts', closed: '#setup-open', requestAccess: '#setup-request-access', budget: '#setup-budget-amount',
-    opensWith: '#setup-opens-with input', defaultLayout: '#setup-first-visit input:checked', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
+    opensWith: '#setup-opens-with input', defaultLayout: 'input[name="setup-first-visit"]:checked', tabs: '#setup-layout-rows [data-layout-show]:not(:disabled)', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
     phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
   };
   // The fields in this environment's words: the members, the guest link switch, and each module's settings by its name.
