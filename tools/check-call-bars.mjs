@@ -159,13 +159,33 @@ async function runConference(browser, S) {
       tiles: document.querySelectorAll('#grid .tile').length, join: r('join-call'), joinParent: (document.getElementById('join-call')?.parentElement || {}).id, tab: (document.querySelector('[data-layout-tab][aria-current=page]') || { dataset: {} }).dataset.layoutTab,
       wider: document.documentElement.scrollWidth - innerWidth }; })()`;
   const items = `[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] [role=menuitemradio]')].map((e) => e.textContent.trim())`;
-  const press = async (id) => { await tab.eval(`document.querySelector('[data-layout-tab=${id}]').click()`); await sleep(1200); };
+  // A press on a layout tab, then the page as the press leaves it: the tab marked as shown and the Conference layout on or
+  // off with it (both are set in the press itself), waited for rather than timed, then a moment for the modules to draw.
+  // `quick`: no waiting at all, only that many milliseconds, for the round trips a person makes in a hurry.
+  const tabState = `(() => ({ tab: (document.querySelector('[data-layout-tab][aria-current=page]') || { dataset: {} }).dataset.layoutTab || '', view: document.body.classList.contains('view-conference') }))()`;
+  const press = async (id, quick = null) => {
+    await tab.eval(`document.querySelector('[data-layout-tab="${id}"]').click()`);
+    if (quick !== null) { await sleep(quick); return; }
+    const end = Date.now() + 8000;
+    let now = null;
+    while (Date.now() < end) { now = await tab.eval(tabState); if (now.tab === id && now.view === (id === 'conference')) break; await sleep(100); }
+    if (!now || now.tab !== id || now.view !== (id === 'conference')) failures.push(`the ${id} tab was pressed and 8 seconds later the page shows ${JSON.stringify(now)}`);
+    await sleep(900);
+  };
+  // The page settled on a layout: the same answer three times, 400ms apart (a late change would show between them).
+  const settled = async (id) => {
+    let same = 0;
+    const end = Date.now() + 12000;
+    while (Date.now() < end && same < 3) { const now = await tab.eval(tabState); same = now.tab === id && now.view === (id === 'conference') ? same + 1 : 0; await sleep(400); }
+    await sleep(1500); // and past the moment a module the Workspace opened would ask for another
+    return tab.eval(M);
+  };
   const waitCall = async (on) => { const end = Date.now() + 10000; while (Date.now() < end && (await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`)) !== on) await sleep(200); await sleep(700); };
   const near = (a, b, by = 2) => Math.abs(a - b) <= by;
   try {
     await driveScreen(tab, { id: 'conference', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
     const before = await tab.eval(M);
-    const open = `JSON.stringify((window.hostModules.captureLayout().modules || []).map((m) => [m.id, m.mode]))`;
+    const open = `JSON.stringify((window.hostModules.captureLayout().modules || []).map((m) => m.id + ':' + m.mode).sort())`;
     const openBefore = await tab.eval(open);
     if (!(await tab.eval(`Boolean(document.querySelector('[data-layout-tab=conference]'))`))) { failures.push('Conference: there is no Conference tab in the top bar'); return; }
     if (before.view || before.page || before.empty?.shown) failures.push(`Conference: the Workspace already looks like the Conference layout (${JSON.stringify(before)})`);
@@ -198,35 +218,86 @@ async function runConference(browser, S) {
     if (on.strip && on.column && on.strip.h + (on.head?.h || 0) < on.column.h - 2) failures.push(`Conference, on the call: the call is ${on.strip.h + (on.head?.h || 0)}px tall in a ${on.column.h}px page (the 55% rule is lifted here)`);
     if (on.canvas?.shown || on.wider > 0) failures.push(`Conference, on the call: the canvas is drawn or the page is wider than the window (${JSON.stringify([on.canvas, on.wider])})`);
     say(`Conference, on the call: ${on.tiles} tiles, the call ${on.strip?.w}x${on.strip?.h}px beside a ${on.chat?.w}px chat, tiles' grid ${on.grid?.w}x${on.grid?.h}px`);
-    // To the Workspace and back: the call stays on, the column is as it was.
-    await press('workspace');
-    const ws = await tab.eval(M);
-    if (!ws.inCall || ws.tiles !== on.tiles) failures.push(`Workspace after Conference: the call did not stay on (${JSON.stringify({ inCall: ws.inCall, tiles: ws.tiles })})`);
-    if (ws.view || ws.page || !ws.canvas?.shown || !near(ws.column?.w, before.column.w)) failures.push(`Workspace after Conference: the column and the canvas are not back (${JSON.stringify({ view: ws.view, page: ws.page, canvas: ws.canvas, column: ws.column })})`);
-    if (ws.strip && ws.column && ws.strip.h + (ws.head?.h || 0) > Math.round(ws.column.h * 0.55) + 2) failures.push(`Workspace after Conference: the call takes ${ws.strip.h + (ws.head?.h || 0)}px of a ${ws.column.h}px column (over 55%)`);
-    await press('conference');
-    const again = await tab.eval(M);
-    if (!again.inCall || again.tiles !== on.tiles || !again.view) failures.push(`Conference again: the call did not stay on (${JSON.stringify({ inCall: again.inCall, tiles: again.tiles, view: again.view })})`);
-    // Hang up: the large Start call is back here; in the Workspace it is not.
+    // Every way out of the Conference layout, on the call: the call goes back to the column at its saved Call position,
+    // its tiles seen there, the canvas back, no large Start call, and the call never hung up. Then back in, each time.
+    const inColumn = (m, how) => {
+      const bad = [];
+      if (!m.inCall || m.tiles !== on.tiles) bad.push(`the call did not stay on (${m.tiles} tiles)`);
+      if (m.view || m.page) bad.push('the Conference layout is still marked');
+      if (!m.canvas?.shown) bad.push('the canvas is not back');
+      if (!near(m.column?.w, before.column.w)) bad.push(`the column is ${m.column?.w}px, it was ${before.column.w}px`);
+      if (!m.strip?.shown || m.strip.h < 60 || m.strip.w > before.column.w + 1 || !m.grid?.shown || m.grid.x + m.grid.w > before.column.x + before.column.w + 1) bad.push(`the call's tiles are not seen in the column (strip ${JSON.stringify(m.strip)}, tiles ${JSON.stringify(m.grid)})`);
+      if (m.strip && m.column && m.strip.h + (m.head?.h || 0) > Math.round(m.column.h * 0.55) + 2) bad.push(`the call takes ${m.strip.h + (m.head?.h || 0)}px of a ${m.column.h}px column (over 55%)`);
+      if (m.empty?.shown || m.start?.shown) bad.push('the large Start call shows in the column');
+      if (m.wider > 0) bad.push(`the page is ${m.wider}px wider than the window`);
+      if (bad.length) failures.push(`out of Conference by ${how}: ${bad.join('; ')}`);
+      return !bad.length;
+    };
+    const inConference = (m, how) => {
+      const ok = m.view && m.page && m.tab === 'conference' && m.inCall && m.tiles === on.tiles && !m.canvas?.shown && m.strip?.shown && near(m.strip.w, m.win - m.chat.w) && near(m.chat.w, before.column.w);
+      if (!ok) failures.push(`back in Conference after ${how}: the call does not fill the page beside the chat (${JSON.stringify({ view: m.view, page: m.page, tab: m.tab, inCall: m.inCall, tiles: m.tiles, strip: m.strip, chat: m.chat })})`);
+      return ok;
+    };
+    const has = (id) => tab.eval(`Boolean(document.querySelector('[data-layout-tab="${id}"]'))`);
+    const ways = [];
+    const way = async (how, out) => {
+      await out();
+      for (const end = Date.now() + 8000; Date.now() < end && (await tab.eval(tabState)).view;) await sleep(100); // out of the layout, waited for
+      await sleep(1300);
+      const a = inColumn(await tab.eval(M), how);
+      await press('conference');
+      const b = inConference(await tab.eval(M), how);
+      ways.push(`${how} ${a && b ? 'ok' : 'FAILED'}`);
+    };
+    await way('the Workspace tab', () => press('workspace'));
+    if (await has('calendar')) await way('the Calendar tab', () => press('calendar'));
+    if (await has('map')) await way('the Map tab', () => press('map'));
+    for (const id of ['whiteboard', 'documents']) if (await has(id)) await way(`the ${id} tab`, () => press(id));
+    const saved = await tab.eval(`([...document.querySelectorAll('[data-layout-tab]')].map((b) => b.dataset.layoutTab).find((id) => !['workspace', 'calendar', 'map', 'conference', 'whiteboard', 'documents'].includes(id)) || '')`);
+    if (saved) await way('a saved layout tab', () => press(saved));
+    await way('the keyboard on the Workspace tab', async () => {
+      await tab.eval(`document.querySelector('[data-layout-tab=workspace]').focus()`);
+      for (const type of ['keyDown', 'keyUp']) await tab.cdp.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) }, tab.sid);
+    });
+    const pick = `(() => { const ids = ${JSON.stringify(['budget', 'polls', 'research', 'maps', 'places'])}; return ids.find((id) => (window.hostModules.NAME(id), window.hostModules.isOpen(id))) || ''; })()`;
+    let openedId = '';
+    await way('a module opened by the page (a link, a strip fact)', async () => { openedId = await tab.eval(pick.replace('NAME', 'open')); });
+    if (!openedId) failures.push('out of Conference by a module opened by the page: no module opened');
+    else if ((await tab.eval(M)).tab !== 'conference') failures.push('back in Conference after a module was opened: the tab is not Conference');
+    await way('a module shown by the page (Send to, Keep)', async () => { await tab.eval(pick.replace('NAME', 'show')); });
+    // A phone's width and back: the call is the phone's tab meanwhile, then the Conference layout again.
+    const size = (w) => tab.cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false }, tab.sid);
+    await size(390); await sleep(1500);
+    const phone = await tab.eval(M);
+    if (!phone.inCall || phone.tiles !== on.tiles || phone.view || !phone.grid?.shown || phone.grid.w < 300 || !phone.canvas?.shown) failures.push(`a phone's width from Conference: the call is not the tab shown (${JSON.stringify({ inCall: phone.inCall, tiles: phone.tiles, view: phone.view, grid: phone.grid, canvas: phone.canvas })})`);
+    await size(1280); await sleep(1500);
+    inConference(await tab.eval(M), 'a phone\'s width and back');
+    ways.push(`a phone's width and back (tiles' area ${phone.grid?.w}x${phone.grid?.h}px at 390)`);
+    say(`ways out of Conference, on the call: ${ways.join('; ')}`);
+    // Five unhurried round trips on the call, each press waited for: Conference every time.
+    let steady = 0;
+    for (let i = 0; i < 5; i++) { await press('workspace'); await press('conference'); if (inConference(await tab.eval(M), `round trip ${i + 1}`)) steady += 1; }
+    say(`5 round trips on the call, each waited for: Conference shown ${steady} of 5 times`);
+    // Quick round trips, on the call. A module the Workspace opens asks for another a moment later (Maps asks Places for
+    // its colours): pressed meanwhile, the Conference layout must stay (it was thrown back to the Workspace before).
+    for (let i = 0; i < 5; i++) { await press('workspace', 150 + i * 150); await press(i % 2 && (await has('calendar')) ? 'calendar' : 'workspace', 100); await press('conference', 100); }
+    const quick = await settled('conference');
+    if (inConference(quick, '5 quick round trips')) say(`5 quick round trips on the call: Conference stayed (${quick.tiles} tiles, the call ${quick.strip?.w}x${quick.strip?.h}px)`);
+    // Hang up: the large Start call is back here; in the Workspace it is not. And the same round trips with no call.
     await tab.eval(`document.getElementById('hangup').click()`); await waitCall(false);
     const off = await tab.eval(M);
-    if (off.inCall || !off.start?.shown) failures.push(`Conference, hung up: the large Start call did not come back (${JSON.stringify({ inCall: off.inCall, start: off.start })})`);
+    if (off.inCall || !off.view || !off.start?.shown || !near(off.empty?.w, off.win - off.chat.w)) failures.push(`Conference, hung up: the large Start call did not come back (${JSON.stringify({ inCall: off.inCall, view: off.view, start: off.start, empty: off.empty })})`);
+    for (let i = 0; i < 5; i++) { await press(i % 2 && (await has('calendar')) ? 'calendar' : 'workspace', 150 + i * 150); await press('conference', 100); }
+    const idle2 = await settled('conference');
+    if (!idle2.view || idle2.tab !== 'conference' || !idle2.start?.shown || idle2.canvas?.shown) failures.push(`5 quick round trips with no call: the Conference layout with its large Start call is not shown (${JSON.stringify({ view: idle2.view, tab: idle2.tab, start: idle2.start, canvas: idle2.canvas })})`);
     await press('workspace');
     const end = await tab.eval(M);
-    if (end.empty?.shown || end.start?.shown || end.view) failures.push(`Workspace, no call: the large Start call shows in the side column (${JSON.stringify([end.empty, end.start])})`);
+    if (end.empty?.shown || end.start?.shown || end.view || !end.canvas?.shown) failures.push(`Workspace, no call: the large Start call shows in the side column, or the canvas is not back (${JSON.stringify([end.empty, end.start, end.view])})`);
     // The Workspace is as it was: the same modules in the same modes (only the Workspace remembers).
     await sleep(800);
     const openAfter = await tab.eval(open);
     if (openAfter !== openBefore) failures.push(`Workspace after Conference: its modules are not as they were (${openAfter}; before ${openBefore})`);
-    // A module opened while the Conference layout hides the canvas: the Workspace comes back, so it can be seen.
-    await press('conference');
-    const other = await tab.eval(`(() => { const ids = ${JSON.stringify(['budget', 'polls', 'research', 'documents', 'whiteboard'])}; return ids.find((id) => !window.hostModules.isOpen(id) && (window.hostModules.open(id), window.hostModules.isOpen(id))) || ''; })()`);
-    await sleep(1200);
-    const opened = await tab.eval(M);
-    if (!other) say('a module opened from the Conference layout: no module to open in the seed, not tried');
-    else if (opened.view || opened.tab !== 'workspace' || !opened.canvas?.shown || !(await tab.eval(`window.hostModules.isOpen(${JSON.stringify(other)})`))) failures.push(`a module (${other}) opened from the Conference layout: the Workspace did not come back with it (${JSON.stringify({ view: opened.view, tab: opened.tab, canvas: opened.canvas })})`);
-    else say(`a module (${other}) opened from the Conference layout: the Workspace came back with it open`);
-    say(`Workspace and back: the call stayed on (${ws.tiles} tiles, the column ${ws.column?.w}px, the call ${ws.strip?.h + (ws.head?.h || 0)}px of ${ws.column?.h}px); hung up: large Start call ${off.start?.shown ? 'shown' : 'hidden'} on Conference, ${end.start?.shown ? 'SHOWN' : 'hidden'} in the Workspace`);
+    say(`hung up: large Start call ${off.start?.shown ? 'shown' : 'hidden'} on Conference, ${idle2.start?.shown ? 'shown' : 'hidden'} after 5 quick round trips, ${end.start?.shown ? 'SHOWN' : 'hidden'} in the Workspace; the Workspace's modules ${openAfter === openBefore ? 'as they were' : 'CHANGED'}`);
   } finally { await tab.close(); }
 }
 

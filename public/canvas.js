@@ -1599,13 +1599,14 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   function mountFor(mod, frame, extra = {}) {
     const m = mod.m;
     if (compositeOf(m)) return compositeMount(mod, frame);
-    return mountModule({
+    const mount = mountModule({
       module: { id: m.id, version: m.version, scope: m.scope, budget: m.budget === true, tags: m.tags === true, content: m.content },
       ...(frame.tagName === 'IFRAME' ? { frame } : { container: frame }),
       chrome: mod.frame,
-      onOpenRef: openRef,
+      onOpenRef: (ref) => (opened.get(m.id)?.mount === mount ? openRef(ref) : false), // only while this page of it is open
       // A request for an action waits for the page of the module that carries it: open that module if it is on here.
-      onOpenModule: (id) => { const target = available.find((x) => x.id === readId(id)); if (target && !opened.has(target.id)) openModule(target); },
+      // Only while the module that asked is still open with this page: one closed meanwhile (another layout loaded) opens nothing.
+      onOpenModule: (id) => { if (opened.get(m.id)?.mount !== mount) return; const target = available.find((x) => x.id === readId(id)); if (target && !opened.has(target.id)) openModule(target); },
       onChatAsk,
       onChatAttach,
       // The data changed (someone cleared it, or put it back): whether Clear is offered, and for how long Undo lasts, are asked again.
@@ -1631,6 +1632,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       },
       ...extra,
     });
+    return mount;
   }
 
   // `reuse` (from moveModule) carries the module's frame (createModuleFrame: its bands and the module's own frame or
@@ -1901,10 +1903,14 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     update();
   }
 
+  // A person asks to see a module (its switch or tab, a link, an object, a notice): the page hears it first, so a layout
+  // that hides the canvas (the Conference layout, space.js) can bring the canvas back for it. Only a person's own act:
+  // never a layout loading or being put back, and never a module asking for another by itself (onOpenModule, mountFor),
+  // which a module still loading does a moment after it opened, when the person may already be on another layout.
+  function personOpens(m) {
+    if (m && !restoring && !suspended) onOpening?.(m.id);
+  }
   function openModule(m, mode) {
-    // A module a person opens (a switch, a link, an object): the page hears it first, so a layout that hides the canvas
-    // (the Conference layout, space.js) can bring the canvas back for it. Never while a layout loads or is put back.
-    if (!restoring && !suspended && !opened.has(m.id)) onOpening?.(m.id);
     if (!restoring) keepLayout = false;
     const p = { id: m.id, modes: m.canvas.mode, kind: 'module' };
     if (opened.has(m.id)) {
@@ -1943,6 +1949,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     }
     const m = available.find((x) => x.id === readId(ref.module));
     if (!m) return false;
+    personOpens(m);
     if (!opened.has(m.id)) openModule(m);
     const mod = opened.get(m.id);
     if (!mod || !mod.mount) return false;
@@ -2563,7 +2570,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     const builtin = builtins.has(id);
     const m = builtin ? null : available.find((x) => x.id === id);
     if (!builtin && !m) return;
-    const open = () => (builtin ? api_openBuiltin(id) : openModule(m));
+    const open = () => { if (builtin) return api_openBuiltin(id); personOpens(m); return openModule(m); };
     const close = () => (builtin ? closeBuiltin(id) : closeModule(id));
     if (tab && isNarrow()) { if (opened.has(id)) setView(id); else open(); return; }
     if (opened.has(id) && hiddenByView(id)) setView(id);
@@ -2846,6 +2853,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     if (builtins.has(id)) return api_showBuiltin(id);
     const m = available.find((x) => x.id === readId(id));
     if (!m) return false;
+    personOpens(m);
     if (!opened.has(m.id)) openModule(m);
     else if (opened.get(m.id).mode === 'window') opened.get(m.id).win?.focus?.();
     else setView(m.id);
@@ -2903,6 +2911,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     open: (id, mode) => {
       const m = available.find((x) => x.id === readId(id));
       if (!m) return;
+      personOpens(m);
       if (mode) remember(m.id, { mode });
       openModule(m, mode);
     },
@@ -2951,6 +2960,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       if (n.scope !== 'space' || n.spaceId !== spaceId) return false;
       const m = available.find((x) => x.id === readId(n.module));
       if (!m) return false;
+      personOpens(m);
       openModule(m);
       return true;
     },

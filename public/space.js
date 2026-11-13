@@ -64,6 +64,7 @@ nav.attach('secondary', subnav); // its tools are registered further down, once 
 // below). For the visit only: entering a space resets it. (setView() further down is the
 // conference's own layout, another thing.)
 let currentLayoutTab = 'workspace';
+let conferenceWas = false; // the Conference layout is drawn now (syncConferenceView)
 // The Layout menu (plan-layout-menu.md; Thomas, 2026-10-13: the page's shared menu, host-menu.js, not a panel of its
 // own): one icon button, Layout (the environment's `layout` verb), beside Set up in the top bar wider than a phone,
 // registered with Set up further down. canvas.js draws the menu from its items (Show, Arrange) and the Layouts section
@@ -1206,8 +1207,9 @@ const canvas = createCanvas({
   // The Layouts section is read again each time the menu opens, and drawn from layoutMenuItems() with the note last.
   onMenu: (open) => { if (open) refreshLayouts(); },
   onArrange: () => arrangementChanged(),
-  // A module opened while the Conference layout hides the canvas (a link in the chat, a switch in the Layout menu, a
-  // fact in the status strip): the Workspace comes back first, so it opens where it can be seen. The call stays on.
+  // A person opens a module while the Conference layout hides the canvas (a link in the chat, a switch in the Layout
+  // menu, a fact in the status strip): the Workspace comes back first, so it opens where it can be seen. The call stays
+  // on and goes back to the column. Never for a module asking for another by itself (canvas.js, personOpens).
   onOpening: () => { if (currentLayoutTab === 'conference') pressLayoutTab('workspace'); },
   menuItems: () => layoutMenuItems(),
   noteEl: menuNote,
@@ -1570,6 +1572,7 @@ homeChatChanged = () => { if ($('chat-command-wrap')) $('chat-command-wrap').hid
 // rail.
 function syncColumn() {
   paintJoinCall();
+  if (currentLayoutTab === 'conference' || conferenceWas) syncConferenceView(); // the Conference layout follows its tab, whatever changed
   if (!columnEl || columnToolsIn !== 'column') return;
   joinCallButton.hidden = !joinCallWanted();
   columnEl.classList.toggle('in-call', inCall);
@@ -1904,10 +1907,11 @@ function syncCallPlace() {
 // The Conference layout coming and going (plan-workspaces.md, step 4): body.view-conference and .work.view-conference hide
 // the canvas, and the column (.call-page, syncCallPlace) is the page: the chat at the width it had, the call in the rest.
 // The call is never hung up by it. Coming: a floating call (the person's, or lifted for a screen share) goes into the
-// page, and a folded column opens, neither remembered. Going: the fold as it was saved, and the call floating again where
-// that is the person's choice or a screen is shared. A call in its own window stays there both ways. On a phone the
-// Conference is the call's tab.
-let conferenceWas = false;
+// page, and a folded column opens, neither remembered. Going, by any way out (another tab, a module opened, a phone's
+// width, the space left): the call is the column's again at its saved Call position, the column open while on a call
+// (else folded as it was saved), floating again where that is the person's choice or a screen is shared. A call in its
+// own window stays there both ways. On a phone the Conference is the call's tab. syncColumn() asks again on every
+// layout pass, so the page can never stay half in the Conference layout.
 function syncConferenceView() {
   const on = conferenceShown();
   document.body.classList.toggle('view-conference', on);
@@ -1918,7 +1922,7 @@ function syncConferenceView() {
     if (['float', 'share'].includes(callWhere())) canvas.returnBuiltin('conference');
     if (columnCollapsed()) setColumnCollapsed(false, { remember: false });
   } else {
-    applyColumnPref();
+    if (!inCall) applyColumnPref(); // on a call the column stays open, so the call is seen where it went
     if (currentLayoutTab === 'conference' && phoneWidth()) canvas.showBuiltin('conference');
     else if (inCall && prefs.callFloat && callWhere() === 'column') canvas.liftBuiltin('conference', true, 'person');
     syncShareLift();
@@ -3619,8 +3623,9 @@ function pressLayoutTab(id, from = null, { load = true } = {}) {
     if (load) canvas.loadLayout(layout);
   } finally {
     noteUnderFavorites = false;
+    if (id === 'conference') syncConferenceView(); // whatever the load did: the tab shown and the page agree
   }
-  if (id === 'conference') { syncConferenceView(); layoutNote('Conference layout.'); }
+  if (id === 'conference') layoutNote('Conference layout.');
   rebaseLayout();
   canvas.refreshMenu();
 }
