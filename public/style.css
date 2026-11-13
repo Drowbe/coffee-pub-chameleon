@@ -1967,11 +1967,24 @@ body.in-space .subnav {
   display: none;
 }
 
-/* In the chat: the right end of the Discussion | Assistant row, "turn this discussion into a call": a button of its own,
-   apart from the switch. */
-#chat-views .join-call {
+/* In the call's title bar, the first of its tools (space.js): Start call, or Join call while a call runs. The sdk's title
+   bar tools are icon buttons, so it keeps clear of the next one. */
+.side-column-call-head .join-call {
   flex: none;
-  margin-left: auto;
+  margin-right: var(--space-1);
+  color: var(--text-on-accent); /* a title bar's buttons inherit the bar's ink (system.css), which would put dark ink on the accent */
+}
+
+/* A narrow column: Start call keeps only its phone (its name is still said: aria-label, tooltip), so the "..." is not
+   pushed under the column's handle. */
+.side-column-call-head {
+  container-type: inline-size;
+}
+
+@container (max-width: 236px) {
+  .side-column-call-head .join-call-label {
+    display: none;
+  }
 }
 
 /* The switch's marks: the Discussion's unread count (the Chips count) and the Assistant's news dot (the Chips dot), after the
@@ -8184,6 +8197,33 @@ h4.setup-subheading {
   padding-right: 40px;
 }
 
+/* The same, past system.css's own .mf-titlebar padding (it loads after this file): the "..." must not sit under the handle. */
+.side-column > .side-column-call-head {
+  padding-right: 40px;
+}
+
+/* The call's own area out of the call: one large Start call (Join call while a call runs), space.js. */
+.side-column-call-empty {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) var(--space-4);
+}
+
+.side-column-call-empty[hidden] {
+  display: none;
+}
+
+.side-column-call-empty .btn {
+  --btn-h: 44px;
+  --btn-pad-x: var(--space-6);
+}
+
+body.in-aside .side-column-call-empty {
+  display: none;
+}
+
 .call-time {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -8407,7 +8447,8 @@ body:not(.in-aside) .side-column-chat {
   display: flex;
 }
 
-.side-column-rail-chat {
+.side-column-rail-chat,
+.side-column-rail-call {
   position: relative;
   width: 32px;
   height: 32px;
@@ -8419,14 +8460,31 @@ body:not(.in-aside) .side-column-chat {
   cursor: pointer;
 }
 
-.side-column-rail-chat:hover {
+.side-column-rail-chat:hover,
+.side-column-rail-call:hover {
   border-color: var(--border);
   color: var(--text);
 }
 
-.side-column-rail-chat:focus-visible {
+.side-column-rail-chat:focus-visible,
+.side-column-rail-call:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.side-column-rail-call[hidden] {
+  display: none;
+}
+
+/* On the call: a dot on the icon's corner, as the unread count sits on Chat's. */
+.side-column-rail-call .sdk-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+}
+
+.side-column-rail-call .sdk-dot[hidden] {
+  display: none;
 }
 
 .side-column-rail-faces {
@@ -8512,6 +8570,7 @@ body.in-aside .side-column-strip .no-call {
 }
 
 .side-column.call-bottom .side-column-call-head,
+.side-column.call-bottom .side-column-call-empty,
 .side-column.call-bottom .side-column-strip,
 .side-column.call-bottom .side-column-call-out {
   order: 3;
@@ -8609,6 +8668,12 @@ body.in-aside .side-column-strip .no-call {
 .side-column.call-left > .side-column-call-out {
   grid-area: out;
   padding-right: 8px;
+}
+
+/* Out of the call the large Start call has the call's column under its title bar (the empty strip takes no room there). */
+.side-column.call-left > .side-column-call-empty {
+  grid-column: 1;
+  grid-row: 2 / 6;
 }
 
 body:not(.in-aside) .side-column.call-left > .side-column-chat {

@@ -113,16 +113,23 @@
   <aside class="side-column" id="side-column" aria-label="Call and chat">
     <!-- The handle: collapses the column to a rail and back. space.js remembers it per space. -->
     <button class="side-column-toggle" id="side-column-toggle" type="button" aria-expanded="true" data-tip="Collapse" aria-label="Collapse the call and chat"><i class="fa-solid fa-angles-left fa-fw" aria-hidden="true"></i></button>
-    <!-- The call's titlebar, as the chat's: its name (the environment's name for the conference, else Call) and a "..."
-         with Pop out, Call position, Settings and Leave the call (space.js, the call's place). -->
+    <!-- The call's titlebar, as the chat's, drawn all the time (plan-workspaces.md, decision 15): its name (the environment's
+         name for the conference, else Call), Start call (or Join call) while out of the call (space.js puts the button
+         first in the tools), Pop out while on it, and a "..." with Pop out, Call position, Settings and Leave the call
+         (space.js, the call's place). -->
     <header class="mf-titlebar side-column-call-head" id="call-head">
       <span class="mf-titlebar-icon" aria-hidden="true"><i class="fa-solid fa-video fa-fw" id="call-head-icon"></i></span>
       <span class="mf-titlebar-title side-column-call-title"><span id="call-head-name">Call</span> <span class="call-time nav-text" data-call-time hidden><span aria-hidden="true">&middot;</span> <time aria-live="off" datetime="PT0S">00:00</time></span></span>
-      <span class="mf-titlebar-tools">
+      <span class="mf-titlebar-tools" id="call-head-tools">
         <button class="mf-icon-btn mf-titlebar-btn" id="call-head-popout" type="button" data-tip="Pop out the call" aria-label="Pop out the call"><i class="fa-solid fa-up-right-from-square fa-fw" aria-hidden="true"></i></button>
         <button class="mf-icon-btn mf-titlebar-btn" id="call-more" type="button" data-tip="More" aria-label="More for the call" aria-haspopup="menu"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button>
       </span>
     </header>
+    <!-- The call's own area out of the call (decision 28): one large Start call (Join call while a call is running).
+         space.js shows it with the title bar, and joins as the title bar's button does. -->
+    <div class="side-column-call-empty" id="call-empty" hidden>
+      <button class="btn btn-primary" id="call-start" type="button" aria-label="Start call"><i class="fa-solid fa-phone fa-fw" aria-hidden="true"></i> <span id="call-start-label">Start call</span></button>
+    </div>
     <!-- The conference, as a strip of tiles while on the call (canvas.js puts it here). -->
     <div class="side-column-strip" id="side-column-strip"></div>
     <!-- The split between the call's strip and the chat: dragged, or Up and Down with the keyboard. Shown on the call. -->
@@ -141,9 +148,11 @@
     </div>
     <!-- The chat (canvas.js puts #chat here). -->
     <div class="side-column-chat" id="side-column-chat"></div>
-    <!-- Collapsed: the faces on the call and the chat's unread count. -->
+    <!-- Collapsed: the chat's unread count, the call's icon (a dot while on the call; a press shows the call, it never
+         starts one) and the faces on the call. -->
     <div class="side-column-rail" id="side-column-rail">
       <button class="side-column-rail-chat" id="side-column-rail-chat" type="button" data-tip="Chat" aria-label="Chat"><i class="fa-solid fa-message fa-fw" aria-hidden="true"></i><span class="sdk-badge-micro" id="side-column-rail-unread" hidden></span></button>
+      <button class="side-column-rail-call" id="side-column-rail-call" type="button" data-tip="Show the call" aria-label="Show the call" hidden><i class="fa-solid fa-video fa-fw" id="side-column-rail-call-icon" aria-hidden="true"></i><span class="sdk-dot" id="side-column-rail-call-dot" aria-hidden="true" hidden></span></button>
       <div class="side-column-rail-faces" id="side-column-rail-faces"></div>
     </div>
     <!-- The column's inner edge: dragged to make the column wider or narrower, or Left and Right with the keyboard
