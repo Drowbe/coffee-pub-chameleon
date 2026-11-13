@@ -1,14 +1,21 @@
 # Space Templates Plan
 
-**Audience:** Thomas decides every open question at the end. If he approves, server-development builds the data and the server's resolution of a space's words and phases, and experience-design builds the pages (the words on a space's page, the choice in Set up and in Add). Steps 1 and 2 are core changes (`server/`, the stored data format, what `public/module-host.js` sends to a frame) and are held for an independent read. quality-assurance reads the result; content-manager documents it after.
+**Audience:** Thomas decides the open questions at the end (two are answered, see Decisions). If he approves, server-development builds the data and the server's resolution of a space's words and phases, and experience-design builds the pages (the words on a space's page, the choice in Set up and in Add). Steps 1 and 2 are core changes (`server/`, the stored data format, what `public/module-host.js` sends to a frame) and are held for an independent read. quality-assurance reads the result; content-manager documents it after.
 
-**Status:** Draft for Thomas, 2026-11-12, by product-planner (GitHub #750). Nothing is decided and nothing is built. From Thomas, 2026-11-12: "Right now we apply a template (e.g. travel) at the environment level. We discussed letting the default be set at the environment level but letting each space be able to use a different template (e.g. game)."
+**Status:** Draft for Thomas, 2026-11-12, by product-planner (GitHub #750). Updated 2026-11-13 with Thomas's answers to questions 1 and 3 (decisions 1 and 2). Every other question is still a suggestion, not confirmed. Nothing is built. From Thomas, 2026-11-12: "Right now we apply a template (e.g. travel) at the environment level. We discussed letting the default be set at the environment level but letting each space be able to use a different template (e.g. game)."
 
 ## Why
 
 An environment has one template today. A group that runs a trip and a campaign in the same environment reads "trip", "Itinerary" and a six-step trip timeline in both, or the owner overrides every word by hand and still has the wrong timeline. The idea is that the environment keeps a template as the default and a space may choose another, so a trip space reads as Travel and a campaign space reads as Games.
 
 This changes what the machinery of [plan-environment-templates](plan-environment-templates.md) is keyed on. Today everything about a template is resolved once per environment, per request. A space's template adds a second key, the space, and every place that resolves a word, a phase or a module name has to know which space it speaks for. That is the whole cost of the idea, and most of this plan is about where it lands.
+
+## Decisions
+
+Thomas, 2026-11-13 (DECIDED). Numbered in this plan's own list.
+
+1. **What a space's own template changes: the words, the phases, the module display names and icons, and the space's starting defaults** (`opensWith` and `profile`, seeded when the space is made). It does **not** change which modules exist, and it does not change settings, reactions, icons or the theme. Those stay the environment's. Reason: it covers everything a person reads and the shape of the timeline, without reversing plan-layout-views decision 16 or touching the billing plan's module limit.
+2. **Who chooses, and when:** owners and the admin choose, at any time, in Set up's Space tab and when adding a space. A moderator reads the template but does not choose it.
 
 ## What it is today
 
@@ -50,16 +57,17 @@ For each piece: could it differ per space, and what breaks if it does.
 
 ## The shape the suggestions add up to
 
-Every question at the end has my suggestion first. Taken together they give the contract below. Where an answer changes the contract, the section says which question.
+Every open question at the end has my suggestion first, and none of them is confirmed. Decisions 1 and 2 are Thomas's. Taken together they give the contract below. Where an answer changes the contract, the section says which question.
 
 ### Data (server-development)
 
 - **The stored shape (question 7).** A space record gains an optional `template: "<id>"` (`sanitizeSpace`). Absent means the environment's template. No `appliedAt`, `skipped` or `applied` on a space: with the scope below nothing is applied once to a space. The Lobby never has the key (`id !== LOBBY`, as `entry` and `requestAccess` are handled). The product is not released, so there is no migration; a space made before this has no key and reads the environment's.
+- **Starting defaults (decision 1).** When a space is made with a template of its own, the space's `opensWith` and `profile` start from that template's `spaceDefaults`, else the environment's, as `addSpace` does now. After that they are the owner's; a later change of template does not touch them (question 5b is about offering them).
 - **An unknown id** (a template the host later deleted or a release dropped) reads as the environment's, and the log says so once per id. Deleting a template is refused while any environment's record or any space names it: `DELETE /api/host/templates/:id` answers 409 "Environments or spaces use this template: <names>. Hide it instead.", and `usedBy` gains the number of spaces.
 - **Resolution.** One new store method, for example `lookOf(spaceId)`, answers the words, verbs, phases, module display names and icons for a space: the owner's own (environment-wide, `settings.words`, `settings.moduleNames`) first (question 10), then the space's template, then the environment's template, then the defaults. With no space, or a space with no `template`, it answers exactly what `resolvedWords()`, `resolvedVerbs()`, `templatePhases` and `moduleDisplay()` answer today. `host` and `admin` always read the defaults.
 - **The server's `word()`.** `useCurrent` reads the request's environment. It gains a second, optional context, the space the request is about (set from the route's `:id` or the module context's `spaceId`), so a message built inside a space's route says "no such trip" for a trip. Outside a space's route nothing changes.
 - **Routes.**
-  - `PATCH /api/spaces/:id { template: "<id>" | null }`: owner and host admin (question 3). Unknown id: 400 "There is no template called <id>." The same id as now: 200, nothing changed. `null` returns the space to the environment's. On the Lobby: 400 with one sentence. The answer is the space, as today.
+  - `PATCH /api/spaces/:id { template: "<id>" | null }`: owner and host admin (decision 2). Unknown id: 400 "There is no template called <id>." The same id as now: 200, nothing changed. `null` returns the space to the environment's. On the Lobby: 400 with one sentence. The answer is the space, as today.
   - `POST /api/spaces { ..., template }`: the same field at creation.
   - `GET /api/spaces` and `GET /api/spaces/:id` gain `template` (the id or null). `GET /api/spaces/:id` also gains `look: { words, verbs, phases }`, resolved for that space, so the page paints the space's words without a second request.
   - `GET /api/modules/:id/context` answers `locale.words`, `phases` and `module.name` and `.icon` from `lookOf(ctx.spaceId)`. No template id reaches a module (the conduit rule, decision 12 of the environment-templates plan).
@@ -94,7 +102,7 @@ Every question at the end has my suggestion first. Taken together they give the 
 |---|---|
 | **Owner** | Chooses a space's template in Set up and when adding a space; turns the feature off in Manage > Template. Sees the environment's words on Home and in Manage, the space's inside it. |
 | **Admin (host)** | As an owner. The console's "Used by" shows spaces. |
-| **Moderator** | Reads the space's words and phases. Cannot change the template (question 3). |
+| **Moderator** | Reads the space's words and phases. Cannot change the template (decision 2). |
 | **Member** | Reads the space's words and phases; Home and the bell in the environment's. |
 | **Guest by link** | Sees only the link's space, in that space's words. The form's heading before the link is read stays the environment's. |
 | **Guest by the door** | The door page is the environment's; once in a space, that space's. |
@@ -170,7 +178,7 @@ Sizes: S under a day, M a day or two, L several days.
 2. **The words and phases on a space's page** (experience-design, L; core change because the frames' context changes, held for an independent read). The scoped words in `public/words.js`, the Home and space switch, the chip and Set up reading the space's phases, module frames, the guest page, the stale-date save.
    - Done when: `check-names --words` passes and no scoped word reaches `localStorage`.
    - Verify: live in a browser on the two-space setup, at 1280 and 390 px, as owner, member and guest.
-3. **The choices** (experience-design, S). The Template choice in Set up's Space tab and in Add, the Manage switch and Words note, the console's "Used by".
+3. **The choices** (experience-design, S). The Template choice in Set up's Space tab (owners and the admin only, decision 2; a moderator sees the template named, with no control) and in Add, the Manage switch and Words note, the console's "Used by".
    - Verify: live in a browser.
 4. **QA** (quality-assurance): the independent read of steps 1 and 2 and the live walk above.
 5. **Documentation** (content-manager): see "Doc facts".
@@ -181,27 +189,19 @@ What changes when this lands (content-manager's): [architecture-environments](..
 
 ## Open questions for Thomas
 
-My suggestion is first in each. "Blocks" means the build waits for the answer.
+Questions 1 and 3 are answered (decisions 1 and 2) and are removed from this list; the others keep their numbers. My suggestion is first in each and is **not yet confirmed**. "Blocks" means the build step named waits for the answer.
 
-**1. What a space's template changes. Blocks.**
-- **Suggested: words, verbs, phases and module display names and icons, with the space's starting defaults (`opensWith`, `profile`) seeded at creation. Not which modules exist, and not settings, reactions, icons or the theme.** It is everything a person reads plus the shape of the timeline, and it does not reverse plan-layout-views decision 16. A trip and a campaign can sit side by side with no change to the billing plan's module limit.
-- Only words and phases: smaller, but a Games space would still show "Itinerary".
-- Everything, including which modules: needs per-space module lists and per-space entitlement, which reopens a built decision. Not suggested for version 1.
+**Still blocking a build step:** 2a and 2b (the words on the pages, step 2), 4 and 10 (step 1), 5c (the guest page, steps 1 and 2). **Do not block:** 5a, 5b, 6, 7, 8, 9. Step 1 can start on the data, the routes and the resolution order as far as the decisions go; it waits for 4 and 10 before it fixes the phase-date rule and the owner's-words rule.
 
-**2a. Whose words on a page that mixes spaces. Blocks.**
+**2a. Whose words on a page that mixes spaces. Blocks step 2.**
 - **Suggested: inside one space, the space's; everywhere else, the environment's.** Home, the switcher, the bell's headings, Manage and the top bar outside a space use the environment's. A notice about one named space uses that space's words.
 - The environment's words everywhere, notices included: simplest, but a bell line about a campaign says "trip".
 - The space's words in lists too (each card in its own word): a list of mixed nouns reads badly and has no heading word.
 
-**2b. Which keys change inside a space. Blocks the page work.**
+**2b. Which keys change inside a space. Blocks step 2.**
 - **Suggested: `space`, `aside`, `canvas`, `module`, `object`, `moderator`, `member`, `guest` and the `layout` verb. Not `environment`, `owner`, `home` or the `enter` verb,** which name things above a space.
 - Also `owner`: a "game master" in a campaign, an "owner" on a trip. But the owner manages the whole environment from Manage, where one word must read.
 - All keys: the people words flip as a person moves, even where the same person is meant.
-
-**3. Who chooses, when, and where. Blocks.**
-- **Suggested: owners and the host admin, at creation and any time, in Set up's Space tab and in Add; a moderator reads it but does not choose.** A change alters what everyone in the space reads, and Set up gives moderators phases and settings only (plan-one-bar decision 5).
-- Owners and moderators: moderators "manage specific things within a space", but this changes words for everyone.
-- At creation only: simpler, with no switch rules, but a wrong choice cannot be fixed.
 
 **4. What happens to phase dates and data when a space's template changes. Blocks step 1.**
 - **Suggested: keep the dates on the record, ignore ids the new template lacks, drop them from a save, and keep dates for ids the two templates share.** Changing back loses nothing; module data is never touched.
@@ -216,7 +216,7 @@ My suggestion is first in each. "Blocks" means the build waits for the answer.
 - **Suggested: no offer in version 1.** `opensWith` and `profile` seed a new space only; after that they are the owner's.
 - Offer them unticked, as the environment switch offers the Lobby: more screens for little.
 
-**5c. Guests. Blocks the guest page work.**
+**5c. Guests. Blocks the guest read (step 1) and the guest page (step 2).**
 - **Suggested: a link guest reads the link's space's words; a door guest reads the door page in the environment's and the space in its own.** The guest read answers the space's `look`.
 - The environment's for every guest: nothing to build, but a guest in a campaign sees "trip".
 
@@ -227,7 +227,7 @@ My suggestion is first in each. "Blocks" means the build waits for the answer.
 
 **7. The stored shape. Does not block.**
 - **Suggested: `template: "<id>"` on the space, absent means the environment's.** Nothing is "applied", so no record of it. No migration (unreleased).
-- A full record like the environment's (`{ id, appliedAt, skipped }`): only needed if question 1 takes modules or settings.
+- A full record like the environment's (`{ id, appliedAt, skipped }`): only needed if modules or settings were ever taken in (decision 1 leaves them out).
 
 **8. A template mark on space cards and in the switcher. Does not block.**
 - **Suggested: none in version 1.** A person sees the template in Set up and in the words.
