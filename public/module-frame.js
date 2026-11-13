@@ -235,7 +235,7 @@ export function createModuleFrame(opts = {}) {
       if (r.divider) return { divider: true };
       if (r.heading) return { heading: r.heading };
       if (r.items) return { label: r.label, ...(r.disabled ? { disabled: true } : {}), items: r.items.map((k) => row(k, r.items)) };
-      return { label: r.label, ...(r.disabled ? { disabled: true } : {}), ...(siblings.some((x) => x.current) ? { radio: true, checked: Boolean(r.current) } : {}), onPick: () => tbFire({ id: a.id, value: r.id, el: b }) };
+      return { label: r.label, ...(r.disabled ? { disabled: true } : {}), ...(r.hint ? { hint: r.hint } : {}), ...(siblings.some((x) => x.current) ? { radio: true, checked: Boolean(r.current) } : {}), onPick: () => tbFire({ id: a.id, value: r.id, el: b }) };
     };
     const list = Array.isArray(a.items) ? a.items : [];
     return list.map((r) => row(r, list));

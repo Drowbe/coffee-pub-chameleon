@@ -1181,6 +1181,7 @@
     coApplyRO();
     coLockBanner();
     renderChrome();
+    paintHeader(); // Rename and Delete in the title bar's select follow the lock
     coEditorsPaint();
   }
   function coLockBanner() {
@@ -1825,8 +1826,11 @@
     } else items.push({ id: `d.${here}`, label: titleNow(), current: true });
     const acts = [];
     if (canEdit && !joining()) {
+      const shared = Boolean(ed && ed.co);
+      const rules = shared ? coRemoveRules(coLockNow()) : { off: false }; // a locked shared document: Rename and Delete are off, with the reason (New document is about other documents)
+      const off = () => (rules.off ? { disabled: true, hint: rules.reason } : {});
       if (!ed || ed.co) acts.push({ id: 'new', label: 'New document' });
-      if (!ed || (ed.co && ed.co.ready && !ed.co.dead && ed.co.editor)) { acts.push({ id: 'rename', label: 'Rename' }); acts.push({ id: 'delete', label: 'Delete' }); }
+      if (!ed || (ed.co && ed.co.ready && !ed.co.dead && ed.co.editor)) { acts.push({ id: 'rename', label: 'Rename', ...off() }); acts.push({ id: 'delete', label: 'Delete', ...off() }); }
       else if (ed && !ed.co) acts.push({ id: 'rename', label: 'Rename' });
     }
     if (acts.length) items.push({ divider: true }, ...acts);
