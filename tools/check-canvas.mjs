@@ -187,6 +187,9 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     ['nothing stored: what opens instead, by name',
       opensWithSummary({ list: null, modules: ['todo', 'polls'], nameOf: (id) => ({ chat: 'Chat', todo: 'To-do', polls: 'Polls' })[id] }),
       'Nothing switched on: Chat, To-do and Polls open.'],
+    ['the summary says each switch once: Places and To-do under Maps and Calendar',
+      opensWithSummary({ list: null, modules: ['maps', 'places', 'calendar', 'todo'], nameOf: (id) => ({ maps: 'Maps', calendar: 'Calendar' })[id] || id, groupOf: (id) => ({ places: 'maps', todo: 'calendar' })[id] || id }),
+      'Nothing switched on: chat, Maps and Calendar open.'],
     ['nothing stored, the environment\'s list: its names',
       opensWithSummary({ list: null, environment: ['todo'], modules: ['todo', 'polls'], nameOf: (id) => ({ todo: 'To-do' })[id] }),
       'Nothing switched on: To-do opens.'],
@@ -831,7 +834,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'canvas-check-'));
   const copy = path.join(tmp, 'composites.mjs');
   fs.copyFileSync(path.join(ROOT, 'public/composites.js'), copy);
-  const { COMPOSITES, compositesOn, compositesToAsk, aliasesFor, readAs, composeList, isCompositeId } = await import(pathToFileURL(copy).href);
+  const { COMPOSITES, compositesOn, compositesToAsk, aliasesFor, readAs, composeList, isCompositeId, groupOf, switchOn, groupedParts, setSwitch } = await import(pathToFileURL(copy).href);
   fs.rmSync(tmp, { recursive: true, force: true });
   const F = 'public/composites.js';
   const src = fs.readFileSync(path.join(ROOT, F), 'utf8');
@@ -865,6 +868,21 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   assert.deepEqual(mapShown.map((m) => m.id), ['travel', 'dest:map'], 'the Show list: one Map in Maps\' place, Places left out');
   if (mapShown[1].name !== 'Maps' || mapShown[1].icon !== 'map-location-dot' || mapShown[1].color !== 'pink' || mapShown[1].composite?.path !== '/map') fail(F, 'the Map composite reads as Maps: its name, icon and colour, its page /map');
   assert.deepEqual(composeList(mapList).map((m) => m.id), ['travel', 'places', 'maps'], 'with no map file the Show list keeps Maps and Places as they are');
+  // Opens with, grouped as the canvas groups (Set up's First visit): Maps carries Places, Calendar carries To-do.
+  assert.deepEqual(groupedParts(['chat', 'maps', 'places', 'calendar', 'todo']), ['todo', 'places'], 'no row for Places or To-do while Maps and Calendar have one');
+  assert.deepEqual(groupedParts(['places', 'todo']), [], 'with no Maps or Calendar row the parts keep their own');
+  assert.equal(switchOn(['places'], 'maps'), true, 'a stored places shows the Maps row on');
+  assert.equal(switchOn(['todo'], 'calendar'), true, 'a list with only todo shows Calendar on');
+  assert.equal(switchOn(['chat'], 'maps'), false, 'and off when none is named');
+  assert.equal(groupOf('places'), 'maps'); assert.equal(groupOf('todo'), 'calendar'); assert.equal(groupOf('chat'), 'chat');
+  assert.deepEqual(setSwitch(['chat', 'places', 'todo'], 'maps', false), ['chat', 'todo'], 'turning Maps off removes the main and its parts');
+  assert.equal(setSwitch(['places', 'maps'], 'maps', false), null, 'and an empty list is null');
+  assert.deepEqual(setSwitch(['chat'], 'maps', true), ['chat', 'maps'], 'turning Maps on stores the main id');
+  assert.deepEqual(setSwitch(['todo', 'chat'], 'calendar', false), ['chat'], 'turning Calendar off clears a lone todo');
+  assert.deepEqual(setSwitch(['chat'], 'chat', false), null);
+  const before = Object.freeze(['places']);
+  setSwitch(before, 'maps', false);
+  assert.deepEqual([...before], ['places'], 'the list given is never changed');
   const stored = Object.freeze(['todo', 'chat', 'calendar', 'notes']);
   assert.deepEqual(readAs(stored, aliasesFor(['calendar', 'todo', 'notes'])), ['dest:calendar', 'chat', 'notes'], 'a stored list reads with the composite once, in the first part\'s place');
   assert.deepEqual([...stored], ['todo', 'chat', 'calendar', 'notes'], 'and is never written back');
@@ -1091,7 +1109,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (/modules-toggle/.test(spaceJs)) fail('public/space.js', 'the Layout button is gone: no #modules-toggle');
   if (!/show: canShowTab\(\) \? \(holder\) => canvas\.mountMenu\(holder\) : null,/.test(spaceJs)) fail('public/space.js', 'Set up draws the canvas\'s menu in its Modules tab (canvas.mountMenu)');
   if (!/mountHostMenu\(container, layoutMenuItems\);/.test(canvasJs)) fail('public/canvas.js', 'the Show menu is the page\'s shared menu (host-menu.js mountHostMenu), drawn from layoutMenuItems()');
-  for (const needle of ["{ heading: 'Show' }", "{ heading: 'Arrange' }", "label: 'Panel Mode'", "label: 'Window Mode'", "label: 'Snap to grid'", "label: 'Clean up'"]) if (!canvasJs.includes(needle)) fail('public/canvas.js', `the Layout menu has ${needle}`);
+  for (const needle of ["{ heading: 'Open for you' }", "{ heading: 'Arrange' }", "label: 'Panel Mode'", "label: 'Window Mode'", "label: 'Snap to grid'", "label: 'Clean up'"]) if (!canvasJs.includes(needle)) fail('public/canvas.js', `the Layout menu has ${needle}`);
   const arrangeItems = canvasJs.slice(canvasJs.indexOf("{ heading: 'Arrange' }"), canvasJs.indexOf("const extra = typeof menuItems"));
   if (!/if \(windowMode\) \{[\s\S]*label: 'Snap to grid'[\s\S]*label: 'Clean up'[\s\S]*\}/.test(arrangeItems)) fail('public/canvas.js', 'Snap to grid and Clean up are offered in Window Mode only');
   if (!/const arrangeMode = \(\) => \(saved\.__mode === 'window' \? 'window' : 'panel'\);/.test(canvasJs)) fail('public/canvas.js', 'the arrange mode is remembered with the space\'s layout (__mode), Panel Mode unless said otherwise');

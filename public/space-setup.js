@@ -36,6 +36,7 @@
 // budgetEntryProblem, budgetWanted) touch no
 // document, so tools/check-nav.mjs runs them in node; the page hands the panel what it needs (createSpaceSetup's `deps`).
 import { actionBar } from './action-bar.js';
+import { groupOf, switchOn, groupedParts, setSwitch } from './composites.js';
 import { confirmDialog } from './confirm.js';
 import { mountSees, fullSees, sameSees } from './ai-sees.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
@@ -461,10 +462,10 @@ export function createSpaceSetup(deps) {
         <fieldset class="setup-first-visit" id="setup-first-visit" aria-labelledby="setup-first-visit-heading" aria-describedby="setup-first-visit-hint">
           <label class="setup-choice"><input type="radio" name="setup-first-visit" value="workspace" id="setup-first-workspace"><i class="fa-solid fa-columns fa-fw" aria-hidden="true" id="setup-workspace-icon"></i><span class="setup-choice-name" id="setup-workspace-name">Workspace</span></label>
           <div class="setup-workspace-content">
-            <p class="setup-subheading" id="setup-opens-with-label">Opens with</p>
+            <p class="setup-subheading" id="setup-opens-with-label">A new person sees these open</p>
             <div class="opens-with-list setup-opens-with" id="setup-opens-with" role="group" aria-labelledby="setup-opens-with-label" aria-describedby="setup-opens-with-hint"></div>
             <p class="hint" id="setup-opens-with-note" hidden></p>
-            <p class="hint" id="setup-opens-with-hint">What the Workspace starts with, whichever is picked.</p>
+            <p class="hint" id="setup-opens-with-hint">What opens the first time someone new enters, in the Workspace. Maps takes in Places and Calendar takes in To-do.</p>
           </div>
           <div class="setup-first-layouts" id="setup-first-visit-layouts"></div>
         </fieldset>
@@ -609,7 +610,7 @@ export function createSpaceSetup(deps) {
   }
 
   // The Modules tab (id `show`): the menu is drawn into #setup-show; an owner and the admin read at its foot where modules are turned on.
-  const showTabHtml = () => `<div class="setup-show" id="setup-show"></div>${state.owner ? `<p class="hint setup-modules-note" id="setup-modules-note">${esc(modulesWord(true))} are turned on for the whole ${esc(word('environment'))} in Manage.</p>` : ''}`;
+  const showTabHtml = () => `<p class="hint setup-show-hint" id="setup-show-hint">What is open for you right now. Each person arranges their own; this does not change what a new person sees.</p><div class="setup-show" id="setup-show"></div>${state.owner ? `<p class="hint setup-modules-note" id="setup-modules-note">${esc(modulesWord(true))} are turned on for the whole ${esc(word('environment'))} in Manage.</p>` : ''}`;
   const TAB_HTML = { show: showTabHtml, space: spaceTabHtml, members: membersTabHtml, phases: phasesTabHtml, modules: modulesTabHtml };
 
   function draw() {
@@ -917,9 +918,11 @@ export function createSpaceSetup(deps) {
   function paintOpensWith() {
     const list = q('#setup-opens-with');
     const all = choices();
-    const chosen = new Set(state.draft.opensWith || []);
-    const kept = (state.draft.opensWith || []).filter((id) => id !== 'conference' && !all.some((c) => c.id === id)).map(keptChoice);
-    list.innerHTML = switchListHtml([...all, ...kept].map((c) => ({ ...c, on: chosen.has(c.id) })), 'opens');
+    const stored = state.draft.opensWith || [];
+    const apart = new Set(groupedParts(all.map((c) => c.id))); // Places and To-do sit under Maps and Calendar
+    const rows = all.filter((c) => !apart.has(c.id));
+    const kept = stored.filter((id) => id !== 'conference' && !all.some((c) => c.id === id)).map(keptChoice);
+    list.innerHTML = switchListHtml([...rows, ...kept].map((c) => ({ ...c, on: switchOn(stored, c.id) })), 'opens');
     wireSwitchList(list);
     const note = q('#setup-opens-with-note');
     const summary = opensWithSummary({
@@ -928,6 +931,7 @@ export function createSpaceSetup(deps) {
       modules: state.options.modules.map((m) => m.id),
       canOpen: (id) => all.some((c) => c.id === id),
       nameOf: (id) => all.find((c) => c.id === id)?.name || id,
+      groupOf: (id) => (all.some((c) => c.id === groupOf(id)) ? groupOf(id) : id),
     });
     note.textContent = summary;
     note.hidden = !summary;
@@ -1294,8 +1298,7 @@ export function createSpaceSetup(deps) {
     const list = q('#setup-opens-with');
     if (list) list.addEventListener('change', (event) => {
       if (event.target.type !== 'checkbox') return;
-      const ticked = [...list.querySelectorAll('input:checked')].map((i) => i.dataset.opens);
-      state.draft.opensWith = ticked.length ? ticked : null; // the first visit's choice stays as it is
+      state.draft.opensWith = setSwitch(state.draft.opensWith, event.target.dataset.opens, event.target.checked); // the first visit's choice stays as it is
       paintOpensWith();
     });
     const firstVisit = q('#setup-first-visit');

@@ -2571,7 +2571,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   function layoutMenuItems() {
     const shown = (id) => opened.has(id) && !hiddenByView(id);
     const builtinList = columnMode() ? [] : [...builtins.values()].sort((a, b) => a.order - b.order).filter((def) => !def.allowed || def.allowed());
-    const items = [{ heading: 'Show' }];
+    const items = [{ heading: 'Open for you' }];
     for (const def of builtinList) items.push({ toggle: true, checked: shown(def.id), icon: def.icon, label: def.name, ...(def.description ? { hint: def.description, clamp: true } : {}), badge: builtinUnread[def.id] || 0, onPick: () => flipShown(def.id) });
     for (const m of available) items.push({ toggle: true, checked: shown(m.id), icon: m.icon, tint: colorOf(m.id), label: m.name, ...(m.description ? { hint: m.description, clamp: true } : {}), badge: unreadOf(m.id), onPick: () => flipShown(m.id) });
     if (!isNarrow()) {

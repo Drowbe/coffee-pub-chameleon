@@ -74,11 +74,11 @@ export function shouldAutoJoin({ setting = false, inCall = false, canJoin = fals
 // What space settings says under Opens with about what a first visit opens, worked out from the stored list, never from
 // the ticks on screen: with nothing set, what opens instead (the environment's list, else the chat and the modules);
 // with a list set that holds nothing that can open now, that nothing opens; otherwise nothing ('').
-// `nameOf(id)` is the name a person reads.
-export function opensWithSummary({ list = null, environment = null, modules = [], canOpen = () => true, nameOf = (id) => id } = {}) {
+// `nameOf(id)` is the name a person reads; `groupOf(id)` the id whose switch an id sits under, so each name is said once.
+export function opensWithSummary({ list = null, environment = null, modules = [], canOpen = () => true, nameOf = (id) => id, groupOf = (id) => id } = {}) {
   const opens = whatOpens({ own: list, environment, modules, canOpen });
   if (Array.isArray(list)) return opens.length ? '' : 'None of the ones switched on can open now, so nothing opens.';
-  const names = opens.map(nameOf);
+  const names = [...new Set(opens.map(groupOf))].map(nameOf); // `groupOf`: a part reads as the switch it sits under (Places as Maps)
   if (!names.length) return 'Nothing switched on: nothing opens.';
   const said = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   return `Nothing switched on: ${said} ${names.length > 1 ? 'open' : 'opens'}.`;
