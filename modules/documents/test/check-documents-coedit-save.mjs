@@ -402,5 +402,18 @@ await test('a page that cannot save on the way out but is not alone leaves (the 
   assert.ok(W.stored().text.includes('b-text'), 'a (the writer) holds it and saved it');
 });
 
+await test('why a save failed is told apart (0.11.27): 413 is "full", 429 is "limit", anything else is empty; the line is cleared by the next try', async () => {
+  for (const [status, why] of [[413, 'full'], [429, 'limit'], [500, '']]) {
+    const W = world(src); W.make();
+    const a = await W.page('aaaa1111'); await W.run(3000);
+    W.type(a, 0, ' typed');
+    W.store.fault = (op, key) => (op === 'set' && key.startsWith('text:') ? Object.assign(new Error('no'), { status, retryAfter: 1 }) : null);
+    await W.run(8000);
+    assert.equal(a.saver.state.failed, true, String(status)); assert.equal(a.saver.state.why, why, String(status));
+    W.store.fault = null; await W.run(30000);
+    assert.equal(a.saver.state.failed, false); assert.equal(a.saver.state.why, '');
+  }
+});
+
 console.log(fails.length ? `documents coedit save: ${fails.length} failed, ${passed} passed` : `documents coedit save: ${passed} tests passed in ${((Date.now() - t0) / 1000).toFixed(1)} s${facts.length ? ` (${facts.join('; ')})` : ''}`);
 if (fails.length) { for (const f of fails) console.log(`  - ${f}`); process.exit(1); }

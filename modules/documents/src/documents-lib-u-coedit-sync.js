@@ -330,6 +330,7 @@ function dlSyncRoster(o) {
 //                                    text); without it, or with editor false, a page seeds as 4a did, with no marker. The session never reads or writes
 //                                    anything else in storage.
 //   seed(doc, seedId)                puts the saved text into the empty document; seedId is the marker's id when one decided it, else undefined
+//   onLineage(info), lineageOk(marker)  the document was re-seeded under this page / may it leave its lineage now (the page limits it to one reopen a minute)
 //   onRoster() / onState()           something the page shows changed (editors, the channel, the counters)
 // -> { start, stop, stats, status, rebuild, hearPeople, ... }
 function dlSyncSession(PM, o) {
@@ -649,6 +650,9 @@ function dlSyncSession(PM, o) {
       const m = cur && dlCleanSeedMarker(cur.value);
       if (!m || epoch === null) return; // no marker we can read: no decision
       if ((m.epoch || 0) !== epoch || (seedId !== null && m.id !== seedId)) {
+        // Any editor can write the marker: this page leaves its lineage only for a marker a person here wrote (or this person did), and at most once a minute (the page's rule).
+        if (m.by !== o.me && !roster.has(m.by)) return;
+        if (o.lineageOk && !o.lineageOk(m)) return;
         frozen = true; editor = false; local.length = 0; direct.length = 0; stats.lineageChanged += 1; writerKey = '';
         changed();
         if (o.onLineage) o.onLineage({ epoch: m.epoch || 0 });
@@ -807,9 +811,10 @@ function dlSyncSession(PM, o) {
         if (j.reject) { snapReject(j.reject); return; }
         // A copy made before the last save does not hold what was saved after it. Peers hold that, so beside them the copy is a starting point; alone, it is not
         // the document (the page would show the older text and its next save would take the newer away): the page opens from the stored text.
-        if (r.header.rev < o.snapshot.storedRev()) {
+        // One ahead (rev = textRev + 1) is a copy no honest writer has made before saving the text (any editor can write a header): alone, it is not trusted either.
+        if (r.header.rev !== o.snapshot.storedRev()) {
           if (!knownAlone()) return;
-          if (aloneNow()) { try { j.doc.destroy(); } catch (e) { /* gone */ } snapReject('rev_old'); return; }
+          if (aloneNow()) { try { j.doc.destroy(); } catch (e) { /* gone */ } snapReject(r.header.rev < o.snapshot.storedRev() ? 'rev_old' : 'rev_ahead'); return; }
         }
         const cmp = dlSnapCompaction({ header: r.header, textLen: o.snapshot.textLen(), vectorBytes: j.vectorBytes });
         if (cmp.compact) {

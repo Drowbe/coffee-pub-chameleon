@@ -14,7 +14,7 @@ export { Clock, Bus, run, FakeStore };
 export const NAMES = ['dlRichRead', 'dlRichText', 'dlRichSchema', 'dlCoeditGate', 'dlSyncSession', 'dlSyncTopic', 'dlSyncSeed', 'dlSyncSeedId', 'dlSyncElect', 'dlSyncWriterHold', 'dlSyncRoster', 'dlSyncVector', 'dlSyncB64', 'DL_SYNC',
   'dlSeedClaim', 'dlCleanSeedMarker', 'dlSeedMarkerStale', 'dlSeedMarkerKey', 'dlCoeditSave', 'dlCoSaver', 'dlCoReadStored', 'dlCoSaveDelay', 'dlCoBackoff', 'dlCoErr', 'DL_COSAVE',
   'dlSnapJoin', 'dlSnapSaver', 'dlSnapPrepare', 'dlSnapSplit', 'dlSnapHash', 'dlSnapCleanHeader', 'dlSnapCleanChunk', 'dlSnapCompaction', 'dlSnapReseed', 'DL_SNAP', 'dlSnapHeaderKey', 'dlSnapChunkKey', 'dlSyncUnb64',
-  'dlCoLockClean', 'dlCoRenamePlan', 'dlCoLockSame', 'dlCoLockRules', 'dlCoTintOf', 'dlCoInitials', 'dlCoEditorsList', 'DL_TINTS', 'dlPlanSave', 'dlMetaOf', 'dlMetaRead', 'dlMetaSet', 'dlMetaFill', 'dlMetaSame', 'dlMetaProblem', 'DL_META', 'dlLeaseAcquire', 'dlLeaseHold', 'dlLeaseKey', 'dlCleanLease', 'DL_LEASE', 'dlSyncHashBytes', 'dlSyncClean', 'dlSeedMarkerKey', 'dlCleanPaper', 'DL', 'dlCleanDoc', 'dlCleanPage', 'dlSplit', 'dlPlanChunks', 'dlNewId', 'dlExcerpt', 'dlPreview', 'DL_PAPER_DEFAULT', 'dlDocKey', 'dlTextKey', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
+  'dlCoLockClean', 'dlCoRenamePlan', 'dlCoLockSame', 'dlCoLockRules', 'dlCoRemoveRules', 'dlCoTintOf', 'dlCoInitials', 'dlCoEditorsList', 'DL_TINTS', 'dlPlanSave', 'dlMetaOf', 'dlMetaRead', 'dlMetaSet', 'dlMetaFill', 'dlMetaSame', 'dlMetaProblem', 'DL_META', 'dlLeaseAcquire', 'dlLeaseHold', 'dlLeaseKey', 'dlCleanLease', 'DL_LEASE', 'dlSyncHashBytes', 'dlSyncClean', 'dlSeedMarkerKey', 'dlCleanPaper', 'DL', 'dlCleanDoc', 'dlCleanPage', 'dlSplit', 'dlPlanChunks', 'dlNewId', 'dlExcerpt', 'dlPreview', 'DL_PAPER_DEFAULT', 'dlDocKey', 'dlTextKey', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
 
 export const TEXT = 'Alpha one.\n\nBeta two.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nOmega.\n';
 export const ID = 'doc12345';
@@ -67,7 +67,7 @@ export function world(src, o = {}) {
       seed: (d, sid) => L.dlSyncSeed(PM, d, W.pmDoc(read.text), ID, read.text, sid),
       marker: po.marker === false ? undefined : { store: handle, doc: ID, seedId: L.dlSyncSeedId(ID, read.text) },
       snapshot: po.snap ? { ...L.dlSnapJoin(PM, { store: handle, id: ID, lex, storedText: read.text, storedRev: read.rec.textRev || 0, storedRec: read.rec, me: key, now: () => clock.now() }), adopted: (h) => p.snapSaver.adopted(h, h.hashes) } : undefined,
-      onLineage: (i) => { p.lineage.push(i); },
+      onLineage: (i) => { p.lineage.push(i); }, lineageOk: po.lineageOk,
       onMend: (n) => { p.mends.push(n); },
       onState: () => { if (p.saver && (p.ready || !po.snap)) { const w = p.session.isWriter(); if (w && !p.wasWriter) p.saver.plan(false); p.wasWriter = w; } },
     });

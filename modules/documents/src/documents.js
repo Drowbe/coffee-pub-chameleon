@@ -281,6 +281,7 @@
       });
       li.append(back, gone);
     }
+    if (!trashRec) coRowMore(li, rec);
     return li;
   }
   // A thumbnail: a small copy of the page in the document's own colour, its first lines through the same safe reader
@@ -333,6 +334,7 @@
       bar.append(back, gone);
       li.append(bar);
     }
+    if (!trashRec) coRowMore(li, rec);
     return li;
   }
   function render() {
@@ -518,9 +520,13 @@
       return null;
     }).filter(Boolean)];
     if (ed.co) { // the lock: any editor can lock; the person who locked and an owner or admin can unlock (a courtesy guard in this page, not a server rule)
+      // The Document section also holds Rename and Delete: the title bar's menu is full (the toolbar takes 16 items, and the editing row uses them all).
       const rules = coLockRules();
-      if (rules.lock) items.push({ heading: 'Document' }, { id: 'lock', label: 'Lock', icon: 'lock', tip: 'Nobody can type until it is unlocked.', onClick: () => coToggleLock(true) });
-      else if (coLocked()) items.push({ heading: 'Document' }, rules.unlock ? { id: 'unlock', label: 'Unlock', icon: 'lock-open', onClick: () => coToggleLock(false) } : { id: 'unlock', label: 'Unlock', icon: 'lock-open', disabled: true, hint: rules.reason, tip: rules.reason, ariaLabel: `Unlock, not available. ${rules.reason}` });
+      const doc = [];
+      if (rules.lock) doc.push({ id: 'lock', label: 'Lock', icon: 'lock', tip: 'Nobody can type until it is unlocked.', onClick: () => coToggleLock(true) });
+      else if (coLocked()) doc.push(rules.unlock ? { id: 'unlock', label: 'Unlock', icon: 'lock-open', onClick: () => coToggleLock(false) } : { id: 'unlock', label: 'Unlock', icon: 'lock-open', disabled: true, hint: rules.reason, tip: rules.reason, ariaLabel: `Unlock, not available. ${rules.reason}` });
+      if (canEdit && !ed.co.dead && ed.co.editor) doc.push(...coEntries(coLockNow()).map((e) => ({ ...e, onClick: () => (e.id === 'rename' ? coRename() : coRemove()) })));
+      if (doc.length) items.push({ heading: 'Document' }, ...doc);
     }
     host.menu.show({ id: 'page', at, items });
   }
@@ -935,8 +941,11 @@
     if (c.dead === 'lineage') return 'This document was updated. Reopening…';
     if (!c.ready) return 'Joining…';
     if (!c.editor) return dlSyncFullNote(DL_SYNC.editorsMax);
-    if (c.channel === 'closed') return 'Offline. Your changes are kept here.';
-    if (c.saver.state.failed) return 'Could not save. Your changes are kept here.';
+    if (c.channel === 'closed' || c.offline) return 'Offline. Your changes are kept here.';
+    if (c.saver.state.failed) {
+      if (c.saver.state.why === 'full') { let w = 'module'; try { w = host.util.word('module') || w; } catch (err) { /* the default */ } return `The ${w}'s storage is full. Your changes are kept here.`; }
+      return c.saver.state.why === 'limit' ? 'Saving is slow right now. Your changes are kept here.' : 'Could not save. Your changes are kept here.';
+    }
     const bad = c.session.status();
     if (bad) return bad.slice(0, 60);
     if (c.saver.state.saving) return 'Saving';
@@ -952,11 +961,12 @@
   // ---- one person, one window (documents-lib-x-coedit-meta.js: the edit window) ----------------------------------------------------------
   // The server does not send a person's live messages to the person's other sessions, so a second window of the same person could not hear the first: it
   // opens the document to read only, says so, and asks again for the key every few seconds (the other window closed: this one edits).
+  const lineageAt = new Map(); // document id -> when it last reopened because of a new seed marker
   async function openCoDoc(id) {
     if (ed || coOpening) return;
     coOpening = true;
     try {
-      const r = await dlLeaseAcquire(host.storage, { doc: id, me, tab: pageTab, now: () => Date.now(), sleep });
+      const r = await dlLeaseAcquire(host.storage, { doc: id, me, tab: pageTab, now: () => Date.now(), sleep, checking: () => note('Checking for another window…') });
       if (ed) { if (r.won) host.storage.delete(dlLeaseKey(id, me), { version: r.version }).catch(() => {}); return; }
       if (!r.won) {
         otherWhy = r.error ? 'Could not start editing. Trying again.' : OTHER_WINDOW;
@@ -1005,7 +1015,7 @@
     c.dead = ''; // '' while alive; 'gone' (the document was deleted), 'window' (another window took the key), 'lineage' (the document was re-seeded under this page)
     if (leased) {
       c.writeLog.push(Date.now()); // the write that took the key
-      c.lease = dlLeaseHold(c.store, { doc: id, me, tab: pageTab, version: leased.version, now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t), onLost: () => coDead(c, 'window') });
+      c.lease = dlLeaseHold(c.store, { doc: id, me, tab: pageTab, version: leased.version, now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t), onLost: () => coDead(c, 'window'), onOffline: (v) => { c.offline = v; if (ed && ed.co === c) renderStatus(); }, onNote: () => note('Another window may be editing this document.') });
     }
     c.saver = coSaver(c);
     c.snap = coSnapSaver(c);
@@ -1019,6 +1029,7 @@
       onRebuild: (nd) => coRebuilt(nd),
       onState: () => coChanged(),
       onLineage: () => coLineage(c),
+      lineageOk: () => Date.now() - (lineageAt.get(id) || -Infinity) >= 60000, // a document reopens under a page at most once a minute (any editor can write the marker)
       onMend: () => note(MEND_NOTE),
       onChannel: (s) => { c.channel = s; if (s === 'open') c.session.reconnected(); coChanged(); },
     });
@@ -1225,6 +1236,75 @@
       return li;
     }));
   }
+  // ---- Rename and Delete with the switch on (the read view, where they live with it off, is not shown to an editor of a shared document) ------------------
+  // Whoever may edit may rename and delete, as in the read view. A locked document is renamed or deleted only by a person who may unlock it (the locker, an owner, an admin);
+  // for anyone else the entries are there, off, with the reason.
+  function coRemoveRules(lock) {
+    let ownerWord = '';
+    try { ownerWord = host.util.word('owner', { a: true }); } catch (err) { /* the default */ }
+    return dlCoRemoveRules({ me, role: info.user && info.user.role, lock, ownerWord });
+  }
+  const coEntries = (lock) => {
+    const rules = coRemoveRules(lock);
+    const entry = (id, label, icon) => ({ id, label, icon, ...(rules.off ? { disabled: true, hint: rules.reason, tip: rules.reason, ariaLabel: `${label}, not available. ${rules.reason}` } : {}) });
+    return [entry('rename', 'Rename', 'pen-to-square'), entry('remove', 'Delete', 'trash')];
+  };
+  async function coRenameTo(id, current, apply) {
+    let title = null;
+    try { title = await host.ui.prompt({ title: 'Rename', label: 'Title', value: current, action: 'Rename', maxLength: DL.titleMax }); } catch (err) { note(cleanMsg(err)); return; }
+    if (title === null) return;
+    const t = dlCleanLine(title, DL.titleMax);
+    if (!t) { note('Give the document a title.'); return; }
+    try { await apply(t); } catch (err) { note(err.status === 409 ? 'Someone else changed this first. Try again.' : cleanMsg(err)); }
+  }
+  async function coTrash(id) { // the trash path of the read view; the writer's save can come between the two writes, so a clash is tried again
+    for (let tries = 0; ; tries += 1) { try { await moveToTrash(id); return; } catch (err) { if (!err || err.status !== 409 || tries >= 2) throw err; } }
+  }
+  async function coAskDelete(rec) {
+    return host.ui.confirm({ title: 'Delete this document?', message: `"${rec.title}" goes to the trash. You can bring it back for a week.`, action: 'Delete', kind: 'destructive' });
+  }
+  // From the open shared editor: the title goes into the shared settings (the writer saves it, every page shows it).
+  async function coRename() {
+    const mine = ed; const c = mine && mine.co;
+    if (!c || !c.ready || c.dead || !c.editor) return;
+    const rules = coRemoveRules(coLockNow());
+    if (rules.off) { note(rules.reason); return; }
+    await coRenameTo(mine.id, $('edit-title').value, async (t) => {
+      if (ed !== mine || c.dead) return;
+      $('edit-title').value = t;
+      dlMetaSet(c.session.doc(), { title: t }, 'dl-meta');
+      typed();
+    });
+  }
+  async function coRemove() {
+    const mine = ed; const c = mine && mine.co;
+    if (!c || !c.ready || c.dead || !c.editor) return;
+    const rules = coRemoveRules(coLockNow());
+    if (rules.off) { note(rules.reason); return; }
+    const rec = docs.get(mine.id);
+    if (!rec) return;
+    try {
+      if (!(await coAskDelete(rec)) || ed !== mine || c.dead) return;
+      await coTrash(mine.id);
+      if (ed === mine) { stopEditing(); closeDoc(); } // the other editors hear the record go: 'This document was deleted.'
+    } catch (err) { note(cleanMsg(err)); }
+  }
+  // The list: a More button on each document (only with the switch on, for a person who may edit).
+  function coRowMore(li, rec) {
+    if (!coediting || !canEdit) return;
+    const more = el('button', 'btn btn-quiet btn-small', 'More');
+    more.type = 'button';
+    more.setAttribute('aria-label', `More for ${rec.title}`);
+    more.addEventListener('click', () => {
+      const lock = dlCoLockClean(rec.lock);
+      const go = {
+        rename: () => coRenameTo(rec.id, rec.title, async (t) => { await rename(rec.id, t); render(); }),
+        remove: async () => { try { if (!(await coAskDelete(rec))) return; await coTrash(rec.id); render(); } catch (err) { note(cleanMsg(err)); } },
+      };
+      host.menu.show({ id: `doc-${rec.id}`, anchor: more, items: coEntries(lock).map((e) => ({ ...e, onClick: () => go[e.id]() })) });
+    });
+    li.append(more);
+  }
   // A document renamed from the list while it is open here: the writer puts the record's new title into the shared settings, so every page shows it. A title the
   // page already saved or already shows is not a rename; one that was applied once is not applied again.
   function coRenameHear() {
@@ -1298,6 +1378,7 @@
   async function coLineage(c) {
     if (!ed || ed.co !== c || c.dead) return;
     const mine = ed; const id = mine.id;
+    lineageAt.set(id, Date.now());
     coDead(c, 'lineage');
     try { await c.saver.save(true); } catch (err) { /* the text stays on the screen */ }
     try { c.session.stop(); } catch (err) { /* already stopped */ }

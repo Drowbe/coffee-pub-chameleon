@@ -185,7 +185,7 @@ async function dlCoeditSave(store, st, io) {
 // -> { changed, plan, save, leave, stop, state, counts, hold }
 function dlCoSaver(o) {
   const clock = o.clock || { now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t) };
-  const state = { saving: false, failed: false, refused: '' };
+  const state = { saving: false, failed: false, why: '', refused: '' }; // why: 'full' (413), 'limit' (429) or '' (any other failure) while failed
   const counts = { saves: 0, same: 0, adopted: 0, conflicts: 0, busy: 0, failed: 0, leaves: 0, storeFull: 0, rateLimited: 0, rounds: 0 };
   let timer = null; let since = 0; let lastKey = NaN; let lastSave = -Infinity; let hold = 0; let failures = 0; let stopped = false;
   const jitter = (String(o.io.me).length * 97) % 700;
@@ -195,7 +195,7 @@ function dlCoSaver(o) {
     return o.serial(async () => {
       if (stopped) return 'lost';
       if (!leave && !o.dirty()) return 'saved';
-      state.saving = true; state.failed = false; lastSave = clock.now(); since = 0; change();
+      state.saving = true; state.failed = false; state.why = ''; lastSave = clock.now(); since = 0; change();
       let r;
       try { r = await dlCoeditSave(o.store, o.st, o.io); } catch (err) { r = { status: 'failed', error: err, retryAfter: 0, conflicts: 0 }; }
       if (stopped) return 'lost';
@@ -229,7 +229,7 @@ function dlCoSaver(o) {
       failures += 1;
       if (r.status === 'full') counts.storeFull += 1; else if (r.status === 'limit') counts.rateLimited += 1; else counts.failed += 1;
       hold = clock.now() + dlCoBackoff(failures, r.retryAfter);
-      state.failed = true; change();
+      state.failed = true; state.why = r.status === 'full' || r.status === 'limit' ? r.status : ''; change();
       return r.status;
     });
   }

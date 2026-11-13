@@ -272,6 +272,19 @@ await test('a copy older than the saved text, for a page that is alone, is not t
   assert.ok(c.text().includes(' later'), 'the text saved after the copy is in the page');
 });
 
+await test('a forged header one ahead of the saved text (rev = textRev + 1) over OLD state, opened by a page that is alone: not trusted, the page opens from the saved text (0.11.27)', async () => {
+  const W = await withCopy(big(300), { stay: true });
+  typeAt(W, W.b, 7, ' newer'); await W.run(9000); await W.leave(W.b); await W.leave(W.a); await W.run(200);
+  const h = header(W); const textRev = W.stored().rec.textRev;
+  assert.ok(textRev > h.rev && W.stored().text.includes(' newer'));
+  put(W, `ydoc:${ID}`, { ...h, rev: textRev + 1 }); // any editor can write this: the old state chunks stay, the header claims to be newer than the text
+  const c = await openAlone(W, 'cccc3333', 8000);
+  assert.equal(stats(c).snapshotLoaded, 0); assert.equal(stats(c).snapshotReason, 'rev_ahead');
+  assert.ok(c.text().includes(' newer'), 'the saved text is what the page shows');
+  await c.saver.save(true); await W.run(500);
+  assert.ok(W.stored().text.includes(' newer'), 'and its save does not take the newer text away');
+});
+
 // ---- 4. compaction -----------------------------------------------------------------------------------------------------------------------
 await test('alone and too big: a new epoch and a fresh seed id, equal to the stored text, a new copy, the old chunks gone; not alone: no compaction', async () => {
   const W = world(src); W.make(`${big(3)}`);
