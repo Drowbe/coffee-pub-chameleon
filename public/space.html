@@ -125,10 +125,12 @@
         <button class="mf-icon-btn mf-titlebar-btn" id="call-more" type="button" data-tip="More" aria-label="More for the call" aria-haspopup="menu"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button>
       </span>
     </header>
-    <!-- The call's own area out of the call (decision 28): one large Start call (Join call while a call is running).
-         space.js shows it with the title bar, and joins as the title bar's button does. -->
+    <!-- The call's own area out of the call, where the call fills an area of its own (the Conference layout;
+         plan-workspaces.md, decision 32): one large Start call (Join call while a call is running) and a line saying
+         which. space.js shows it, and joins as the title bar's button does. -->
     <div class="side-column-call-empty" id="call-empty" hidden>
       <button class="btn btn-primary" id="call-start" type="button" aria-label="Start call"><i class="fa-solid fa-phone fa-fw" aria-hidden="true"></i> <span id="call-start-label">Start call</span></button>
+      <p class="sdk-empty-line side-column-call-empty-note" id="call-empty-note">You are not in a call.</p>
     </div>
     <!-- The conference, as a strip of tiles while on the call (canvas.js puts it here). -->
     <div class="side-column-strip" id="side-column-strip"></div>

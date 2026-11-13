@@ -8727,6 +8727,92 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
   right: 0;
 }
 
+/* The Conference layout (plan-workspaces.md, step 4; space.js, syncConferenceView): the canvas is hidden and the column
+   is the page. The chat keeps the width it has in the column (--side-column-w) and the call has all the rest: its title
+   bar, the tiles in all the height there is and the toolbar pinned under them, as when the call is beside the chat.
+   There is no 55% rule here and no fold handle (there is nothing to fold to). The line between the two still sets the
+   chat's width. Out of the call the call's area holds the large Start call and a line. Wider than a phone only: a
+   phone has no column, and the call is its tab there. */
+@media (min-width: 641px) {
+  .work.view-conference > .canvas {
+    display: none;
+  }
+
+  .side-column.call-page {
+    flex: 1;
+    width: auto;
+    border-right: 0;
+    display: grid;
+    grid-template-columns: var(--side-column-w, 320px) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "chat head" "chat strip" "chat out" "chat empty";
+  }
+
+  /* On the call: the tiles take the height. */
+  .side-column.call-page.in-call:not(.call-away) {
+    grid-template-rows: auto minmax(0, 1fr) auto 0;
+  }
+
+  .side-column.call-page > .side-column-toggle,
+  .side-column.call-page .side-column-splitter-h,
+  .side-column.call-page > .side-column-rail {
+    display: none;
+  }
+
+  .side-column.call-page > .side-column-call-head {
+    grid-area: head;
+    padding-right: 8px;
+  }
+
+  .side-column.call-page > .side-column-strip {
+    grid-area: strip;
+    min-width: 0;
+  }
+
+  .side-column.call-page .side-column-strip > .canvas {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .side-column.call-page > .side-column-call-out {
+    grid-area: out;
+    padding-right: 8px;
+  }
+
+  .side-column.call-page > .side-column-call-empty {
+    grid-area: empty;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-height: 0;
+    background: var(--bg-section);
+  }
+
+  body:not(.in-aside) .side-column.call-page > .side-column-chat {
+    grid-area: chat;
+    min-width: 0;
+    min-height: 0;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .side-column.call-page #chat-content > header {
+    padding-right: 8px;
+  }
+
+  .side-column.call-page > .side-column-splitter-v {
+    right: auto;
+    left: calc(var(--side-column-w, 320px) - 4px);
+  }
+}
+
+@media (min-width: 641px) and (pointer: coarse) {
+  .side-column.call-page > .side-column-splitter-v {
+    left: calc(var(--side-column-w, 320px) - 7px);
+  }
+}
+
 /* side-column:end */
 
 /* Space settings > Modules: the modules that are on, each with its icon and name (no switch; they are on everywhere). */
