@@ -51,8 +51,8 @@
 #read .col, #editor .col { max-width: var(--doc-max); }
 .view { container-type: inline-size; }
 .grow { flex: 1 1 auto; }
-/* one gutter: the page's own small margin round the sheet (the list keeps the view's padding); the sheet's inner padding is small and grows only in a wide window */
-#read, #editor { background: var(--surface-page); padding: var(--space-2); }
+/* one gutter: the view's own padding (--space-3, as every module's) round the sheet and the list; the module is flush, so the slot adds none; the sheet's inner padding is small and grows only in a wide window */
+#read, #editor { background: var(--surface-page); }
 .sheet { --doc-paper: var(--doc-fixed-light-white); --doc-ink: var(--doc-fixed-ink-light); --doc-edge: color-mix(in srgb, var(--doc-ink) 22%, transparent); --doc-quiet: color-mix(in srgb, var(--doc-ink) 68%, var(--doc-paper)); --doc-field: color-mix(in srgb, var(--doc-ink) 8%, var(--doc-paper)); color: var(--doc-ink); color-scheme: light; zoom: var(--doc-zoom); width: var(--doc-width); max-width: min(100%, var(--doc-max)); margin: 0 auto; padding: var(--space-4); flex: 0 0 auto; background: var(--doc-paper); border: 1px solid var(--doc-edge); border-radius: var(--radius-medium); box-shadow: 0 1px 1px var(--shadow-color), 0 2px 6px color-mix(in srgb, var(--shadow-color) 70%, transparent), 0 0 0 1px color-mix(in srgb, var(--doc-ink) 6%, transparent); }
 .sheet[data-ink="light"] { --doc-ink: var(--doc-fixed-ink-dark); color-scheme: dark; }
 .sheet[data-paper="light-white"] { --doc-paper: var(--doc-fixed-light-white); }

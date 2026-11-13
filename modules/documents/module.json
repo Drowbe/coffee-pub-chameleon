@@ -1,11 +1,12 @@
 {
   "id": "documents",
   "name": "Documents",
-  "version": "0.11.27",
+  "version": "0.11.28",
   "icon": "file-lines",
   "color": "orange",
   "description": "Shared notes for the {space}: session notes, handouts and plans. One person edits at a time and everyone reads along.",
   "author": "Coffee Pub",
+  "content": "flush",
   "scope": [
     "space"
   ],
