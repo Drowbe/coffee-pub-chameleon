@@ -850,6 +850,8 @@ class Store {
       ...(id !== LOBBY && (r.entry === 'accounts' || r.entry === 'guests') ? { entry: r.entry } : {}),
       // Whether a person who may not enter is told the space exists and may ask to (step 6); absent while off. Not the Lobby.
       ...(id !== LOBBY && r.requestAccess === true ? { requestAccess: true } : {}),
+      // Closed for set up: only owners, the admin and the space's moderators enter it (space-access.js); absent while open. Not the Lobby.
+      ...(id !== LOBBY && r.closed === true ? { closed: true } : {}),
       // What the space opens with the first time someone enters it; absent while not set (see cleanOpensWith).
       ...(cleanOpensWith(r.opensWith) ? { opensWith: cleanOpensWith(r.opensWith) } : {}),
       // The shared saved layout this space opens with on a first visit (plan-saved-layouts.md, decision 4): its id,
@@ -1972,6 +1974,12 @@ class Store {
       if (patch.requestAccess) draft.requestAccess = true;
       else delete draft.requestAccess;
     }
+    if (patch.closed !== undefined) {
+      if (typeof patch.closed !== 'boolean') throw new StoreError('closed must be true or false');
+      if (id === LOBBY) throw new StoreError('the Lobby cannot be closed');
+      if (patch.closed) draft.closed = true;
+      else delete draft.closed;
+    }
     if (patch.aiOff !== undefined) draft.aiOff = patch.aiOff === true; // this space does not use AI, whatever a role may do
     // What AI may see here (plan-ai-integration.md, "What AI may see"): an object of the setting's keys, or null to go back
     // to the environment's choice. A bad key or value is refused with the policy's sentence.
@@ -2014,7 +2022,8 @@ class Store {
       draft.linkIcon = patch.linkIcon;
     }
     if (patch.allowGuests !== undefined) {
-      draft.allowGuests = Boolean(patch.allowGuests);
+      if (typeof patch.allowGuests !== 'boolean') throw new StoreError('allowGuests must be true or false');
+      draft.allowGuests = patch.allowGuests;
       if (!draft.allowGuests && draft.guestToken) draft.guestToken = null;
     }
     // Opens with: a list of module ids, or null to clear it back to "not set". An empty list is "not set" too.
@@ -2085,6 +2094,7 @@ class Store {
     if (!('phases' in draft)) delete space.phases;
     if (!('entry' in draft)) delete space.entry;
     if (!('requestAccess' in draft)) delete space.requestAccess;
+    if (!('closed' in draft)) delete space.closed;
     if (!('aiSees' in draft)) delete space.aiSees;
     // Someone taken off the member list loses their address for this space, as removeMember does.
     for (const u of this.data.users) if (!space.members.includes(u.key)) this.dropSpaceCalendarFeed(u, id);

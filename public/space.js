@@ -147,6 +147,7 @@ const asideSelection = new Set(); // identities picked to pull aside together, b
 let me = null;
 let spaceName = 'Coffee Pub'; // the space I am in, once joined; the environment's name before that
 const presenceUsers = new Map(); // key -> { displayName, borderColor, online, space, ... } from /api/presence
+let toldClosed = null; // the id of the closed space I was told of
 let requestSpaces = []; // spaces I may only ask to enter (request access), as the narrow rows the server sends
 let presenceSpaces = []; // the spaces, with `mine` for the ones I may join
 let currentSpace = null; // the space I am in, once joined
@@ -287,8 +288,12 @@ async function loadPresence() {
     // everything that finds where someone is reads one list.
     // A space I may only ask to enter comes as a narrow row (id, name, description, hasImage, request, no members): kept
     // apart, so nothing that reads a space's members ever meets one.
-    requestSpaces = (spaces || []).filter((r) => r && r.request);
-    presenceSpaces = [...(spaces || []).filter((r) => !(r && r.request)), ...(asides || []).map(asideEntry)];
+    requestSpaces = (spaces || []).filter((r) => r && (r.request || r.closed));
+    presenceSpaces = [...(spaces || []).filter((r) => !(r && (r.request || r.closed))), ...(asides || []).map(asideEntry)];
+    // The space I am in was closed for set up: said once, the call goes on (the server refuses what I ask next).
+    const closedNow = entered && currentSpace ? requestSpaces.find((r) => r.closed && r.id === currentSpace.id) : null;
+    if (closedNow && toldClosed !== closedNow.id) { toldClosed = closedNow.id; noticeToast(`This ${word('space')} is closed for set up.`, { kind: 'danger' }); }
+    else if (!closedNow) toldClosed = null;
     activeSpace = active === undefined ? LOBBY : active; // null: the stream is somewhere I can't see
     ownerOnline = Boolean(hasOwner);
     for (const [key, tile] of tiles) {
@@ -592,13 +597,14 @@ function paintRequestCard(card, r) {
   const src = r.hasImage ? `/img/space/${encodeURIComponent(r.id)}` : '';
   img.hidden = !src;
   if (src && img.dataset.src !== src) { img.dataset.src = src; img.src = src; }
-  const pending = r.request === 'pending';
-  const declined = !pending && r.answer === 'denied';
+  const closed = r.closed === true; // closed for set up: listed, never entered, nothing to ask
+  const pending = !closed && r.request === 'pending';
+  const declined = !closed && !pending && r.answer === 'denied';
   card.querySelector('[data-ask-box]').hidden = false;
-  card.querySelector('[data-ask]').hidden = pending || declined;
+  card.querySelector('[data-ask]').hidden = closed || pending || declined;
   card.querySelector('[data-withdraw]').hidden = !pending;
   const state = card.querySelector('[data-ask-state]');
-  state.textContent = pending ? 'Requested' : declined ? 'Declined' : '';
+  state.textContent = closed ? 'Closed for set up' : pending ? 'Requested' : declined ? 'Declined' : '';
   state.hidden = !state.textContent;
 }
 async function askAccess(card, method) {

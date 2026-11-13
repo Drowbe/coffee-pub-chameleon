@@ -22,13 +22,13 @@ let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n += 1; };
 
 const space = read('public/space.js');
-ok(/requestSpaces = \(spaces \|\| \[\]\)\.filter\(\(r\) => r && r\.request\)/.test(space) && /presenceSpaces = \[\.\.\.\(spaces \|\| \[\]\)\.filter\(\(r\) => !\(r && r\.request\)\)/.test(space), 'space: a stranger\'s row is kept out of presenceSpaces');
+ok(/requestSpaces = \(spaces \|\| \[\]\)\.filter\(\(r\) => r && \(r\.request \|\| r\.closed\)\)/.test(space) && /presenceSpaces = \[\.\.\.\(spaces \|\| \[\]\)\.filter\(\(r\) => !\(r && \(r\.request \|\| r\.closed\)\)\)/.test(space), 'space: a stranger\'s row is kept out of presenceSpaces');
 const paint = space.slice(space.indexOf('function paintRequestCard'), space.indexOf('async function askAccess'));
 ok(paint.length > 200 && !/innerHTML|insertAdjacentHTML/.test(paint), 'space: the request card is drawn as text');
 ok(/removeAttribute\(a\)/.test(paint) && !/setAttribute\('role'/.test(paint) && /\.space-choice-actions'\)\.hidden = true/.test(paint), 'space: a request card is not a button and has no Join');
 ok(/\.space-choice\.requestable[\s\S]{0,300}askAccess\(asking, 'POST'\)[\s\S]{0,200}askAccess\(asking, 'DELETE'\)[\s\S]{0,60}return;/.test(space), 'space: a click on a request card goes to its two buttons only');
 ok(/api\(method, `\/api\/spaces\/\$\{encodeURIComponent\(id\)\}\/request`\)/.test(space) && /noticeToast\(err\.message/.test(space), 'space: the server\'s sentence is shown in a toast');
-ok(/'Requested'/.test(paint) && /'Declined'/.test(paint) && /\[data-ask\]'\)\.hidden = pending \|\| declined/.test(paint), 'space: Requested with Withdraw; Declined with no button');
+ok(/'Requested'/.test(paint) && /'Declined'/.test(paint) && /\[data-ask\]'\)\.hidden = closed \|\| pending \|\| declined/.test(paint), 'space: Requested with Withdraw; Declined with no button');
 const html = read('public/space.html');
 ok(/data-ask type="button"[\s\S]{0,200}Request access/.test(html) && /data-withdraw/.test(html) && !/fa-regular|fa-light/.test(html.slice(html.indexOf('data-ask-box'), html.indexOf('space-choice-actions'))), 'space.html: the card has Request access and Withdraw, solid icons');
 

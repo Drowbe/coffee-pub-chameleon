@@ -19,9 +19,13 @@
 //     shown as not online.
 'use strict';
 
+const { mayEnter, isClosed, closedFor, closedView } = require('./space-access');
+
 function belongsToSpace(viewer, space) {
   if (!space) return false;
   if (viewer.all) return true;
+  // A closed space (for set up) belongs only to its owners, the admin and its moderators: nobody else is told who is in it.
+  if (isClosed(space)) return mayEnter(viewer, space);
   if (viewer.guestSpace) return space.id === viewer.guestSpace;
   return Boolean(viewer.owner) || (space.members || []).includes(viewer.key);
 }
@@ -33,7 +37,6 @@ function belongsToAside(viewer, aside) {
   return Boolean(viewer.owner) || (aside.members || []).includes(viewer.key);
 }
 
-const { mayEnter } = require('./space-access');
 
 const NOWHERE = Object.freeze({ space: null, aside: false, asidePrivate: false, elsewhere: false, inCall: false });
 const ELSEWHERE = Object.freeze({ space: null, aside: false, asidePrivate: false, elsewhere: true, inCall: false });
@@ -96,7 +99,8 @@ function presenceView(viewer, { users, spaces, asides, online, present, describe
     users: shownUsers,
     spaces: spaces
       .filter((s) => mayEnter(viewer, s))
-      .map((s) => ({ ...describeSpace(s), mine: belongsToSpace(viewer, s) })),
+      .map((s) => ({ ...describeSpace(s), mine: belongsToSpace(viewer, s) }))
+      .concat(spaces.filter((s) => closedFor(viewer, s)).map((s) => closedView(s))),
     asides: asides.filter((a) => belongsToAside(viewer, a)).map((a) => ({ ...a, mine: true })),
     activeSpace: activeSpaceFor(viewer, activeSpace, find),
   };

@@ -2364,7 +2364,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.equal(tabOfField('opensWith'), 'modules', 'First visit is a section of the Settings tab');
   assert.equal(tabOfField('defaultLayout'), 'modules');
   assert.equal(tabOfField('phases'), 'phases');
-  assert.deepEqual([...MODERATOR_FIELDS], ['phases', 'opensWith', 'defaultLayout', 'budget'], 'the server\'s MODERATOR_SPACE_FIELDS');
+  assert.deepEqual([...MODERATOR_FIELDS], ['phases', 'opensWith', 'defaultLayout', 'budget', 'closed'], 'the server\'s MODERATOR_SPACE_FIELDS');
   const owner = setupTabs({ owner: true });
   assert.equal(pickTab(owner, '#members'), 'members', 'the fragment picks the tab');
   assert.equal(pickTab(owner, '#modules'), 'modules', 'the old page\'s #modules lands on the Settings tab');
@@ -2410,9 +2410,10 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.ok(!/setup-full|Full settings/.test(setup), 'the panel\'s Full settings link is gone (step 6)');
   assert.match(setup, /discardWords: 'Discard your changes\?',/, 'Escape and Cancel ask host.ui.editor\'s question');
   // The space tab (step 2) and the members tab (step 3).
-  for (const id of ['setup-picture-file', 'setup-name', 'setup-description', 'setup-profile', 'setup-link', 'setup-link-icon', 'setup-publish-calendar', 'setup-delete', 'setup-delete-confirm', 'setup-members', 'setup-allow-guests', 'setup-make-invite', 'setup-guest-link-on', 'setup-guest-link-new', 'setup-guest-link-off', 'setup-guest-link-copy']) {
+  for (const id of ['setup-picture-file', 'setup-name', 'setup-description', 'setup-profile', 'setup-link', 'setup-link-icon', 'setup-publish-calendar', 'setup-delete', 'setup-delete-confirm', 'setup-members', 'setup-make-invite', 'setup-guest-link-on', 'setup-guest-link-new', 'setup-guest-link-off', 'setup-guest-link-copy']) {
     assert.match(setup, new RegExp(`id="${id}"`), `the panel has #${id}`);
   }
+  for (const id of ['setup-open', 'setup-entry-accounts', 'setup-allow-guests', 'setup-entry-guests']) assert.match(setup, new RegExp(`switchRow\\('${id}'`), `the panel has the Who can enter switch #${id}`);
   assert.match(setup, /if \(!space\.isLobby\) \{\n\s*parts\.push\(sectionHtml\('calendar'/, 'the Lobby has no calendar switch and no Delete');
   assert.match(setup, /\$\{id === 'space' && !space\.isLobby \? dangerSectionHtml\(\) : ''\}<\/div>`/, 'Delete is drawn last on the space tab, after the budget section, and not on the Lobby');
   assert.ok(setup.indexOf("${id === budgetTabOf(tabs) && !space.isLobby ? budgetSectionHtml() : ''}${id === 'space'") > 0, 'Budget comes before Delete');
