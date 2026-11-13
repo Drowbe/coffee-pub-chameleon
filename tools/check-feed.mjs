@@ -1003,6 +1003,22 @@ try {
     assert.ok(rfcEvents((await read(pubUrl)).text).some((e) => text(e, 'SUMMARY') === 'Session in B'));
   });
 
+  await test('a space closed for set up: left out of the published calendar, the personal and the space addresses while closed; reopening restores', async () => {
+    const titles = async (url) => rfcEvents((await read(url)).text).map((e) => text(e, 'SUMMARY'));
+    assert.ok((await titles(pubUrl)).includes('Session in A'));
+    assert.equal((await call('PATCH', `/api/spaces/${spaceA}`, { cookie: admin, body: { closed: true } })).status, 200);
+    const pub = await titles(pubUrl);
+    assert.ok(!pub.some((t) => /in A$/.test(t)), 'no event of the closed space in the published calendar');
+    assert.ok(pub.includes('Session in B'), 'the other space stays');
+    assert.ok(pub.includes('Market day, all; welcome'), 'and the environment\'s own');
+    assert.ok(!(await titles(aliceUrl)).includes('Session in A'), 'not in a member\'s personal address');
+    await notHere(aliceA, 'a member\'s address for the closed space');
+    assert.equal((await call('PATCH', `/api/spaces/${spaceA}`, { cookie: admin, body: { closed: false } })).status, 200);
+    assert.ok((await titles(pubUrl)).includes('Session in A'), 'reopened: back in the published calendar');
+    assert.ok((await titles(aliceUrl)).includes('Session in A'));
+    assert.equal((await read(aliceA)).status, 200, 'and the space address works again');
+  });
+
   await test('published calendar: 404 with its switch off, after New address (the old one) and after Turn off', async () => {
     await publish(false);
     await notHere(pubUrl, 'the switch off');

@@ -119,6 +119,32 @@ await test('closed is on the environment copy', () => {
   assert.equal('closed' in copy.spaces[1], false);
 });
 
+// The guard: a bare `members.includes(` is not the entry rule (a member of a closed space is not let in), so in
+// server/index.js it may not gate a read or write route. Each deliberate use is listed here with why it is safe; a new one
+// fails until it uses userIsIn / spaceAccess.mayEnter or is added here with a reason.
+await test('server/index.js: no bare members.includes gates a route unless it is listed with a reason', () => {
+  const ALLOWED = [
+    ['if (space.isLobby || !space.members.includes(u.key)) continue;', 'a person\'s own pictures per space, in their own profile answer; reveals nothing of the space'],
+    ['return Boolean(user && space && space.members.includes(user.key)', 'userIsIn itself: the member test, then mayEnter'],
+    ['return Boolean(user && space && space.members.includes(user.key) && store.spaceFlags(user.key, space.id).moderator);', 'moderates(): the flag; mayEnter asks it only together with the closed test'],
+    ["if (!theSpace.members.includes(user.key) && !isOwner(req)) {", 'POST /api/call/join: after closedFor; an outsider is answered as an unknown id by mayEnter'],
+    ["return spaces.some((r) => (r.members || []).includes(user.key));", 'guestMaySeePerson: spaces is already only the ones the guest may enter (mayEnter)'],
+    ["if (!space.members.includes(currentUser(req).key) && !isOwner(req)) return res.status(403)", 'requireSpaceMember (the space address routes): right after its spaceAccess.mayEnter refusal'],
+    ["aside.members.includes(user.key)", 'an aside: asides cannot be closed (isClosed is for spaces)'],
+    ["if (people.some((k) => !space.members.includes(k)))", 'checks who was chosen, not who asks; the asker passed the route\'s own entry test'],
+  ];
+  const lines = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8').split('\n');
+  const used = new Set();
+  const bare = [];
+  lines.forEach((line, i) => {
+    if (!/members(?: \|\| \[\])?\)?\.includes\(/.test(line) || /^\s*\/\//.test(line)) return;
+    const hits = ALLOWED.map(([text], j) => (line.includes(text) ? j : -1)).filter((j) => j >= 0);
+    if (hits.length) hits.forEach((j) => used.add(j)); else bare.push(`${i + 1}: ${line.trim()}`);
+  });
+  assert.deepEqual(bare, [], 'use userIsIn(user, space) or spaceAccess.mayEnter, or list it above with a reason');
+  assert.deepEqual(ALLOWED.map((_, i) => i).filter((i) => !used.has(i)), [], 'an allowed line is gone: remove it from the list');
+});
+
 // --- real servers ----------------------------------------------------------------------------------------------------
 const standIn = http.createServer((req, res) => { req.resume(); req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"participants":[]}'); }); });
 await new Promise((r) => standIn.listen(0, '127.0.0.1', r));
@@ -147,7 +173,7 @@ async function startServer(extra = {}, dir = fs.mkdtempSync(path.join(os.tmpdir(
     const text = await res.text();
     let json = null;
     try { json = JSON.parse(text); } catch { /* not JSON */ }
-    return { status: res.status, json, text, cookie: (res.headers.get('set-cookie') || '').split(';')[0] };
+    return { status: res.status, json, text, headers: Object.fromEntries([...res.headers].filter(([k]) => k !== 'date')), cookie: (res.headers.get('set-cookie') || '').split(';')[0] };
   };
   srv.live = async (urlPath, token) => {
     const ctl = new AbortController();
@@ -288,6 +314,35 @@ try {
     assert.equal(unknown.status, 404);
     const r = await probe(srv, s, 'member', ids.I);
     assert.deepEqual(Object.values(r).filter((v) => v !== 403), [], JSON.stringify(r));
+  });
+
+  await test('the call token: an outsider of an invited-only space, closed or open, is answered exactly as for an unknown id', async () => {
+    const same = async (id, who) => {
+      const here = await srv.call('POST', '/api/call/join', { token: T[who], body: { space: id } });
+      const none = await srv.call('POST', '/api/call/join', { token: T[who], body: { space: 'zzzz9999' } });
+      assert.equal(none.status, 404);
+      assert.deepEqual([here.status, here.text, here.headers], [none.status, none.text, none.headers], `${who} ${id}`);
+    };
+    for (const who of ['other', 'modB']) await same(ids.I, who); // closed, invited only
+    for (const who of ['other', 'member', 'mod']) await same(ids.C, who); // open, invited only: not theirs
+    const member = await srv.call('POST', '/api/call/join', { token: T.member, body: { space: ids.I } });
+    assert.equal(member.status, 403, 'a member of the closed one still gets the note');
+    assert.match(member.json.error, CLOSED);
+    assert.equal((await srv.call('POST', '/api/call/join', { token: T.modB, body: { space: ids.C } })).status, 200, 'a member of the open one gets a token');
+    assert.equal((await srv.call('POST', '/api/call/join', { token: T.other, body: { space: ids.A } })).status, 403, 'who could have entered it if it were open: the note');
+  });
+
+  await test('notifications: a closed space sends to the people who may enter it only; reopening restores', async () => {
+    const inbox = async (who) => (await srv.call('GET', '/api/notifications', { token: T[who] })).json.notifications.map((x) => x.title);
+    const send = (title) => srv.call('POST', `/api/modules/todo/notify?scope=space&space=${ids.I}`, { token: T.mod, body: { to: 'space', title } });
+    const closedNow = await send('while closed');
+    assert.equal(closedNow.status, 200, closedNow.text);
+    assert.ok((await inbox('mod')).includes('while closed'), 'its moderator gets it');
+    assert.ok(!(await inbox('member')).includes('while closed'), 'a plain member does not');
+    assert.equal((await srv.call('PATCH', `/api/spaces/${ids.I}`, { token: T.mod, body: { closed: false } })).status, 200);
+    assert.equal((await send('after reopening')).status, 200);
+    assert.ok((await inbox('member')).includes('after reopening'), 'reopened: members get it again');
+    assert.equal((await srv.call('PATCH', `/api/spaces/${ids.I}`, { token: T.mod, body: { closed: true } })).status, 200);
   });
 
   await test('Home lists: a member or another account sees it as closed with no people; an outsider of an invited one sees nothing', async () => {

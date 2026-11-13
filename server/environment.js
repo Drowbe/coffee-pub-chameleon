@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { Store, randomToken } = require('./store');
+const { Store, randomToken, hasOwnerRights } = require('./store');
 const { ModuleManager } = require('./modules');
 const { ModuleData } = require('./module-data');
 const { ModuleHolds, HOLD_SECONDS } = require('./module-holds');
@@ -40,6 +40,7 @@ const { LiveRegister } = require('./live');
 const { ModuleLive } = require('./module-live');
 const { fetchCalendar } = require('./link-preview');
 const auth = require('./auth');
+const spaceAccess = require('./space-access');
 const { migrateEnvironment } = require('./migrate-names');
 const { GuestAgreements } = require('./agreements');
 const accessRequestsLib = require('./access-requests');
@@ -101,7 +102,10 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
       if (to === 'space') keys = spaceId ? store.spaceById(spaceId)?.members || [] : [];
       else if (to === 'environment') keys = store.users.map((u) => u.key);
       else keys = store.userByKey(to) ? [to] : [];
-      return keys.filter((k) => store.userByKey(k) && moduleCan(found.manifest, store.spacePermissions(k, spaceId), 'read'));
+      // A space closed for set up sends its content only to the people who may enter it (spaceAccess.mayEnter).
+      const closed = spaceId ? store.spaceById(spaceId) : null;
+      const mayEnter = (k) => !spaceAccess.isClosed(closed) || spaceAccess.mayEnter({ key: k, owner: hasOwnerRights(store.userByKey(k)), moderates: store.spaceFlags(k, closed.id).moderator ? [closed.id] : [] }, closed);
+      return keys.filter((k) => store.userByKey(k) && mayEnter(k) && moduleCan(found.manifest, store.spacePermissions(k, spaceId), 'read'));
     },
   });
   moduleHooks.start();
