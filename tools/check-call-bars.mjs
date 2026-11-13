@@ -7,7 +7,8 @@
 // (what Chromium sends after a layout change under a resting pointer) must not bring them back.
 // It also looks at the call's own title bar in the column (plan-workspaces.md, decisions 15, 16, 18, 28): drawn with no call,
 // Start call on it and no large one in the column (it belongs to a call that fills an area of its own), Chat's menu with nothing of the call, and on the call the collapsed
-// rail's icon with its dot and its name.
+// rail's icon with its dot and its name. And at the Conference layout (step 4): the large Start call there and only there,
+// the call filling the page beside the chat at the width the chat had, and the call staying on across the Workspace and back.
 // Usage: node tools/check-call-bars.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -144,6 +145,91 @@ async function runArea(browser, S) {
   } finally { await tab.close(); }
 }
 
+// The Conference layout (plan-workspaces.md, step 4): its tab hides the canvas and the call fills the page beside the chat,
+// which keeps the width it had. With no call the large Start call shows there (and only there); it presses the title bar's
+// own button. Switching to the Workspace and back never hangs up. The call is the stub's: a real one is not tried here.
+async function runConference(browser, S) {
+  const tab = new Tab(browser.cdp, S.ctx);
+  await tab.open(1280, 'light', true);
+  const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
+  const M = `(() => { const r = (id) => { const e = document.getElementById(id); if (!e) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), shown: !e.hidden && b.width > 0 && b.height > 0 }; };
+    const col = document.getElementById('side-column');
+    return { view: document.body.classList.contains('view-conference'), page: col.classList.contains('call-page'), inCall: col.classList.contains('in-call'), win: innerWidth, column: r('side-column'), chat: r('side-column-chat'), head: r('call-head'),
+      empty: r('call-empty'), start: r('call-start'), startLabel: (document.getElementById('call-start-label') || {}).textContent, note: (document.getElementById('call-empty-note') || {}).textContent, strip: r('side-column-strip'), grid: r('grid'), canvas: r('canvas'), toggle: r('side-column-toggle'),
+      tiles: document.querySelectorAll('#grid .tile').length, join: r('join-call'), joinParent: (document.getElementById('join-call')?.parentElement || {}).id, tab: (document.querySelector('[data-layout-tab][aria-current=page]') || { dataset: {} }).dataset.layoutTab,
+      wider: document.documentElement.scrollWidth - innerWidth }; })()`;
+  const items = `[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] [role=menuitemradio]')].map((e) => e.textContent.trim())`;
+  const press = async (id) => { await tab.eval(`document.querySelector('[data-layout-tab=${id}]').click()`); await sleep(1200); };
+  const waitCall = async (on) => { const end = Date.now() + 10000; while (Date.now() < end && (await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`)) !== on) await sleep(200); await sleep(700); };
+  const near = (a, b, by = 2) => Math.abs(a - b) <= by;
+  try {
+    await driveScreen(tab, { id: 'conference', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
+    const before = await tab.eval(M);
+    const open = `JSON.stringify((window.hostModules.captureLayout().modules || []).map((m) => [m.id, m.mode]))`;
+    const openBefore = await tab.eval(open);
+    if (!(await tab.eval(`Boolean(document.querySelector('[data-layout-tab=conference]'))`))) { failures.push('Conference: there is no Conference tab in the top bar'); return; }
+    if (before.view || before.page || before.empty?.shown) failures.push(`Conference: the Workspace already looks like the Conference layout (${JSON.stringify(before)})`);
+    // No call: the page is the chat and the call's area with the large Start call.
+    await press('conference');
+    const idle = await tab.eval(M);
+    if (!idle.view || !idle.page || idle.tab !== 'conference') failures.push(`Conference, no call: the tab did not show the Conference layout (${JSON.stringify({ view: idle.view, page: idle.page, tab: idle.tab })})`);
+    if (idle.canvas?.shown) failures.push(`Conference, no call: the canvas is still drawn (${JSON.stringify(idle.canvas)})`);
+    if (!near(idle.chat?.w, before.column.w)) failures.push(`Conference, no call: the chat is ${idle.chat?.w}px wide, it was ${before.column.w}px in the Workspace`);
+    if (!near(idle.column?.w, idle.win)) failures.push(`Conference, no call: the call and the chat do not fill the page (${idle.column?.w}px of ${idle.win}px)`);
+    if (!idle.head?.shown || !near(idle.head.w, idle.win - idle.chat.w)) failures.push(`Conference, no call: the call's title bar does not span the rest of the page (${JSON.stringify(idle.head)}, chat ${idle.chat?.w}px)`);
+    if (!idle.empty?.shown || !idle.start?.shown || idle.startLabel !== 'Start call' || idle.start.h < 44) failures.push(`Conference, no call: the large Start call is not shown (${JSON.stringify([idle.empty, idle.start, idle.startLabel])})`);
+    if (!/not in a call/i.test(idle.note || '')) failures.push(`Conference, no call: no plain line says there is no call ("${idle.note}")`);
+    if (idle.empty?.shown && !near(idle.empty.w, idle.win - idle.chat.w)) failures.push(`Conference, no call: the call's area is ${idle.empty.w}px wide, the page leaves ${idle.win - idle.chat.w}px`);
+    if (idle.toggle?.shown) failures.push('Conference: the fold handle is still drawn (there is nothing to fold to)');
+    if (!idle.join?.shown || idle.joinParent !== 'call-head-tools') failures.push(`Conference, no call: the title bar's Start call is gone (${JSON.stringify([idle.join, idle.joinParent])})`);
+    if (idle.wider > 0) failures.push(`Conference, no call: the page is ${idle.wider}px wider than the window`);
+    await tab.click('#call-more'); await sleep(300);
+    const menu = await tab.eval(items);
+    await tab.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await sleep(200);
+    for (const want of ['Pop out the call', 'Call position']) if (!menu.includes(want)) failures.push(`Conference, no call: the call's menu lacks "${want}" (${menu.join(' / ')})`);
+    say(`Conference, no call: chat ${idle.chat?.w}px (the column was ${before.column.w}px), call area ${idle.empty?.w}x${idle.empty?.h}px of a ${idle.win}px page, large "${idle.startLabel}" ${idle.start?.w}x${idle.start?.h}px, "${idle.note}"; menu: ${menu.join(' / ')}`);
+    // The large button joins (it presses the title bar's): the call fills the page beside the chat.
+    await tab.click('#call-start'); await waitCall(true);
+    const on = await tab.eval(M);
+    if (!on.inCall || on.tiles < 1) failures.push(`Conference: the large Start call did not start the call (${JSON.stringify({ inCall: on.inCall, tiles: on.tiles })})`);
+    if (on.empty?.shown || on.join?.shown) failures.push('Conference, on the call: Start call is still shown');
+    if (!near(on.chat?.w, before.column.w)) failures.push(`Conference, on the call: the chat is ${on.chat?.w}px wide, it was ${before.column.w}px`);
+    if (!on.strip?.shown || !near(on.strip.w, on.win - on.chat.w) || !near(on.strip.x, on.chat.x + on.chat.w, 3)) failures.push(`Conference, on the call: the call does not fill the page beside the chat (${JSON.stringify(on.strip)}, chat ${JSON.stringify(on.chat)})`);
+    if (on.strip && on.column && on.strip.h + (on.head?.h || 0) < on.column.h - 2) failures.push(`Conference, on the call: the call is ${on.strip.h + (on.head?.h || 0)}px tall in a ${on.column.h}px page (the 55% rule is lifted here)`);
+    if (on.canvas?.shown || on.wider > 0) failures.push(`Conference, on the call: the canvas is drawn or the page is wider than the window (${JSON.stringify([on.canvas, on.wider])})`);
+    say(`Conference, on the call: ${on.tiles} tiles, the call ${on.strip?.w}x${on.strip?.h}px beside a ${on.chat?.w}px chat, tiles' grid ${on.grid?.w}x${on.grid?.h}px`);
+    // To the Workspace and back: the call stays on, the column is as it was.
+    await press('workspace');
+    const ws = await tab.eval(M);
+    if (!ws.inCall || ws.tiles !== on.tiles) failures.push(`Workspace after Conference: the call did not stay on (${JSON.stringify({ inCall: ws.inCall, tiles: ws.tiles })})`);
+    if (ws.view || ws.page || !ws.canvas?.shown || !near(ws.column?.w, before.column.w)) failures.push(`Workspace after Conference: the column and the canvas are not back (${JSON.stringify({ view: ws.view, page: ws.page, canvas: ws.canvas, column: ws.column })})`);
+    if (ws.strip && ws.column && ws.strip.h + (ws.head?.h || 0) > Math.round(ws.column.h * 0.55) + 2) failures.push(`Workspace after Conference: the call takes ${ws.strip.h + (ws.head?.h || 0)}px of a ${ws.column.h}px column (over 55%)`);
+    await press('conference');
+    const again = await tab.eval(M);
+    if (!again.inCall || again.tiles !== on.tiles || !again.view) failures.push(`Conference again: the call did not stay on (${JSON.stringify({ inCall: again.inCall, tiles: again.tiles, view: again.view })})`);
+    // Hang up: the large Start call is back here; in the Workspace it is not.
+    await tab.eval(`document.getElementById('hangup').click()`); await waitCall(false);
+    const off = await tab.eval(M);
+    if (off.inCall || !off.start?.shown) failures.push(`Conference, hung up: the large Start call did not come back (${JSON.stringify({ inCall: off.inCall, start: off.start })})`);
+    await press('workspace');
+    const end = await tab.eval(M);
+    if (end.empty?.shown || end.start?.shown || end.view) failures.push(`Workspace, no call: the large Start call shows in the side column (${JSON.stringify([end.empty, end.start])})`);
+    // The Workspace is as it was: the same modules in the same modes (only the Workspace remembers).
+    await sleep(800);
+    const openAfter = await tab.eval(open);
+    if (openAfter !== openBefore) failures.push(`Workspace after Conference: its modules are not as they were (${openAfter}; before ${openBefore})`);
+    // A module opened while the Conference layout hides the canvas: the Workspace comes back, so it can be seen.
+    await press('conference');
+    const other = await tab.eval(`(() => { const ids = ${JSON.stringify(['budget', 'polls', 'research', 'documents', 'whiteboard'])}; return ids.find((id) => !window.hostModules.isOpen(id) && (window.hostModules.open(id), window.hostModules.isOpen(id))) || ''; })()`);
+    await sleep(1200);
+    const opened = await tab.eval(M);
+    if (!other) say('a module opened from the Conference layout: no module to open in the seed, not tried');
+    else if (opened.view || opened.tab !== 'workspace' || !opened.canvas?.shown || !(await tab.eval(`window.hostModules.isOpen(${JSON.stringify(other)})`))) failures.push(`a module (${other}) opened from the Conference layout: the Workspace did not come back with it (${JSON.stringify({ view: opened.view, tab: opened.tab, canvas: opened.canvas })})`);
+    else say(`a module (${other}) opened from the Conference layout: the Workspace came back with it open`);
+    say(`Workspace and back: the call stayed on (${ws.tiles} tiles, the column ${ws.column?.w}px, the call ${ws.strip?.h + (ws.head?.h || 0)}px of ${ws.column?.h}px); hung up: large Start call ${off.start?.shown ? 'shown' : 'hidden'} on Conference, ${end.start?.shown ? 'SHOWN' : 'hidden'} in the Workspace`);
+  } finally { await tab.close(); }
+}
+
 async function main() {
   const bin = findBrowser();
   if (!bin) { say('SKIPPED. No Chromium found (set CHROME_PATH). This is not a pass; nothing was measured.'); return 0; }
@@ -156,6 +242,7 @@ async function main() {
     browser = await launch(bin);
     for (const people of [2, 4]) await run(browser, S, people);
     await runArea(browser, S);
+    await runConference(browser, S);
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);

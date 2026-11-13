@@ -63,7 +63,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // handoff a page over the call gets: from=space and the names for its header), so a link inside it that leads on to
 // another page keeps its way back. `onCompositeLoad(frame)`: each page that loads in a composite's frame, so the page
 // can take the header links inside it (home, which must not navigate the top window away from the call).
-export function createCanvas({ guestToken = null, guest = Boolean(guestToken), onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null, onArrange = null } = {}) {
+export function createCanvas({ guestToken = null, guest = Boolean(guestToken), onChatAsk = null, onChatAttach = null, onNote = null, onMenu = null, menuItems = null, noteEl = null, frameParams = null, onCompositeLoad = null, onTabs = null, onPopBlocked = null, onArrange = null, onOpening = null } = {}) {
   // The phone's tab bar (#modules-menu, `sdk-tabbar-tabs` while the window is a phone's width: space.js's placeSubnav):
   // a tab per module, Chat first; the conference is not a tab there (the call is the bar's pinned call item, space.js).
   // Wider than a phone the Modules tab of Set up (mountMenu, below) is the one place to show and hide modules, drawn with
@@ -1902,6 +1902,9 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   }
 
   function openModule(m, mode) {
+    // A module a person opens (a switch, a link, an object): the page hears it first, so a layout that hides the canvas
+    // (the Conference layout, space.js) can bring the canvas back for it. Never while a layout loads or is put back.
+    if (!restoring && !suspended && !opened.has(m.id)) onOpening?.(m.id);
     if (!restoring) keepLayout = false;
     const p = { id: m.id, modes: m.canvas.mode, kind: 'module' };
     if (opened.has(m.id)) {

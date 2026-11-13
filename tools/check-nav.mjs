@@ -772,7 +772,7 @@ test('the layout tabs (plan-layout-views.md, steps 2 and 3): after the switcher 
   // composite docked) as a saved favorite, holds the Workspace's memory and loads through canvas.loadLayout; the bars
   // are drawn again (the focused module's own tools change with the layout; the Layout menu, Full screen and Pop out stay).
   const press = space.slice(space.indexOf('function pressLayoutTab('), space.indexOf("layoutTabsEl.addEventListener('click'"));
-  assert.match(press, /currentLayoutTab = 'workspace';\n\s*canvas\.resumeMemory\(\);[^\n]*\n\s*rebaseLayout\(\);\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);\n\s*canvas\.refreshMenu\(\);/);
+  assert.match(press, /currentLayoutTab = 'workspace';\n\s*syncConferenceView\(\);[^\n]*\n\s*canvas\.resumeMemory\(\);[^\n]*\n\s*rebaseLayout\(\);\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);\n\s*canvas\.refreshMenu\(\);/);
   assert.match(press, /const layout = tab && tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/, 'Calendar and Map are their system layout, loaded as a saved one is');
   assert.match(press, /canvas\.holdMemory\(\);[^\n]*\n\s*currentLayoutTab = id;\n\s*layoutBase = null;\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);[\s\S]*canvas\.loadLayout\(layout\);/);
   assert.ok(press.indexOf('canvas.holdMemory()') < press.indexOf('canvas.loadLayout(layout)'), 'held before the load writes anything');
