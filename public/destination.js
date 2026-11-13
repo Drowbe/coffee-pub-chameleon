@@ -34,6 +34,9 @@ const phoneQuery = window.matchMedia('(max-width: 640px)');
 const params = new URLSearchParams(location.search);
 const spaceId = /^[A-Za-z0-9_-]{1,80}$/.test(params.get('space') || '') ? params.get('space') : ''; // a view of this space
 const guestToken = spaceId && params.get('guest') ? params.get('guest') : null; // a guest's link token, in a space only
+// A guest from the guest door has no token in the address: their cookie is their credential. Told apart in start(), by asking
+// the door; a guest of either kind is `guestMode`.
+let guestMode = Boolean(guestToken);
 const embedded = window.self !== window.top;
 // A phone is the page opened on its own at 640 px or less. In a frame (a docked column, a narrow window) it is narrow, not a
 // phone: the panel stacks below the main part (destination.css), with no tabs.
@@ -133,7 +136,7 @@ let mineOn = true;
 let hereOn = true; // in a space, with a filter there: this space's own
 // The filter in a space: This <space>, Mine and the environment's own (a guest has no Mine).
 const spaceFilter = () => Boolean(spaceId && kind.spaceFilter);
-const spaceFilterHasMine = () => spaceFilter() && !guestToken;
+const spaceFilterHasMine = () => spaceFilter() && !guestMode;
 let externals = []; // the person's other calendars: [{ id, name }], in their order
 const externalOff = new Set(); // other calendars the filter has off
 let markerKinds = []; // the kinds of markers the calendar has shown: [{ id, label, icon, tint }], remembered here
@@ -163,14 +166,22 @@ async function start() {
   await loadBranding();
   if (!withoutTopbar) wireOverlayBack();
   if (!guestToken) {
-    let me;
+    let me = null;
     try {
       me = (await api('GET', '/api/me')).user;
     } catch {
-      location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
-      return;
+      // No account: a guest from the door may look at a space's page (the server answers for them by the cookie). Anyone
+      // else goes to sign in, or, in a frame, is told in words: a window never shows the sign-in page.
+      if (spaceId) {
+        try { await api('GET', '/api/guest-door'); guestMode = true; } catch { /* not a guest either */ }
+      }
+      if (!guestMode) {
+        if (embedded) { missing('Your session has ended. Reload the page.'); return; }
+        location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+        return;
+      }
     }
-    if ($('whoami')) {
+    if (me && $('whoami')) {
       $('whoami').textContent = me.displayName;
       $('whoami-img').src = `/img/${encodeURIComponent(me.key)}/profile`;
       $('whoami-img').hidden = false;
@@ -277,7 +288,7 @@ async function start() {
 // pick from its id. The colour comes from the modules list a guest cannot read: then the pick from the id alone.
 async function mainModuleTint() {
   const id = d.main.module.id;
-  if (!guestToken) {
+  if (!guestMode) {
     try {
       const found = (await api('GET', '/api/modules/nav')).modules.find((m) => m.id === id);
       if (found) return moduleTint(id, found.color || null);

@@ -6,8 +6,8 @@
 //   { key, owner }                    a signed-in person; `owner` for owners and the admin;
 //   { guestSpace }                    a link guest, by their guest link's space id;
 //   { doorGuest: true, doorOn, granted } a guest who came through the guest door (server/guest-door.js): let into a space whose
-//                                     entry is 'guests' while the door is on (`doorOn`: the host's switch and the owner's
-//                                     both), and never the Lobby.
+//                                     entry is 'guests' while the door is on (`doorOn`: the host's switch; there is no owner
+//                                     switch, each space opens itself), and never the Lobby.
 // A space's `entry` is 'invited' (absent), 'accounts' (anyone with an account here) or 'guests' (the same for an
 // account and for a door guest while the door is on).
 'use strict';

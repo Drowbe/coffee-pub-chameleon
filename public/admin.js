@@ -516,6 +516,18 @@ $('add-user').addEventListener('submit', async (event) => {
   }
 });
 
+// The Guests section: the host's switch makes the door available; each space opens itself (Who can enter). With the host's
+// switch off, one plain line. There is no owner switch.
+function paintGuestDoor(settings) {
+  const on = settings.guestDoorHost === true;
+  const guests = word('guest', { many: true, cap: true });
+  const guestsLow = word('guest', { many: true });
+  $('guest-door-off').hidden = on;
+  $('guest-door-off').textContent = `${guests} can't come in from the sign-in page here. The host turns that on for this ${word('environment')}.`;
+  $('guest-door-on').hidden = !on;
+  $('guest-door-line').textContent = `${guests} come in from the sign-in page with a name and no account, for ${settings.guestHours || 24} hours, and only into ${word('space', { many: true })} set to Anyone, including ${guestsLow}.`;
+  $('guest-door-next').textContent = `To let ${guestsLow} in, open ${word('space', { a: true })} and set Who can enter to Anyone, including ${guestsLow}.`;
+}
 async function saveSettings(patch, statusEl) {
   try {
     const answer = await api('PATCH', '/api/settings', patch);
@@ -1177,7 +1189,6 @@ $('theme-delete').addEventListener('click', async () => {
     say($('theme-status'), err.message, true);
   }
 });
-$('save-guest-door').addEventListener('click', () => saveSettings({ guestDoor: $('set-guest-door').checked }, $('guest-door-status')));
 $('end-guest-sessions').addEventListener('click', async () => {
   try {
     await api('POST', '/api/guest-door/end-all');
@@ -2662,8 +2673,7 @@ async function init() {
     $('set-login-text').value = settings.loginText;
     $('set-mfa-required').checked = Boolean(settings.mfaRequired);
     $('set-allow-registration').checked = Boolean(settings.allowRegistration);
-    $('guest-door-section').hidden = settings.guestDoorHost !== true;
-    $('set-guest-door').checked = settings.guestDoor === true;
+    paintGuestDoor(settings);
     renderReactionRows(settings.reactions);
     renderIconRows(settings.icons);
     renderSiteImages(settings);

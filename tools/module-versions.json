@@ -40,15 +40,15 @@
     "hash": "b14b3256855f9239"
   },
   "travel": {
-    "version": "0.16.5",
-    "hash": "893b6d48439a5c9b"
+    "version": "0.16.6",
+    "hash": "2adb7c3f9da548c5"
   },
   "vault": {
     "version": "0.4.7",
     "hash": "0f493a5c01facb83"
   },
   "whiteboard": {
-    "version": "0.1.63",
-    "hash": "c02f033038284910"
+    "version": "0.1.64",
+    "hash": "0dbcc72ae1ee822e"
   }
 }

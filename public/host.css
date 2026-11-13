@@ -111,6 +111,7 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 .hc-cap-note { color: var(--status-warn-text); font-size: var(--text-12); font-weight: var(--weight-strong); }
 .hc-form { max-width: 720px; }
 .hc-fieldset { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; margin: 0; padding: 0; border: 0; }
+.hc-guest-door { margin-block: var(--space-3); }
 .hc-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); margin-left: var(--space-5); }
 .hc-danger-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding-block: var(--space-2); }
 .hc-danger-row + .hc-danger-row { padding-top: var(--space-4); border-top: 1px solid var(--edge-hairline); }

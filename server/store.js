@@ -21,6 +21,7 @@ const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEF
 const phaseRule = require('../public/phases.js');
 const aiPolicy = require('./ai-policy');
 const { cleanAgreed, hasAgreed } = require('./agreements');
+const { endsWithGuestMark } = require('./guest-door');
 
 // Image slots. Participant: what the video box shows when the camera is
 // off, plus optional overlays drawn on top while they talk, are muted, are
@@ -304,10 +305,8 @@ const DEFAULT_SETTINGS = {
   // account is a normal user, added automatically like everyone is to the
   // Lobby, with no password requirement beyond what they pick.
   allowRegistration: false,
-  // The guest door (plan-access-bundle.md, step 4): the owner's switch for the "Continue as guest" button. It works only
-  // while the host's switch is on (server/guest-door.js). guestEpoch is folded into every guest session's signature;
-  // raising it ends them all.
-  guestDoor: false,
+  // The guest door (plan-access-bundle.md, step 4): guestEpoch is folded into every guest session's signature; raising it
+  // ends them all. (The door's switch is the host's alone; there is no owner switch.)
   guestEpoch: 0,
   // Two-step sign-in policy (documentation/plans/plan-mfa.md): off by default (anyone may still enrol and is
   // then asked; this only makes it mandatory). Whether the feature is offered at all is the server's own
@@ -1257,7 +1256,6 @@ class Store {
     }
     if (patch.loginText !== undefined) s.loginText = String(patch.loginText ?? '').trim().slice(0, 1000);
     if (patch.allowRegistration !== undefined) s.allowRegistration = Boolean(patch.allowRegistration);
-    if (patch.guestDoor !== undefined) s.guestDoor = patch.guestDoor === true;
     if (patch.mfaRequired !== undefined) s.mfaRequired = Boolean(patch.mfaRequired);
     if (patch.maxQuality !== undefined && QUALITY_OPTIONS.includes(Number(patch.maxQuality))) s.maxQuality = Number(patch.maxQuality);
     if (patch.allowScreenShare !== undefined) s.allowScreenShare = Boolean(patch.allowScreenShare);
@@ -1619,11 +1617,17 @@ class Store {
     return key;
   }
 
+  // A member is never called by the guest mark ("Anna (Guest)"), so no one can pass as a guest, or a guest as them.
+  checkDisplayName(displayName) {
+    if (typeof displayName === 'string' && endsWithGuestMark(displayName.trim(), this.word('guest'))) throw new StoreError(`A name can't end in (${this.word('guest')}).`);
+  }
+
   addUser({ login, displayName, role, passwordHash, hostAdmin, firstPassword }) {
     const cleaned = cleanLogin(login);
     if (!cleaned) throw new StoreError('username is required');
     if (role !== undefined && !hostAdmin && !ASSIGNABLE_ROLES.includes(role)) throw new StoreError('role must be owner or member');
     if (this.userByLogin(cleaned)) throw new StoreError('that username is taken');
+    this.checkDisplayName(displayName);
     const user = this.sanitizeUser({
       key: this.newKey(),
       login: cleaned,
@@ -1661,6 +1665,7 @@ class Store {
       if (other && other.key !== key) throw new StoreError('that username is taken');
       draft.login = cleaned;
     }
+    if (patch.displayName !== undefined) this.checkDisplayName(patch.displayName);
     if (patch.displayName !== undefined) draft.displayName = cleanText(patch.displayName, 40) || draft.login;
     if (patch.role !== undefined && patch.role !== user.role) {
       if (!ASSIGNABLE_ROLES.includes(patch.role)) throw new StoreError('role must be owner or member');

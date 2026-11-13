@@ -671,7 +671,7 @@ else {
     const list = ppl.at(-1).people;
     same(list.map((p) => p.key).sort(), [ann.key, ben.key, giaId].sort(), 'who is there: Ann, Ben and the guest');
     ok(list.every((p) => p.tint === personTint(p.key)), 'each with the tint Node\'s rule gives');
-    same(list.find((p) => p.key === giaId), { key: giaId, name: 'Gia', guest: true, tint: personTint(giaId) }, 'the guest by the name on their pass');
+    same(list.find((p) => p.key === giaId), { key: giaId, name: 'Gia (Guest)', guest: true, tint: personTint(giaId) }, 'the guest by the name on their pass');
 
     // A subscription made as the module's page started (before its frame's load event) holds.
     await cmd(A, 't', 'publish', { topic: 'early', data: { e: 1 } });
@@ -695,7 +695,7 @@ else {
     // The guest sends, as themselves.
     await cmd(G, 't', 'publish', { topic: 'pointer', data: { x: 2 } });
     const gm = await until(B, "g.mod === 't' && g.kind === 'message' && g.name === 'p1' && g.data?.x === 2");
-    same(gm[0].from, { key: giaId, name: 'Gia', guest: true, tint: personTint(giaId) }, 'a guest sends as the id and name on their pass');
+    same(gm[0].from, { key: giaId, name: 'Gia (Guest)', guest: true, tint: personTint(giaId) }, 'a guest sends as the id and name on their pass');
     await sleep(300);
     same((await got(G, "g.kind === 'message' && g.data?.x === 2")).length, 0, 'and never hears it');
     // Another module: live-u's 'pointer' is live-u's only.

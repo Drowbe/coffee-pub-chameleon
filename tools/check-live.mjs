@@ -484,7 +484,7 @@ try {
   const guest = await watch(G, null);
   const gReady = await guest.until((e) => e.type === 'ready');
   ok(/^guest-/.test(gReady.you), 'a guest gets an id of their own');
-  await samS.until((e) => e.type === 'presence' && e.people.some((p) => p.key === gReady.you && p.name === 'Vic' && p.guest));
+  await samS.until((e) => e.type === 'presence' && e.people.some((p) => p.key === gReady.you && p.name === 'Vic (Guest)' && p.guest));
   n += 1;
   same((await call('PATCH', `${P}?guest=${encodeURIComponent(guestToken)}`, { body: { away: true } })).status, 409, 'a guest names their stream');
   same((await call('PATCH', `${P}?guest=${encodeURIComponent(guestToken)}`, { body: { away: true, stream: gReady.stream } })).json, { ok: true }, 'and says away with it');
@@ -502,16 +502,16 @@ try {
   // by POST /api/call/join, for the same id.
   const claims = (jwt) => JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8'));
   const gj = await call('POST', '/api/guest-join', { body: { token: guestToken, name: 'Wren' } });
-  same([gj.status, gj.json.spaceId, gj.json.guest.name, /^guest-/.test(gj.json.guest.id), typeof gj.json.guest.pass], [200, keep.id, 'Wren', true, 'string'], 'guest-join answers the guest pass');
+  same([gj.status, gj.json.spaceId, gj.json.guest.name, /^guest-/.test(gj.json.guest.id), typeof gj.json.guest.pass], [200, keep.id, 'Wren (Guest)', true, 'string'], 'guest-join answers the guest pass');
   const passed = await watch(`${G0}&pass=${encodeURIComponent(gj.json.guest.pass)}`, null);
   same((await passed.until((e) => e.type === 'ready')).you, gj.json.guest.id, 'the stream knows a guest by their pass');
-  await samS.until((e) => e.type === 'presence' && e.people.some((p) => p.key === gj.json.guest.id && p.name === 'Wren'));
+  await samS.until((e) => e.type === 'presence' && e.people.some((p) => p.key === gj.json.guest.id && p.name === 'Wren (Guest)'));
   n += 1;
   const forged = gj.json.guest.pass.replace(/^[^.]+/, Buffer.from(JSON.stringify({ id: 'guest-someone', name: 'Wren' })).toString('base64url'));
   same(await refused(`${G0}&pass=${encodeURIComponent(forged)}`, null), [403, 'that guest pass is not valid; enter again'], 'a pass changed by hand: 403');
   same(await refused(`${K}&guest=${encodeURIComponent(towerGuest)}&pass=${encodeURIComponent(gj.json.guest.pass)}`, null), [403, 'you are not in that space'], 'nor with another link');
   const gCall = await call('POST', '/api/call/join', { body: { guest: guestToken, pass: gj.json.guest.pass } });
-  same([gCall.status, claims(gCall.json.token).sub, claims(gCall.json.token).name, typeof gCall.json.livekitUrl], [200, gj.json.guest.id, 'Wren', 'string'], 'the guest\'s call token is for the id on their pass');
+  same([gCall.status, claims(gCall.json.token).sub, claims(gCall.json.token).name, typeof gCall.json.livekitUrl], [200, gj.json.guest.id, 'Wren (Guest)', 'string'], 'the guest\'s call token is for the id on their pass');
   passed.close();
   const mCall = await call('POST', '/api/call/join', { cookie: samC, body: { space: keep.id } });
   same([mCall.status, claims(mCall.json.token).sub, typeof mCall.json.call], [200, sam.key, 'string'], 'a member\'s call token');
@@ -786,7 +786,7 @@ if (!failed) {
     const big = await call('POST', P, { cookie: patC, raw: Buffer.concat([PNG, Buffer.alloc(11 * 1024)]), type: 'image/png' });
     same([big.status, big.json.error], [413, 'that picture is over 10 KB'], 'over the cap (CHAT_PICTURE_MAX_MB): 413');
     const gpic = await call('POST', `${P}?${g(tripToken)}&${await pass(tripToken)}&name=Pat`, { ip: '10.0.0.20', raw: PNG, type: 'image/png' });
-    same([gpic.status, (await samTrip.until((x) => x.type === 'chat-picture' && x.id === gpic.json.id)).who], [200, 'Tia'], "a guest sends one, under their pass's name (a ?name= is ignored)");
+    same([gpic.status, (await samTrip.until((x) => x.type === 'chat-picture' && x.id === gpic.json.id)).who], [200, 'Tia (Guest)'], "a guest sends one, under their pass's name (a ?name= is ignored)");
     const noPass = await call('POST', `${P}?${g(tripToken)}&name=Pat`, { ip: '10.0.0.20', raw: PNG, type: 'image/png' });
     same([noPass.status, noPass.json.error], [403, 'that guest pass is not valid; enter again'], "a guest's picture without a pass: 403");
     same((await call('POST', `/api/spaces/lobby/chat/pictures?${g(tripToken)}`, { ip: '10.0.0.20', raw: PNG, type: 'image/png' })).status, 403, 'not into another space');
@@ -845,7 +845,7 @@ if (!failed) {
 
     // --- the Lobby's guest posts in the Lobby, and nowhere else --------------------------------------------------------
     const guestPost = await call('POST', `${L}?${g(lobbyToken)}&${await pass(lobbyToken)}`, { ip: '10.0.0.1', body: { name: 'Pat', text: 'hello from a guest' } });
-    same([guestPost.status, guestPost.json.message.by, guestPost.json.message.who], [200, 'guest', 'Vic'], "kept as a guest, under their pass's name (a name in the body is ignored)");
+    same([guestPost.status, guestPost.json.message.by, guestPost.json.message.who], [200, 'guest', 'Vic (Guest)'], "kept as a guest, under their pass's name (a name in the body is ignored)");
     const unpassed = await call('POST', `${L}?${g(lobbyToken)}`, { ip: '10.0.0.10', body: { name: 'Pat', text: 'no pass' } });
     same([unpassed.status, unpassed.json.error], [403, 'that guest pass is not valid; enter again'], "a guest's post without a pass: 403");
     const forged = await call('POST', `${L}?${g(lobbyToken)}&pass=${encodeURIComponent(passes.get(tripToken))}`, { ip: '10.0.0.10', body: { text: 'wrong pass' } });

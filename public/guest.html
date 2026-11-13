@@ -14,15 +14,25 @@
   <link rel="stylesheet" href="/sdk/system.css">
 </head>
 <body data-brand="background">
-  <!-- The landing after the guest door (plan-access-bundle.md, step 4): who the visitor is, what is open to them and what they can't
-       do. Drawn by guest.js from GET /api/guest-door. -->
+  <!-- The guest's two screens (plan-access-bundle.md, step 4), drawn by guest.js from GET /api/guest-door. The landing (/guest)
+       says who the visitor is and what a guest can't do, with Continue; Home (/guest#home) lists the spaces open to them. -->
   <main class="panel login login-step wide" id="guest">
     <div class="brand big"><img data-brand="icon" alt="" class="icon"><span data-brand="environmentName">Coffee Pub</span></div>
     <p class="hint" id="guest-hello"></p>
-    <div class="sdk-banner" data-kind="info" id="guest-notice" role="note"><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><span class="sdk-banner-text"><span data-fill>As {a guest} you can't:</span><ul id="guest-unavailable"></ul></span></div>
-    <div id="guest-spaces" class="guest-spaces"></div>
+    <section id="guest-landing">
+      <div class="sdk-banner" data-kind="info" id="guest-notice" role="note"><span class="sdk-banner-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><span class="sdk-banner-text"><span data-fill>As {a guest} you can't:</span><ul id="guest-unavailable"></ul></span></div>
+      <div class="guest-actions">
+        <button class="btn btn-primary" type="button" id="guest-continue">Continue</button>
+      </div>
+    </section>
+    <section id="guest-home" hidden>
+      <h2 id="guest-home-title"></h2>
+      <div id="guest-spaces" class="guest-spaces" aria-live="polite"></div>
+    </section>
     <p class="status error" id="guest-error" hidden></p>
-    <button class="btn" type="button" id="guest-leave">Leave</button>
+    <div class="guest-actions guest-actions-end">
+      <button class="btn btn-small btn-quiet" type="button" id="guest-leave">Leave</button>
+    </div>
     <span class="version" data-brand="version"></span>
   </main>
   <script type="module" src="/guest.js"></script>

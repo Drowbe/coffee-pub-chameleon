@@ -1283,6 +1283,8 @@
   // cost fields). Found by the `budget` flag of another module that is on here, never by name; asked on load, on focus and every 30 s.
   // A guest gets the Money view only where an owner turned on "Guests can see costs and booking codes" in Set up
   // (host.space().guestsSeeHidden); the server keeps the amounts from them otherwise.
+  // (Declared before hideMoney: a guest's first draw calls it at once, and a later declaration was not there yet.)
+  const spaceOf = () => (typeof host.space === 'function' ? host.space() : null);
   const hideMoney = () => info.user.role === 'guest' && !(spaceOf() && spaceOf().guestsSeeHidden === true);
   const viewsNow = () => VIEWS.filter((v) => v.id !== 'money' || (!state.budgetOn && !hideMoney()));
   let topNext = false;
@@ -1318,7 +1320,6 @@
   });
 
   const templatePhases = () => (typeof host.phases === 'function' ? host.phases() : []);
-  const spaceOf = () => (typeof host.space === 'function' ? host.space() : null);
   // The currency costs are worded in: the budget's (Set up), else the one stored on the plan, else none (the server's).
   function planCurrency() {
     const sp = typeof host.space === 'function' ? host.space() : null;

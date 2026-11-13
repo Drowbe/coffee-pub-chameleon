@@ -36,7 +36,7 @@ const guest = read('public/guest.js');
 const askRow = guest.slice(guest.indexOf('function askRow'), guest.indexOf('function load'));
 ok(askRow.length > 200 && !/innerHTML/.test(askRow) && /textContent = space\.name/.test(askRow) && /textContent = space\.description/.test(askRow), 'guest landing: a request row is drawn as text');
 ok(/space\.state === 'request' \|\| space\.state === 'pending'/.test(guest) && !/href/.test(askRow), 'guest landing: a request row is not a link');
-ok(/method|pending \? 'DELETE' : 'POST'/.test(askRow) && /noticeToast\(err\.message/.test(askRow) && /Declined/.test(askRow), 'guest landing: asks, withdraws, shows the server\'s sentence, Declined');
+ok(/method|pending \? 'DELETE' : 'POST'/.test(askRow) && /noticeToast\(err\.message/.test(askRow) && /Not this time/.test(askRow), 'guest landing: asks, withdraws, shows the server\'s sentence, Not this time');
 
 const brand = read('public/brand.js');
 ok(/askRows = \(data\) => \(data\?\.spaces \|\| \[\]\)\.filter\(\(r\) => r && r\.request\)/.test(brand) && /items\.push\(\.\.\.askRows\(data\)\.map\(askItem\)\)/.test(brand), 'menu: the Spaces menu lists the spaces to ask for');
@@ -51,7 +51,7 @@ ok(/state\.owner && !space\.isLobby[\s\S]*setup-request-access[\s\S]*data-sectio
 const waiting = setup.slice(setup.indexOf('async function loadWaiting'), setup.indexOf('async function loadOwnerParts'));
 ok(waiting.length > 500 && !/innerHTML|insertAdjacentHTML/.test(waiting), 'set up: the waiting list is drawn as text');
 ok(/access-requests`\)/.test(waiting) && /access-requests\/\$\{encodeURIComponent\(r\.id\)\}`, \{ decision \}/.test(waiting) && /'approve'/.test(waiting) && /'deny'/.test(waiting), 'set up: the list reads and answers the routes');
-ok(/r\.kind === 'guest' \? `\$\{r\.name\} \(\$\{word\('guest'\)\}\)`/.test(waiting), 'set up: a guest is marked, in the environment\'s word');
+ok(/name\.textContent = r\.name;/.test(waiting) && !/\(\$\{word\('guest'\)\}\)/.test(waiting), 'set up: a guest is shown by the name the door kept, which carries the guest mark once');
 ok(/err\.message/.test(waiting) && /loadWaiting\(\)/.test(waiting) && /Nobody is waiting/.test(waiting), 'set up: a refusal is shown plainly, the list reloads, an empty list says so');
 ok(/button\.disabled|b\.disabled = true/.test(waiting), 'set up: a button is off while its answer is sent');
 

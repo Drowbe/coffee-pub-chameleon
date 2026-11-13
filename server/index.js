@@ -208,7 +208,7 @@ const {
   NDA_FILE = '',
   // The guest door (plan-access-bundle.md, step 4; server/guest-door.js). ENABLE_GUEST_DOOR is the host's switch on a
   // single-environment install (off unless 'true'; on a hosted server the host console's per-environment switch is the
-  // host's); the owner's own switch is settings.guestDoor. A guest session lasts GUEST_SESSION_HOURS (24); an address
+  // host's); it only makes the door available; each space opens itself to guests (Who can enter). A guest session lasts GUEST_SESSION_HOURS (24); an address
   // may open GUEST_DOOR_PER_ADDRESS new sessions in 15 minutes (5); GUESTS_PER_SPACE (10) and GUESTS_PER_ENVIRONMENT
   // (50) guests may be here at once.
   ENABLE_GUEST_DOOR = 'false',
@@ -3267,6 +3267,8 @@ app.use((req, res, next) => {
 });
 // A page a frame asked for that would otherwise redirect a framed request into a page that refuses frames (/, a guest
 // link): a tiny page that says so instead, with its status.
+const framedSessionEnded = 'Your session has ended. Reload the page.';
+const framedNotForGuests = () => `Not available to ${word('guest', { many: true })}.`;
 function framedRefusal(req, res, status, text) {
   if (req.get('sec-fetch-dest') !== 'iframe') return false;
   res.status(status).set(FRAMED_HERE).type('html')
@@ -3979,7 +3981,7 @@ app.post('/api/call/join', async (req, res) => {
     guestRegisterTouch(door);
     spaceId = theSpace.id;
     identity = `guest-door:${door.id}`;
-    caller = { identity: door.id, name: `${door.name} (${word('guest')})`, media: Boolean(store.roleSet('guest').conference) };
+    caller = { identity: door.id, name: door.name, media: Boolean(store.roleSet('guest').conference) };
   } else {
     return res.status(401).json({ error: 'sign in first' });
   }
@@ -4027,15 +4029,20 @@ function readGuestPass(link, pass) {
 }
 
 // --- the guest door and the one guest resolver (plan-access-bundle.md, step 4; server/guest-door.js) -------------------
-// Two switches, both off until turned on: the host's (ENABLE_GUEST_DOOR on a single install, the environment's record in
-// the host console when hosted) and the owner's (settings.guestDoor). With either off there are no door guests: a session
-// already open stops reading, and its live streams end (liveAccessChanged).
+// One switch, off until turned on: the host's (ENABLE_GUEST_DOOR on a single install, the environment's record in the host
+// console when hosted). It makes the door AVAILABLE: "Continue as guest" shows on the sign-in page and a guest session
+// reads. What a guest may enter is each space's own Who can enter (entry 'guests'), so the door lets in nobody until an
+// owner opens a space (guestDoorHasOpenSpace); there is no owner switch. With the host's switch off there are no door
+// guests: a session already open stops reading, and its live streams end (liveAccessChanged).
 function hostGuestDoorOn() {
   if (!BASE_DOMAIN) return ENABLE_GUEST_DOOR === 'true';
   const record = hostRegistry && hostRegistry.findEnvironment(currentEnvironment().slug);
   return Boolean(record && record.guestDoor === true);
 }
-const guestDoorOn = () => hostGuestDoorOn() && store.settings.guestDoor === true;
+const guestDoorOn = () => hostGuestDoorOn();
+// Whether at least one space is open to guests (Who can enter: Anyone, including guests). With the host's switch on and no
+// such space the door still shows and a guest lands on an empty Home; mayEnter lets them into nothing.
+const guestDoorHasOpenSpace = () => guestDoorOn() && store.spaces.some((r) => !r.isLobby && r.id !== 'lobby' && spaceAccess.entryOf(r) === 'guests');
 const guestEpoch = () => Number(store.settings.guestEpoch) || 0;
 const guestDoorClosed = () => `The ${word('guest')} door is closed.`;
 
@@ -4149,18 +4156,19 @@ function guestAgreementRefusal(versions) {
 app.post('/api/guest-join', (req, res) => {
   const theSpace = store.spaceByGuestToken(req.body?.token);
   if (!theSpace) return res.status(404).json({ error: `that ${word('guest')} link is off or wrong` });
-  const name = agreementsLib.cleanGuestName(req.body?.name);
-  if (!name) return res.status(400).json({ error: 'a name is required' });
-  if (agreementsLib.guestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
+  const typed = typedGuestName(req.body?.name);
+  if (!typed) return res.status(400).json({ error: 'a name is required' });
+  if (typedGuestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
   const refused = newGuestSessionRefusal(req);
   if (refused) return res.status(429).json({ error: refused });
-  const nameClash = guestNameRefusal(name);
+  const nameClash = guestNameRefusal(typed);
   if (nameClash) return res.status(400).json({ error: nameClash });
+  const name = markedGuestName(typed);
   const disagree = guestAgreementRefusal(req.body?.versions);
   if (disagree) return res.status(disagree.status).json(disagree.body);
   const id = `guest-${randomToken(8)}`;
   try {
-    if (agreementTexts.required) currentEnvironment().guestAgreements.record({ guest: id, name, docs: agreementTexts.docs });
+    if (agreementTexts.required) currentEnvironment().guestAgreements.record({ guest: id, name: typed, docs: agreementTexts.docs });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not record your agreement; try again' });
   }
@@ -4169,20 +4177,23 @@ app.post('/api/guest-join', (req, res) => {
   res.json({ spaceId: theSpace.id, spaceName: theSpace.name, permissions: store.roleSet('guest'), guest });
 });
 
-// A typed name that is an account's (its display name or its login, however it is cased or spaced) is refused: a guest
-// must not pass as a member. The sentence, or null.
+// A guest's name is the typed name with the guest mark once ("Thomas (Guest)"), so a guest can never pass as a member
+// whatever they type; a typed mark is taken off first so it is never doubled. 40 characters count the typed name. Only a
+// name that mixes alphabets (lookalike letters) is refused.
 const GUEST_NAME_LONG = `A name can be at most ${agreementsLib.GUEST_NAME_MAX} characters.`;
-function guestNameRefusal(name) {
-  if (guestDoorLib.mixesScripts(name)) return 'A name cannot mix alphabets. Type it in one.';
-  const mine = guestDoorLib.nameSkeleton(name);
-  if (store.users.some((u) => guestDoorLib.nameSkeleton(u.displayName) === mine || guestDoorLib.nameSkeleton(u.login) === mine)) {
-    return `That name belongs to ${word('member', { a: true })} here. Type another.`;
-  }
+const untypedMark = (value) => guestDoorLib.stripGuestMark(agreementsLib.guestNameLine(value), word('guest'));
+const typedGuestName = (value) => agreementsLib.cleanGuestName(untypedMark(value));
+const typedGuestNameTooLong = (value) => [...untypedMark(value)].length > agreementsLib.GUEST_NAME_MAX;
+const markedGuestName = (typed) => guestDoorLib.markedGuestName(typed, word('guest'));
+function guestNameRefusal(typed) {
+  if (guestDoorLib.mixesScripts(typed)) return 'A name cannot mix alphabets. Type it in one.';
   return null;
 }
 // What a guest from the door may be told: the spaces they may enter (id, name, whether it has a picture, state 'open'), and
 // those they may only ask to enter (plus the description; state 'request', or 'pending' once asked; `answer: 'denied'` when
 // the last request was declined). A closed space without request access is not here at all.
+// Whether a request was declined within the last 24 hours (the wait before the same person may ask again).
+const deniedToday = (answered) => Boolean(answered && answered.state === 'denied' && Date.now() - (answered.decidedAt || answered.at) < 24 * 3600000);
 function doorSpacesFor(guest) {
   const viewer = doorViewer(guest);
   const access = currentEnvironment().accessRequests;
@@ -4193,7 +4204,7 @@ function doorSpacesFor(guest) {
     else if (spaceAccess.mayRequest(viewer, r)) {
       const asked = Boolean(access.pendingOf(r.id, who));
       const { id, name, description, hasImage } = spaceAccess.requestView(r, asked);
-      out.push({ id, name, hasImage, description, state: asked ? 'pending' : 'request', ...(!asked && access.lastAnswer(r.id, who)?.state === 'denied' ? { answer: 'denied' } : {}) });
+      out.push({ id, name, hasImage, description, state: asked ? 'pending' : 'request', ...(!asked && deniedToday(access.lastAnswer(r.id, who)) ? { answer: 'denied' } : {}) });
     }
   }
   return out;
@@ -4209,18 +4220,19 @@ app.post('/api/guest-door', (req, res) => {
   if (!guestDoorOn()) return res.status(403).json({ error: guestDoorClosed() });
   const refused = newGuestSessionRefusal(req);
   if (refused) return res.status(429).json({ error: refused });
-  const name = guestAgreementsName(req.body?.name);
-  if (!name) return res.status(400).json({ error: 'A name is required.' });
-  if (agreementsLib.guestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
-  const clash = guestNameRefusal(name);
+  const typed = typedGuestName(req.body?.name);
+  if (!typed) return res.status(400).json({ error: 'A name is required.' });
+  if (typedGuestNameTooLong(req.body?.name)) return res.status(400).json({ error: GUEST_NAME_LONG });
+  const clash = guestNameRefusal(typed);
   if (clash) return res.status(400).json({ error: clash });
+  const name = markedGuestName(typed);
   const disagree = guestAgreementRefusal(req.body?.versions);
   if (disagree) return res.status(disagree.status).json(disagree.body);
   const env = currentEnvironment();
   if (env.guestRegister.inEnvironment() >= env.guestLimits.perEnvironment) return res.status(403).json({ error: `This ${word('environment')} has as many ${word('guest', { many: true })} as it can take right now.` });
   const id = `guest-${randomToken(8)}`;
   try {
-    if (agreementTexts.required) env.guestAgreements.record({ guest: id, name, docs: agreementTexts.docs });
+    if (agreementTexts.required) env.guestAgreements.record({ guest: id, name: typed, docs: agreementTexts.docs });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.status ? err.message : 'could not record your agreement; try again' });
   }
@@ -4230,7 +4242,6 @@ app.post('/api/guest-door', (req, res) => {
   env.guestRegister.touch(id, name);
   res.set('Cache-Control', 'no-store').status(201).json({ ok: true, guest: { id, name } });
 });
-const guestAgreementsName = (value) => agreementsLib.cleanGuestName(value);
 
 // GET /api/guest-door: who this guest is, the spaces open to them and the refusals the landing lists. 401 for anyone
 // without a guest session.
@@ -4239,7 +4250,7 @@ app.get('/api/guest-door', (req, res) => {
   const guest = guestOf(req);
   if (!guest || guest.kind !== 'door') return res.status(401).json({ error: guestDoorOn() ? `Enter as ${word('guest', { a: true })} first.` : guestDoorClosed() });
   currentEnvironment().guestRegister.touch(guest.id, guest.name);
-  res.json({ guest: { id: guest.id, name: guest.name }, permissions: store.roleSet('guest'), spaces: doorSpacesFor(guest), unavailable: guestRefusals(), none: `Nothing is open to ${word('guest', { many: true })} here.` });
+  res.json({ guest: { id: guest.id, name: guest.name }, permissions: store.roleSet('guest'), spaces: doorSpacesFor(guest), unavailable: guestRefusals(), none: `No ${word('space', { many: true })} are open to ${word('guest', { many: true })} at this time.` });
 });
 // DELETE /api/guest-door: ends this guest's session (and clears the cookie).
 app.delete('/api/guest-door', (req, res) => {
@@ -4554,7 +4565,7 @@ function requesterOf(req) {
   const user = currentUser(req);
   if (user) return { viewer: accountViewer(req), who: { key: user.key }, name: user.displayName };
   const guest = guestOf(req);
-  if (guest && guest.kind === 'door') return { viewer: doorViewer(guest), who: { guest: guest.id, name: guest.name, until: guest.until }, name: `${guest.name} (${word('guest')})` };
+  if (guest && guest.kind === 'door') return { viewer: doorViewer(guest), who: { guest: guest.id, name: guest.name, until: guest.until }, name: guest.name };
   return { refused: guest ? { status: 403, error: `A ${word('guest')} link opens one ${word('space')} only.` } : { status: 401, error: 'sign in first' } };
 }
 const accessWho = (r) => ({ id: r.id, kind: r.key ? 'account' : 'guest', name: r.key ? store.userByKey(r.key)?.displayName || '' : r.name, at: r.at });
@@ -10636,7 +10647,10 @@ app.get('/modules/:id', (req, res) => {
   // the module serves a keyed page (an OBS or stream module): those are left as they were, for whatever embeds them.
   const keyedModule = modules.enabled(req.params.id)?.manifest?.surfaces?.keyed;
   if (req.query.s === undefined && !keyedModule) res.set(FRAMED_HERE);
-  if (!currentUser(req) && !hasGuestAccess(req)) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  if (!currentUser(req) && !hasGuestAccess(req)) {
+    if (framedRefusal(req, res, 401, framedSessionEnded)) return; // a module's window never shows the sign-in page
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
   // A module's environment page (no space, not a pop-out) leads to the destination it is a part of while that is shown
   // (plan-calendar-destination.md, decision 16). For the main the browser keeps the address's #day= or #ref= across the redirect,
   // and the query goes with it (?from=space&spaceName=... is the page's "Back to" link). Only the query is taken from
@@ -10668,10 +10682,12 @@ for (const dest of destinations.DESTINATIONS) {
       return res.sendFile(page('destination.html'));
     }
     if (!currentUser(req)) {
+      // In a frame (a composite's window) never the sign-in page and never a redirect: a plain page with a plain sentence.
+      // A guest of either kind (the guest link's token, or the guest door's cookie) is told it is not for them; anyone
+      // else, that the session ended.
+      if (framedRefusal(req, res, guestOf(req) ? 403 : 401, guestOf(req) ? framedNotForGuests() : framedSessionEnded)) return;
       // A guest (a space's guest link, no session) goes home: back to their space by its link, or / for a dead link.
-      // Framed (a composite's frame), never redirected into a page that refuses frames: a plain page that says so.
       if (req.query.guest !== undefined) {
-        if (framedRefusal(req, res, 401, 'Sign in again.')) return;
         const guestSpace = typeof req.query.guest === 'string' ? store.spaceByGuestToken(req.query.guest) : null;
         return res.redirect(guestSpace ? `/guest/${encodeURIComponent(req.query.guest)}` : '/');
       }
@@ -11639,7 +11655,7 @@ app.get('/api/currencies', requireUser, (_req, res) => res.json({ currencies: cu
 // calendarFeeds until an owner sets it); `publishedCalendarFeed`: { on, made, readAt }, the published calendar's one
 // address as it stands (plan-space-calendars.md, section 2), never its hash. `topBarReasons`: { calendar, map }, why
 // each cannot show whatever its switch (one sentence), or null.
-const ownerSettings = () => ({ ...branding(), guestDoorHost: hostGuestDoorOn(), ownWords: store.ownWords(), ownVerbs: store.ownVerbs(), templateVerbs: store.templateVerbsView(), ownHomeIcon: store.settings.homeIcon || null, template: templateView(store, currentEnvironment()), templateWords: store.templateWordsView(), templateHomeIcon: store.templateHomeIcon || null, spaceDefaults: store.settings.spaceDefaults || null, showCalendar: store.settings.showCalendar === true, showMap: store.settings.showMap === true, calendarFeeds: store.settings.calendarFeeds === true, otherCalendars: store.otherCalendarsOn(), publishedCalendar: store.settings.publishedCalendar === true, publishedCalendarFeed: feedView(store.publishedCalendarFeed), topBarReasons: destinationReasons() });
+const ownerSettings = () => ({ ...branding(), guestDoorHost: hostGuestDoorOn(), guestDoorOpen: guestDoorHasOpenSpace(), guestHours: currentEnvironment().guestLimits.hours, ownWords: store.ownWords(), ownVerbs: store.ownVerbs(), templateVerbs: store.templateVerbsView(), ownHomeIcon: store.settings.homeIcon || null, template: templateView(store, currentEnvironment()), templateWords: store.templateWordsView(), templateHomeIcon: store.templateHomeIcon || null, spaceDefaults: store.settings.spaceDefaults || null, showCalendar: store.settings.showCalendar === true, showMap: store.settings.showMap === true, calendarFeeds: store.settings.calendarFeeds === true, otherCalendars: store.otherCalendarsOn(), publishedCalendar: store.settings.publishedCalendar === true, publishedCalendarFeed: feedView(store.publishedCalendarFeed), topBarReasons: destinationReasons() });
 app.get('/api/settings', requireOwner, (_req, res) => res.json({ settings: ownerSettings(), streamKey: store.streamKey }));
 // `template` ("none" for none) switches the environment's template (the switching addendum): taken out of the body
 // before the settings; an unknown one refuses the whole change. With it, the answer also carries `template` and `offer`.
@@ -11652,9 +11668,7 @@ app.patch('/api/settings', requireOwner, async (req, res) => {
     const problem = templateSwitchProblem(currentEnvironment(), template);
     if (problem) return res.status(400).json({ error: problem });
   }
-  if (rest.guestDoor === true && !hostGuestDoorOn()) return res.status(403).json({ error: `The host has not turned on the ${word('guest')} door for this ${word('environment')}.` });
   if (template === undefined || Object.keys(rest).length) watchTheme(() => store.updateSettings(rest));
-  if (rest.guestDoor !== undefined) liveAccessChanged(); // the door shut, say: its guests' streams end now
   if (template === undefined) return res.json({ settings: ownerSettings() });
   const env = currentEnvironment();
   await switchTemplate(env, env.slug, template, currentUser(req).key);

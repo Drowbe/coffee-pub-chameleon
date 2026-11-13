@@ -694,7 +694,7 @@ try {
   const [giaId, gusId] = [await ready(giaS), await ready(gusS)];
   same((await send('live-a', keep.id, { topic: 'g.point', data: { x: 5 } }, null, gq(keepLink, gia.pass))).json, { ok: true }, 'a guest with their pass sends');
   const gm = await samS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
-  same(gm.data.from, { key: gia.id, name: 'Gia', guest: true }, 'from the guest as their pass names them');
+  same(gm.data.from, { key: gia.id, name: 'Gia (Guest)', guest: true }, 'from the guest as their pass names them');
   await gusS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
   await guestS.until((e) => e.event === 'live' && e.data.topic === 'g.point');
   await quiet(300);
@@ -709,9 +709,9 @@ try {
   // Joining and leaving as themselves.
   const gjoin = await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: giaId } });
   same(gjoin.status, 200, 'Gia joins with her stream');
-  ok(gjoin.json.people.some((p) => p.key === gia.id && p.name === 'Gia' && p.guest === true), 'and is listed by the name on her pass');
+  ok(gjoin.json.people.some((p) => p.key === gia.id && p.name === 'Gia (Guest)' && p.guest === true), 'and is listed by the name on her pass');
   const gjEv = await samS.until((e) => e.event === 'joined' && e.data.person.key === gia.id);
-  same(gjEv.data.person, { key: gia.id, name: 'Gia', guest: true }, 'Sam is told Gia joined');
+  same(gjEv.data.person, { key: gia.id, name: 'Gia (Guest)', guest: true }, 'Sam is told Gia joined');
   ok(gjEv.data.people.some((p) => p.key === gia.id && p.guest === true), 'and she is in the list');
   await refusal(await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gus.pass)}`, { body: { stream: giaId } }), 409, 'open the space first; there is no module stream of yours there', 'Gus can\'t join with Gia\'s stream: 409');
   const noPassS = await openStream(MS(keep.id, gq(keepLink, 'not-a-pass')));
@@ -740,7 +740,7 @@ try {
   // Gia leaves: at once.
   same((await call('POST', `/api/modules/live-a/live/leave?space=${keep.id}${gq(keepLink, gia.pass)}`, { body: { stream: giaId } })).json, { ok: true }, 'Gia leaves');
   const glEv = await samS.until((e) => e.event === 'left' && e.data.person.key === gia.id, 800);
-  same(glEv.data.person, { key: gia.id, name: 'Gia', guest: true }, 'Sam is told Gia left');
+  same(glEv.data.person, { key: gia.id, name: 'Gia (Guest)', guest: true }, 'Sam is told Gia left');
   // Gus joins; the link turned off (below) ends his access: the others are told he left, by the name on his pass.
   same((await call('POST', `/api/modules/live-a/live/join?space=${keep.id}${gq(keepLink, gus.pass)}`, { body: { stream: gusId } })).status, 200, 'Gus joins');
   await samS.until((e) => e.event === 'joined' && e.data.person.key === gus.id);
@@ -842,7 +842,7 @@ try {
   ok((await within(giaS.ended, 500)) === true && (await within(gusS.ended, 500)) === true, 'and the streams of the guests with passes too');
   await refusal(await send('live-a', keep.id, { topic: 'a' }, null, gq(keepLink, gia.pass)), 401, 'sign in first', 'and a guest\'s send with the old link and pass is refused');
   const gusLeft = await pat4.until((e) => e.event === 'left' && e.data.person.key === gus.id, 1000);
-  same(gusLeft.data.person, { key: gus.id, name: 'Gus', guest: true }, 'Gus lost access with the link: the others are told at once that he left, by the name on his pass');
+  same(gusLeft.data.person, { key: gus.id, name: 'Gus (Guest)', guest: true }, 'Gus lost access with the link: the others are told at once that he left, by the name on his pass');
 
   // A module rolled back to a version without `live`, and a module removed: their messages are refused at once.
   same((await call('POST', '/api/modules', { cookie: owner, raw: ROLL[0], type: 'application/zip' })).status, 201, 'live-r 1.0.0 (no live) installs');

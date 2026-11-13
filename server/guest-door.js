@@ -6,7 +6,7 @@
 //                  to, e: the environment's guestEpoch, t: issued at }, HMAC-signed with a key made from the
 //                  environment's own session secret (a different key from the account session's), so it never reads as
 //                  one and never works at another environment. Ended by: the hours running out, raising guestEpoch, a
-//                  new text version (the agreement gate), the owner or the host turning the door off, DELETE.
+//                  new text version (the agreement gate), the host turning the door off, DELETE.
 //   The register   who is here now (seen in the last 15 minutes), for the environment's cap (GUESTS_PER_ENVIRONMENT); the
 //                  space's cap (GUESTS_PER_SPACE) is read from the live register, which marks guests. In memory:
 //                  a restart forgets it, and a session still in date is counted again when it next asks.
@@ -111,4 +111,22 @@ const mixesScripts = (value) => {
   return /\p{Script=Latin}/u.test(s) && /[\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}\p{Script=Cherokee}\p{Script=Coptic}\p{Script=Georgian}\p{Script=Lisu}]/u.test(s);
 };
 
-module.exports = { nameSkeleton, mixesScripts, COOKIE, ACTIVE_MS, WINDOW_MS, GUEST_ID_RE, readLimits, issue, read, GuestRegister, NewSessionLimiter, nameKey };
+// The mark a guest's name carries ("Thomas (Guest)"): the word for guest in this environment's template, capitalised, in
+// round brackets. A typed name that already ends in the mark (the word or "guest", any case) is taken without it, so the
+// mark is never doubled.
+const escapeRe = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const markPattern = (word) => new RegExp(`\\(\\s*(?:guest|${escapeRe(word || 'guest')})\\s*\\)\\s*$`, 'iu');
+const guestMark = (word) => { const w = String(word || 'guest'); return `(${w.charAt(0).toUpperCase()}${w.slice(1)})`; };
+// True when `name` ends in the guest mark, as a person may not be called (a member's display name).
+const endsWithGuestMark = (name, word) => markPattern(word).test(String(name || ''));
+// The typed name without any guest mark on its end.
+function stripGuestMark(typed, word) {
+  let out = String(typed || '').trim();
+  const re = markPattern(word);
+  for (let i = 0; i < 5 && re.test(out); i += 1) out = out.replace(re, '').trim();
+  return out;
+}
+// The name as kept and shown everywhere: the typed name and the mark once.
+const markedGuestName = (typed, word) => `${stripGuestMark(typed, word)} ${guestMark(word)}`;
+
+module.exports = { endsWithGuestMark, stripGuestMark, markedGuestName, guestMark, nameSkeleton, mixesScripts, COOKIE, ACTIVE_MS, WINDOW_MS, GUEST_ID_RE, readLimits, issue, read, GuestRegister, NewSessionLimiter, nameKey };

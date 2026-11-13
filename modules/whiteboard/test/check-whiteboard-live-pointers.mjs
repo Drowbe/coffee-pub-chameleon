@@ -264,6 +264,7 @@ await test('the name: cut to 24 characters (… at the end), one line, a guest m
   assert.equal(L.wbLiveLabel(g, 'guest'), 'Gil (guest)');
   assert.equal(L.wbLiveLabel(L.wbLiveRead({ x: 1, y: 1 }, { key: 'guest-abcd1234', guest: true }, { tint }), 'guest'), 'guest', 'a nameless guest: the role word alone');
   assert.equal(L.wbLiveLabel(g, 'visitor'), 'Gil (visitor)', 'the environment\'s word for the role');
+  assert.equal(L.wbLiveLabel({ name: 'Gil (Guest)', guest: true }, 'guest'), 'Gil (Guest)', 'a name that carries the mark is shown once');
   assert.equal(L.wbLiveRead({ x: 1, y: 1 }, { key: 'ann1', name: 'Ann', guest: 'true' }, { tint }).guest, false, 'only true is a guest');
   assert.equal(L.wbLiveLabel(long, 'guest'), long.name);
 });

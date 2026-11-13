@@ -1297,7 +1297,7 @@ try {
       const guestJoin = (body) => call(server, 'acme', 'POST', '/api/guest-join', { body: { token: guestLink, name: 'Wanderer', ...body } });
       const guest = await guestJoin();
       assert.equal(guest.status, 200, guest.text);
-      assert.deepEqual([Object.keys(guest.json).sort(), guest.json.guest.name, typeof guest.json.guest.pass], [['guest', 'permissions', 'spaceId', 'spaceName'], 'Wanderer', 'string'], 'a guest entering gets their pass and no token');
+      assert.deepEqual([Object.keys(guest.json).sort(), guest.json.guest.name, typeof guest.json.guest.pass], [['guest', 'permissions', 'spaceId', 'spaceName'], 'Wanderer (Guest)', 'string'], 'a guest entering gets their pass and no token');
       for (const viewer of [
         await call(server, 'acme', 'POST', `/api/token?s=${encodeURIComponent(streamKey)}`, { body: { role: 'viewer', space: keep } }),
         await call(server, 'acme', 'POST', '/api/token', { cookie: owner, body: { role: 'viewer', space: keep } }),

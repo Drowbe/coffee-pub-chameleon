@@ -468,10 +468,11 @@ try {
 
   await test('live: a framed destination never redirects into a page that refuses frames', async () => {
     const framed = { 'sec-fetch-dest': 'iframe' };
-    for (const url of [`/calendar?guest=${encodeURIComponent(guest)}`, '/calendar?guest=not-a-link', `/map?guest=${encodeURIComponent(guest)}`]) {
+    // A guest's link in a frame with no space: told it is not for them (403); a dead link or no session: the session ended (401).
+    for (const [url, status, words] of [[`/calendar?guest=${encodeURIComponent(guest)}`, 403, /Not available to guests\./], ['/calendar?guest=not-a-link', 401, /Your session has ended\. Reload the page\./], [`/map?guest=${encodeURIComponent(guest)}`, 403, /Not available to guests\./]]) {
       const r = await call('GET', url, { headers: framed });
-      assert.equal(r.status, 401, `${url}, framed: ${r.status}`);
-      assert.match(r.text, /Sign in again\./, `${url}, framed: says so`);
+      assert.equal(r.status, status, `${url}, framed: ${r.status}`);
+      assert.match(r.text, words, `${url}, framed: says so`);
       assert.equal(r.headers.get('content-security-policy'), "frame-ancestors 'self'");
     }
     // Not framed: as before (a guest goes home; the next test pins the redirects).

@@ -10,7 +10,7 @@
 //   show        "Modules": the page's menu of modules (the switches), Arrange and Layouts
 //   space       the picture, name, description, faces in the call, launch link, link icon, the published calendar
 //               switch, and a danger section with Delete (its own confirmation here; it does not wait for Save)
-//   members     the members and Allow guests (drafts), then Generate invite link and the guest link (actions, at once)
+//   members     the members and the guest link switch (drafts), then Generate invite link and the guest link (actions, at once)
 //   phases      each phase's start and end, inline, through the rule in public/phases.js (a draft; the phase chip's
 //               sheet is its own surface and still saves as it is set there), then the budget (while a module here
 //               reads it, or one is set: #216; budgetTabOf says where it goes when the template has no phases)
@@ -194,7 +194,7 @@ export function problemField(patch = {}, problem = '') {
 // The line a person reads after Save: what was saved, in words, and what to do next. `saved` is the fields that went
 // through (the PATCH's keys, 'image' or 'imageRemoved', and `module:<id>` for a module's settings); `failed` a field
 // that did not with the server's sentence. `words` names a field in this environment's words: the panel always gives
-// the members ("the players") and Allow guests, which are role words, and each module's settings by its name.
+// the members ("the players") and the guest link switch, which are role words, and each module's settings by its name.
 const FIELD_WORDS = {
   name: 'the name', description: 'the description', profile: 'the faces in the call', link: 'the launch link', linkIcon: 'the link icon',
   publishCalendar: 'the published calendar', opensWith: 'Opens with', phases: 'the phase dates', aiOff: 'Turn AI off', aiSees: 'What AI may see',
@@ -361,7 +361,7 @@ export function createSpaceSetup(deps) {
         <label class="sdk-choice-row setup-ask-row"><span class="sdk-choice-text"><span class="sdk-choice-label">People can ask to come in</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-request-access"></label><p class="hint">Someone who cannot enter sees this ${esc(spaceWord())}'s name, picture and description, and can ask. Saved with Save.</p>`));
       parts.push(sectionHtml('waiting', 'Waiting to come in', `<div id="setup-waiting"></div><p class="setup-links-status" id="setup-waiting-status" role="status" aria-live="polite"></p>`));
     }
-    parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Allow ${esc(guests)}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Whether a ${esc(guest)} link can be used here. Saved with Save.</p>
+    parts.push(sectionHtml('guests', esc(guests), `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(word('guest', { cap: true }))} link</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-allow-guests"></label><p class="hint">Lets you make a link that brings someone into this ${esc(spaceWord())} with no account. Separate from Who can enter. Saved with Save.</p>
         <label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">${esc(guests)} can see costs and booking codes</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-guests-see-hidden"></label><p class="hint">Off keeps amounts and booking codes from ${esc(guests.toLowerCase())}. Only ${esc(word('owner', { many: true }))} can change this. Saved with Save.</p>`));
     parts.push(sectionHtml('links', 'Links', `
         <p class="hint setup-links-hint">These work at once; they are not part of Save.</p>
@@ -831,10 +831,10 @@ export function createSpaceSetup(deps) {
     q('#setup-guest-link-new').hidden = !allowed || !token;
     q('#setup-guest-link-off').hidden = !token;
     const note = q('#setup-guest-link-note');
-    const guests = word('guest', { many: true, cap: true });
+    const guestLink = `${word('guest')} link`;
     note.textContent = !allowed
-      ? (draft.allowGuests ? `Press Save to allow ${guests}, then turn the link on.` : `Allow ${guests} is off, so the link can't be turned on.`)
-      : (!draft.allowGuests && token ? `Saving with Allow ${guests} off turns this link off too.` : '');
+      ? (draft.allowGuests ? `Press Save to turn on the ${guestLink}, then make the link.` : `The ${guestLink} is off, so the link can't be made.`)
+      : (!draft.allowGuests && token ? `Saving with the ${guestLink} off turns this link off too.` : '');
     note.hidden = !note.textContent;
   }
 
@@ -1354,7 +1354,7 @@ export function createSpaceSetup(deps) {
       const who = doc.createElement('span');
       who.className = 'setup-waiting-who';
       const name = doc.createElement('strong');
-      name.textContent = r.kind === 'guest' ? `${r.name} (${word('guest')})` : r.name;
+      name.textContent = r.name;
       const when = doc.createElement('span');
       when.className = 'hint';
       when.textContent = agoText(r.at);
@@ -1399,7 +1399,7 @@ export function createSpaceSetup(deps) {
     ]);
     if (!state || state.space.id !== space.id) return;
     if (record) takeServerSpace(record);
-    // "Anyone including guests" shows only while the guest door is on (the host's switch and the owner's), or while this
+    // "Anyone including guests" shows only while the host's guest door switch is on, or while this
     // space already has it, so an owner can see and change what is set.
     const door = await api('GET', '/api/branding').then((b) => Boolean(b.guestDoor)).catch(() => false);
     if (!state || state.space.id !== space.id) return;
@@ -1415,7 +1415,7 @@ export function createSpaceSetup(deps) {
       label.prepend(radio);
       choices.append(label);
       const hint = q('#setup-entry-hint');
-      if (hint) hint.textContent = `Others with an account see this ${spaceWord()} on Home and can join it. ${word('guest', { many: true, cap: true })} can come in from the sign-in page, with no account. Saved with Save.`;
+      if (hint) hint.textContent = `Others with an account see this ${spaceWord()} on Home and can join it. ${word('guest', { many: true, cap: true })} can come in from the sign-in page with just a name. Saved with Save.`;
       for (const radio of choices.querySelectorAll('input')) radio.checked = radio.value === state.draft.entry;
     }
     if (q('#setup-budget-currency')) state.currencies = await api('GET', '/api/currencies').then((r) => r.currencies || null).catch(() => null);
@@ -1569,9 +1569,9 @@ export function createSpaceSetup(deps) {
     opensWith: '#setup-opens-with input', defaultLayout: '#setup-first-visit input:checked', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
     phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
   };
-  // The fields in this environment's words: the members, Allow guests, and each module's settings by its name.
+  // The fields in this environment's words: the members, the guest link switch, and each module's settings by its name.
   function fieldWords() {
-    const words = { members: `the ${membersWord()}`, allowGuests: `Allow ${word('guest', { many: true, cap: true })}` };
+    const words = { members: `the ${membersWord()}`, allowGuests: `${word('guest', { cap: true })} link` };
     for (const m of (state && state.moduleSettings ? state.moduleSettings.modules : [])) words[`module:${m.id}`] = `the ${m.name} settings`;
     return words;
   }
