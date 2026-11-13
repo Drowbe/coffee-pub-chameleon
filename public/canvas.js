@@ -2350,7 +2350,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       aliases, // a stored `calendar` or `todo` opens the composite while the Calendar is on here (composites.js)
     });
     // A phone with Calendar or Map as the first visit: that composite first (a stored `calendar` or `maps` read as it).
-    const lead = tab && isNarrow() ? readAliased([tab === 'map' ? 'maps' : 'calendar'], aliases).filter((id) => canOpenHere(id)) : [];
+    const lead = tab && isNarrow() ? readAliased(tab === 'conference' ? [] : [tab === 'map' ? 'maps' : tab], aliases).filter((id) => canOpenHere(id)) : [];
     const want = [...lead, ...opens.filter((id) => !lead.includes(id))];
     for (const id of want) {
       if (builtins.has(id)) { if (canOpenHere(id)) api_openBuiltin(id); }

@@ -24,7 +24,7 @@ const { ChatHistory } = require('./chat-history');
 const { cleanReport: cleanAttention } = require('./attention');
 const { cleanFacts, iconKnown } = require('./facts');
 const { TagError } = require('./tags');
-const { LayoutError, cleanLayout, cleanSystemPatch, SYSTEM_IDS, SYSTEM_ICONS } = require('./layouts');
+const { LayoutError, cleanLayout, cleanSystemPatch, tabsOf, SYSTEM_IDS, SYSTEM_ICONS } = require('./layouts');
 const { ModuleLimits } = require('./module-limits');
 const { ModuleSettings, SettingError } = require('./module-settings');
 const { GeocodeCache, askService, keyOf: keyOfPlace, ENOUGH } = require('./geocode');
@@ -735,12 +735,19 @@ function environmentFor(slug) {
   env.store.moduleIconIds = () => [...installedIcons(), ...BUILTIN_MODULES.map((b) => b.icon)];
   // With no call service nobody has the conference, whatever the roles say (store.roleSet).
   env.store.callService = HAS_CALL_SERVICE;
-  // Whether a system layout (calendar, map) is on in a space, whoever asks: its destination resolves there (module on in
-  // the space, map file present). A space's defaultLayout may name it only while this holds (store.updateSpace).
+  // Whether a system layout (calendar, map, conference, whiteboard, documents) is on in a space, whoever asks: its destination
+  // resolves there (module on in the space, map file present); the conference while the server has a call service and the
+  // environment's switch is on; Whiteboards and Documents while their module is on in the space. A space's defaultLayout
+  // may name it only while this holds (store.updateSpace). What one person may open is systemLayoutsFor's.
   env.store.systemLayoutOn = (spaceId, id) => {
+    const enabled = env.modules.enabledAll();
+    if (id === 'conference') return HAS_CALL_SERVICE && env.store.settings.conferenceEnabled !== false;
+    if (id === 'whiteboard' || id === 'documents') {
+      const found = enabled.find((m) => m.manifest.id === id);
+      return Boolean(found) && found.manifest.scope.includes('space') && Boolean(found.manifest.surfaces?.canvas) && !refusedInLobby(found.manifest, spaceId) && env.modules.isOnIn(found.entry.id, spaceId);
+    }
     const dest = { calendar: 'calendar', map: 'map' }[id];
     if (!dest) return false;
-    const enabled = env.modules.enabledAll();
     const canRead = (manifest) => {
       const found = enabled.find((m) => m.manifest.id === manifest.id);
       return Boolean(found) && manifest.scope.includes('space') && !refusedInLobby(manifest, spaceId) && env.modules.isOnIn(found.entry.id, spaceId);
@@ -4695,11 +4702,11 @@ app.get('/api/spaces/:id', requireUser, (req, res) => {
   res.json({ space: theirs });
 });
 // Owners and the admin change anything; a member ticked as this space's moderator may send `phases` (the dates on
-// the timeline, plan-one-bar.md step 1), `opensWith` and `defaultLayout` (Set up, step 4) and `budget` (the target,
+// the timeline, plan-one-bar.md step 1), `opensWith`, `defaultLayout` (Set up, step 4) and `tabs` (the owner's tabs, plan-workspaces.md decision 22) and `budget` (the target,
 // plan-budget-module.md, decision 5) and nothing else: any other field in a moderator's body is "owners only". The values go through store.updateSpace's rules, the same as
 // an owner's. Whether the page may offer Set up comes from /api/me: hasOwnerRights, or
 // user.spaces[<id>].permissions.moderator.
-const MODERATOR_SPACE_FIELDS = ['phases', 'opensWith', 'defaultLayout', 'budget', 'closed'];
+const MODERATOR_SPACE_FIELDS = ['phases', 'opensWith', 'defaultLayout', 'tabs', 'budget', 'closed'];
 app.patch('/api/spaces/:id', requireUser, (req, res) => {
   const body = req.body || {};
   if (!isOwner(req)) {
@@ -5541,38 +5548,59 @@ function sendLayoutError(err, res) {
   throw err;
 }
 
-// The system layouts (documentation/plans/plan-layout-views.md, step 1): never stored, made per space from what is on,
-// in the order Workspace, Calendar, Map. Workspace is always there. Calendar is there while the Calendar destination
+// The system layouts (documentation/plans/plan-layout-views.md, step 1; plan-workspaces.md, steps 1 and 2): the fixed set,
+// never stored, made per space from what is on, in the owner's order (the space's `tabs.order`, else Workspace, Calendar,
+// Map, Conference, Whiteboards, Documents). Workspace is always there. Calendar is there while the Calendar destination
 // answers in this space for this person (its module on in the space and readable); Map likewise while Maps is on and
-// the map-file rule holds (destinationInSpace, the same rule the destination page uses). Each carries this person's
-// own name, icon and tab choices (store.layouts.systemOf), else its defaults. A guest has none.
-//   { id, kind: 'system', name, icon, tab, defaultName, defaultIcon, modules }
+// the map-file rule holds (destinationInSpace, the same rule the destination page uses). Conference is there while this
+// person has the conference (modulePerms(...).conference: a call service, the environment's switch and the permission,
+// all folded in by store.roleSet); Whiteboards and Documents while their module is on in the space, on the canvas and
+// readable by this person. Each carries this person's own name, icon and tab choices (store.layouts.systemOf), else its
+// defaults. `shown` is false when the owner hid it (`tabs.hide`); the owner's hide wins, so `tab` is false then whatever the
+// person chose. A guest has none.
+//   { id, kind: 'system', name, icon, tab, shown, defaultName, defaultIcon, modules }
 function systemLayoutsFor(found) {
   if (!found.who.user) return [];
   const mine = store.layouts.systemOf(found.space.id, found.who.user.key);
+  const hidden = tabsOf(found.space.tabs);
   const make = (id, defaultName, defaultIcon, modulesOf) => {
     const own = mine[id] || {};
-    return { id, kind: 'system', name: own.name || defaultName, icon: own.icon || defaultIcon, tab: id === 'workspace' ? true : own.tab !== false, defaultName, defaultIcon, modules: modulesOf };
+    const shown = !hidden.hide.includes(id);
+    return { id, kind: 'system', name: own.name || defaultName, icon: own.icon || defaultIcon, tab: shown && (id === 'workspace' ? true : own.tab !== false), shown, defaultName, defaultIcon, modules: modulesOf };
   };
-  const out = [make('workspace', 'Workspace', SYSTEM_ICONS.workspace, [])];
+  const made = new Map([['workspace', make('workspace', 'Workspace', SYSTEM_ICONS.workspace, [])]]);
   for (const [id, dest, moduleId] of [['calendar', 'calendar', 'calendar'], ['map', 'map', 'maps']]) {
     const shown = destinationInSpace(dest, found.who, found.space.id);
     if (!shown) continue;
     const main = shownModule(shown.shown.main.manifest);
-    out.push(make(id, main.name, main.icon || SYSTEM_ICONS[id], [{ id: moduleId, mode: 'dock' }]));
+    made.set(id, make(id, main.name, main.icon || SYSTEM_ICONS[id], [{ id: moduleId, mode: 'dock' }]));
   }
-  return out;
+  // The conference loads an empty layout for now (plan-workspaces.md, step 1; the page's Conference layout is step 4).
+  if (modulePerms(found.who, found.space.id).conference) {
+    const conference = shownModule(BUILTIN_MODULES.find((b) => b.id === 'conference'));
+    made.set('conference', make('conference', conference.name, conference.icon || SYSTEM_ICONS.conference, []));
+  }
+  const perms = modulePerms(found.who, found.space.id);
+  for (const id of ['whiteboard', 'documents']) {
+    const here = modules.enabledAll().find(({ manifest }) => manifest.id === id);
+    if (!here) continue;
+    const { manifest, entry } = here;
+    if (!manifest.scope.includes('space') || !manifest.surfaces.canvas || refusedInLobby(manifest, found.space.id) || !moduleSpaceAccess(entry, found.who, found.space) || !moduleCan(manifest, perms, 'read')) continue;
+    const shown = shownModule(manifest);
+    made.set(id, make(id, shown.name, shown.icon || SYSTEM_ICONS[id], [{ id, mode: 'dock' }]));
+  }
+  return hidden.order.map((id) => made.get(id)).filter(Boolean);
 }
 // What a first visit to a space shows for this viewer, resolved from the stored fields so the page does not re-derive it
-// (plan-layout-views.md, step 5): { layout: 'workspace' | 'calendar' | 'map' | <shared layout id>, opensWith: [ids] | null }.
-// `layout` is the space's defaultLayout while it still resolves (a shared layout that exists; Calendar or Map while it
+// (plan-layout-views.md, step 5): { layout: 'workspace' | another fixed layout's id | <shared layout id>, opensWith: [ids] | null }.
+// `layout` is the space's defaultLayout while it still resolves (a shared layout that exists; a fixed layout while it
 // is on here for this viewer), else 'workspace'. `opensWith` is the space's own list (the Workspace's default content),
 // or null when it has none (the page then falls back to the environment's list, as before); it is sent whatever `layout` is.
 function firstVisitFor(found) {
   const space = found.space;
   const stored = space.defaultLayout;
   let layout = 'workspace';
-  if (stored === 'calendar' || stored === 'map') {
+  if (SYSTEM_IDS.includes(stored) && stored !== 'workspace') {
     if (systemLayoutsFor(found).some((l) => l.id === stored)) layout = stored;
   } else if (stored && store.defaultLayoutOf(space.id)) {
     layout = stored;
@@ -5594,7 +5622,9 @@ app.get('/api/spaces/:id/layouts', (req, res) => {
   const fallback = store.defaultLayoutOf(found.space.id);
   // favorites: this person's favorite layouts' ids, in the order favorited (plan-favorite-layouts.md); [] for a guest.
   const favorites = store.layouts.favorites(found.space.id, me);
-  res.json({ mine, shared, system: systemLayoutsFor(found), defaultLayout: fallback ? fallback.id : null, firstVisit: firstVisitFor(found), favorites, canShare: found.canShare, canSetDefault: found.canSetDefault });
+  // tabs: the owner's order and hide, whole ({ order: [every id], hide: [ids] }), for the owner's controls: only for those who
+  // may set them (canSetDefault: owners, the admin and this space's moderators); the key is left out for anyone else.
+  res.json({ mine, shared, system: systemLayoutsFor(found), defaultLayout: fallback ? fallback.id : null, firstVisit: firstVisitFor(found), favorites, canShare: found.canShare, canSetDefault: found.canSetDefault, ...(found.canSetDefault ? { tabs: tabsOf(found.space.tabs) } : {}) });
 });
 
 app.post('/api/spaces/:id/layouts', (req, res) => {
@@ -5612,7 +5642,7 @@ app.post('/api/spaces/:id/layouts', (req, res) => {
 });
 
 // The name a person sees for a system layout, for a refusal's sentence (its default word when it is not on here).
-const systemNameOf = (found, id) => systemLayoutsFor(found).find((l) => l.id === id)?.name || { workspace: 'Workspace', calendar: 'Calendar', map: 'Map' }[id];
+const systemNameOf = (found, id) => systemLayoutsFor(found).find((l) => l.id === id)?.name || { workspace: 'Workspace', calendar: 'Calendar', map: 'Map', conference: 'Conference', whiteboard: 'Whiteboards', documents: 'Documents' }[id];
 
 // Rename (name), or replace with the current canvas (modules, snap): any of the three.
 app.put('/api/spaces/:id/layouts/:layoutId', (req, res) => {
@@ -5658,7 +5688,10 @@ app.delete('/api/spaces/:id/layouts/:layoutId', (req, res) => {
 
 // A person's own name, icon and tab for a system layout in a space (plan-layout-views.md, step 1): { name?, icon?, tab? },
 // name and icon null going back to the default. 200 { layout } (the system layout as GET lists it); 400 for a bad name or
-// icon, or tab false on the Workspace; 403 for a guest; 404 for an id that is not on in this space.
+// icon, or tab false on the Workspace; 403 for a guest; 404 for an id that is not on in this space; 409 for a tab the owner hid.
+// The owner hid a fixed layout (the space's tabs.hide): a person cannot turn its tab on or off, 409.
+const ownerHidSentence = () => `The ${word('owner')} has hidden this layout.`;
+const ownerHid = (found, id) => tabsOf(found.space.tabs).hide.includes(id);
 app.patch('/api/spaces/:id/layouts/system/:systemId', (req, res) => {
   const found = layoutSpaceFor(req, res);
   if (!found) return;
@@ -5668,6 +5701,7 @@ app.patch('/api/spaces/:id/layouts/system/:systemId', (req, res) => {
   const { patch, error } = cleanSystemPatch(req.body, { icons: layoutIconIds() });
   if (error) return res.status(400).json({ error });
   if (patch.tab === false && id === 'workspace') return res.status(400).json({ error: 'The Workspace is always shown.' });
+  if (patch.tab !== undefined && ownerHid(found, id)) return res.status(409).json({ error: ownerHidSentence() });
   try {
     store.layouts.setSystem(found.space.id, found.who.user.key, id, patch);
     res.json({ layout: systemLayoutsFor(found).find((l) => l.id === id) });
@@ -5679,8 +5713,8 @@ app.patch('/api/spaces/:id/layouts/system/:systemId', (req, res) => {
 // Favorite layouts (documentation/plans/plan-favorite-layouts.md, step 1): each signed-in person's own, per space, of
 // any layout they can see (their own or a shared one). PUT makes one a favorite, at the end; DELETE stops it being one.
 // Both answer { favorites } and doing what is already so is a 200 that changes nothing. There is no limit on how many
-// (plan-layout-views.md, decision 13). The ids `calendar` and `map` are the system layouts: PUT/DELETE set their tab
-// (404 while not on in this space) and answer { favorites, layout } with the system layout; `workspace` always has its
+// (plan-layout-views.md, decision 13). The ids of the fixed layouts other than `workspace` are the system layouts: PUT/DELETE set their tab
+// (404 while not on in this space; 409 "The owner has hidden this layout." while the owner's tabs hide it) and answer { favorites, layout } with the system layout; `workspace` always has its
 // tab: DELETE is a 400 "The Workspace is always shown.", PUT a 200 that changes nothing.
 function layoutFavorite(on) {
   return (req, res) => {
@@ -5691,6 +5725,7 @@ function layoutFavorite(on) {
       const id = req.params.layoutId;
       if (!systemLayoutsFor(found).some((l) => l.id === id)) return res.status(404).json({ error: 'There is no such layout here.' });
       if (id === 'workspace' && !on) return res.status(400).json({ error: 'The Workspace is always shown.' });
+      if (ownerHid(found, id)) return res.status(409).json({ error: ownerHidSentence() });
       try {
         if (id !== 'workspace') store.layouts.setSystem(found.space.id, found.who.user.key, id, { tab: on });
         return res.json({ favorites: store.layouts.favorites(found.space.id, found.who.user.key), layout: systemLayoutsFor(found).find((l) => l.id === id) });

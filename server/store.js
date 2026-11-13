@@ -14,7 +14,7 @@ const path = require('path');
 const crypto = require('crypto');
 const words = require('./words');
 const { shortProductName } = require('./product-name');
-const { Layouts } = require('./layouts');
+const { Layouts, SYSTEM_IDS: LAYOUT_SYSTEM_IDS, cleanTabs } = require('./layouts');
 const { LEGACY_ENVIRONMENT_RECORD } = require('./migrate-names');
 const { DEFAULT_REACTION_LIST, DEFAULT_ICON_LIST, OLD_DEFAULT_REACTIONS, OLD_DEFAULT_ICONS, sameList } = require('./default-lists');
 // The phase timeline rule, the one copy the pages use too (plan-one-bar.md, step 1).
@@ -102,7 +102,9 @@ function budgetProblem(v, settingsCurrency) {
 // looser rule here so an id from a later version is not dropped). null when it is not one.
 const LAYOUT_ID = /^[a-z][a-z0-9]{1,31}$/;
 // The system layouts a space's defaultLayout may also name (server/layouts.js; Workspace is "no default layout").
-const SYSTEM_DEFAULTS = ['calendar', 'map'];
+const SYSTEM_DEFAULTS = LAYOUT_SYSTEM_IDS.filter((id) => id !== 'workspace');
+// What a refusal calls each of them (the plan's words; the page shows the environment's own).
+const SYSTEM_DEFAULT_WORDS = { calendar: 'Calendar', map: 'Map', conference: 'Conference', whiteboard: 'Whiteboards', documents: 'Documents' };
 const cleanLayoutId = (id) => (typeof id === 'string' && LAYOUT_ID.test(id) ? id : null);
 // A space's optional "launch" link (their VTT, wiki, playlist, whatever) --
 // shown as a button next to Join and in the in-call toolbar. The icon is
@@ -857,6 +859,9 @@ class Store {
       // The shared saved layout this space opens with on a first visit (plan-saved-layouts.md, decision 4): its id,
       // absent while not set. Kept in step with opensWith by updateSpace and syncDefaultLayout.
       ...(cleanLayoutId(r.defaultLayout) ? { defaultLayout: r.defaultLayout } : {}),
+      // The owner's tabs (plan-workspaces.md, "Data"): { order?, hide? } of the fixed layouts' ids, cleaned as read (unknown
+      // ids dropped, a missing id added at the end); absent while nothing is set. The Lobby has them like any space.
+      ...(cleanTabs(r.tabs).tabs ? { tabs: cleanTabs(r.tabs).tabs } : {}),
       // AI turned off in this space, whatever a role may do (updateSpace); absent while AI is allowed here.
       ...(r.aiOff === true ? { aiOff: true } : {}),
       // What AI may see in this space, its owner's own choice (server/ai-policy.js); absent means the environment's choice.
@@ -2044,13 +2049,12 @@ class Store {
       if (patch.defaultLayout === null) {
         delete draft.defaultLayout;
       } else {
-        if (typeof patch.defaultLayout !== 'string') throw new StoreError('The default layout must be a shared layout\'s id, Calendar, Map, or null to stop using one.');
+        if (typeof patch.defaultLayout !== 'string') throw new StoreError('The default layout must be a shared layout\'s id, one of the fixed layouts, or null to stop using one.');
         if (patch.defaultLayout === 'workspace') {
           delete draft.defaultLayout; // Workspace is what no default layout means
-        } else if (patch.defaultLayout === 'calendar' || patch.defaultLayout === 'map') {
-          const word = patch.defaultLayout === 'calendar' ? 'Calendar' : 'Map';
+        } else if (SYSTEM_DEFAULTS.includes(patch.defaultLayout)) {
           if (typeof this.systemLayoutOn !== 'function' || !this.systemLayoutOn(id, patch.defaultLayout)) {
-            throw new StoreError(`${word} is not on in this ${this.word('space')}, so it can't be the first visit.`, 404);
+            throw new StoreError(`${SYSTEM_DEFAULT_WORDS[patch.defaultLayout]} is not on in this ${this.word('space')}, so it can't be the first visit.`, 400);
           }
           draft.defaultLayout = patch.defaultLayout;
         } else {
@@ -2059,6 +2063,15 @@ class Store {
           draft.defaultLayout = layout.id;
         }
       }
+    }
+    // The owner's tabs (plan-workspaces.md, "Data"): { order?, hide? } replaces what is stored; null, {} or the defaults clear
+    // it. Strict: an unknown id, an id twice, the Workspace in hide or any other shape is refused (layouts.js cleanTabs).
+    // Who may send it is the route's to decide (owners, the admin and this space's moderators).
+    if (patch.tabs !== undefined) {
+      const { tabs, error } = cleanTabs(patch.tabs, { strict: true });
+      if (error) throw new StoreError(error);
+      if (tabs) draft.tabs = tabs;
+      else delete draft.tabs;
     }
     // The phases' dates (plan-one-bar.md, step 1): the whole set replaces what is stored; null or {} clears it. Refused,
     // with public/phases.js's sentence, when a date is not after the previous boundary or not before the next, names
@@ -2089,6 +2102,7 @@ class Store {
     if (!('budget' in draft)) delete space.budget;
     if (!('opensWith' in draft)) delete space.opensWith;
     if (!('defaultLayout' in draft)) delete space.defaultLayout;
+    if (!('tabs' in draft)) delete space.tabs;
     if (!('publishCalendar' in draft)) delete space.publishCalendar;
     if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;

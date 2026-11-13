@@ -218,7 +218,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     ['not entering (the Workspace tab pressed): the Workspace', firstVisitLayout({ firstVisit: fv('map'), entering: false }), 'workspace'],
     ['a guest: a shared layout every time', firstVisitLayout({ firstVisit: fv('labc123'), remembered: ['todo'], guest: true }), 'labc123'],
     ['a guest: no Calendar tab', firstVisitLayout({ firstVisit: fv('calendar'), guest: true }), 'workspace'],
-    ['the tabs a first visit may open', [...SYSTEM_TABS], ['calendar', 'map']],
+    ['the tabs a first visit may open', [...SYSTEM_TABS], ['calendar', 'map', 'conference', 'whiteboard', 'documents']],
     ['Opens with beside a layout is still the Workspace\'s list', whatOpens({ own: ['chat', 'todo'], modules: ['todo'] }), ['chat', 'todo']],
   ];
   for (const [name, got, want] of firstCases) {
@@ -247,7 +247,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // with to be set before a layout opens; a phone opens Calendar's or Map's composite first.
   if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
   if (/spaceDefaultLayout && Array\.isArray\(spaceOpensWith\)/.test(restore)) fail('public/canvas.js', 'a layout as the first visit must not need Opens with to be set');
-  if (!/const lead = tab && isNarrow\(\) \? readAliased\(\[tab === 'map' \? 'maps' : 'calendar'\], aliases\)/.test(restore)) fail('public/canvas.js', 'on a phone, Calendar or Map as the first visit opens its composite first');
+  if (!/const lead = tab && isNarrow\(\) \? readAliased\(tab === 'conference' \? \[\] : \[tab === 'map' \? 'maps' : tab\], aliases\)/.test(restore)) fail('public/canvas.js', 'on a phone, a fixed layout as the first visit opens its composite or module first (the conference has none)');
   if (!/const builtinList = columnMode\(\) \? \[\] :/.test(canvasJs)) fail('public/canvas.js', 'the Show list leaves the conference and the chat out in column mode');
   const html = fs.readFileSync(path.join(ROOT, 'public/space.html'), 'utf8');
   for (const id of ['side-column', 'side-column-toggle', 'side-column-strip', 'side-column-chat', 'side-column-rail', 'work']) if (!html.includes(`id="${id}"`)) fail('public/space.html', `the always-on column needs #${id}`);

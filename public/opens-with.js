@@ -40,13 +40,13 @@ export function whatOpens({ remembered = null, own = null, environment = null, m
 }
 
 // Which layout a visit opens on (plan-layout-views.md, step 5, "Opens with and the default layout, as one choice"):
-// 'workspace' (the Workspace with whatOpens's list), 'calendar' or 'map' (that tab, with the Workspace behind it), or a
+// 'workspace' (the Workspace with whatOpens's list), a fixed layout's id (that tab, with the Workspace behind it), or a
 // shared layout's id (loaded into the Workspace). `firstVisit` is the server's resolved { layout, opensWith }
 // (GET /api/modules/for-space); Opens with is the Workspace's own content and sits beside any layout, so a layout never
 // needs a list to open, and a list never stops a layout. Only the restore on entering asks (`entering`), and only a
 // first visit: a person's remembered arrangement (`remembered`, never a guest's) wins afterwards. A guest has no tabs,
 // so Calendar or Map open the Workspace for one (the server already answers 'workspace' for a guest).
-export const SYSTEM_TABS = Object.freeze(['calendar', 'map']);
+export const SYSTEM_TABS = Object.freeze(['calendar', 'map', 'conference', 'whiteboard', 'documents']);
 export function firstVisitLayout({ firstVisit = null, remembered = null, guest = false, entering = true } = {}) {
   if (!entering) return 'workspace';
   if (!guest && Array.isArray(remembered)) return 'workspace';

@@ -50,7 +50,7 @@ export const SETUP_TABS = Object.freeze(['space', 'members', 'phases', 'modules'
 export const OWNER_TABS = SETUP_TABS;
 export const MODERATOR_TABS = Object.freeze(['phases', 'modules']);
 // The fields a moderator's PATCH may hold (server/index.js, MODERATOR_SPACE_FIELDS).
-export const MODERATOR_FIELDS = Object.freeze(['phases', 'opensWith', 'defaultLayout', 'budget', 'closed']);
+export const MODERATOR_FIELDS = Object.freeze(['phases', 'opensWith', 'defaultLayout', 'tabs', 'budget', 'closed']);
 // `phases`: the template has phases. Settings is always there for an owner and a moderator: the First visit section is
 // in it, so it never has nothing to show.
 // `show`: the Modules tab (id `show`: the modules' switches, Arrange and Layouts, for everyone wider than a phone) comes first.
