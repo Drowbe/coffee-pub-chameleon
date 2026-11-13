@@ -13,6 +13,7 @@ export { Clock, Bus, run, FakeStore };
 
 export const NAMES = ['dlRichRead', 'dlRichText', 'dlRichSchema', 'dlCoeditGate', 'dlSyncSession', 'dlSyncTopic', 'dlSyncSeed', 'dlSyncSeedId', 'dlSyncElect', 'dlSyncWriterHold', 'dlSyncRoster', 'dlSyncVector', 'dlSyncB64', 'DL_SYNC',
   'dlSeedClaim', 'dlCleanSeedMarker', 'dlSeedMarkerStale', 'dlSeedMarkerKey', 'dlCoeditSave', 'dlCoSaver', 'dlCoReadStored', 'dlCoSaveDelay', 'dlCoBackoff', 'dlCoErr', 'DL_COSAVE',
+  'dlSnapJoin', 'dlSnapSaver', 'dlSnapPrepare', 'dlSnapSplit', 'dlSnapHash', 'dlSnapCleanHeader', 'dlSnapCleanChunk', 'dlSnapCompaction', 'dlSnapReseed', 'DL_SNAP', 'dlSnapHeaderKey', 'dlSnapChunkKey', 'dlSyncUnb64',
   'dlCleanDoc', 'dlCleanPage', 'dlSplit', 'dlPlanChunks', 'dlNewId', 'dlExcerpt', 'dlPreview', 'DL_PAPER_DEFAULT', 'dlDocKey', 'dlTextKey', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
 
 export const TEXT = 'Alpha one.\n\nBeta two.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nOmega.\n';
@@ -64,7 +65,8 @@ export function world(src, o = {}) {
       doc: p.ydoc, lex, topic: L.dlSyncTopic(ID), me: key, live: m.live, editor: po.editor !== false, clock: clock.api(), config: po.config,
       seed: (d, sid) => L.dlSyncSeed(PM, d, W.pmDoc(read.text), ID, read.text, sid),
       marker: po.marker === false ? undefined : { store: handle, doc: ID, seedId: L.dlSyncSeedId(ID, read.text) },
-      onState: () => { if (p.saver) { const w = p.session.isWriter(); if (w && !p.wasWriter) p.saver.plan(false); p.wasWriter = w; } },
+      snapshot: po.snap ? { ...L.dlSnapJoin(PM, { store: handle, id: ID, lex, storedText: read.text, storedRev: read.rec.textRev || 0, me: key, now: () => clock.now() }), adopted: (h) => p.snapSaver.adopted(h, h.hashes) } : undefined,
+      onState: () => { if (p.saver && (p.ready || !po.snap)) { const w = p.session.isWriter(); if (w && !p.wasWriter) p.saver.plan(false); p.wasWriter = w; } },
     });
     p.doc = () => p.session.doc();
     p.text = () => W.textOf(p.doc(), p.table);
@@ -81,11 +83,24 @@ export function world(src, o = {}) {
       onChange: () => {}, note: (t) => p.notes.push(t), refused: (w) => p.refused.push(w),
     });
     p.ready = false;
+    if (po.snap) {
+      const stat = () => p.session.stats();
+      p.writeLog = [];
+      p.snapSaver = L.dlSnapSaver({
+        store: handle, id: ID, me: key, now: () => clock.now(), iso: () => new Date(clock.now()).toISOString(),
+        isWriter: () => p.session.isWriter(), ready: () => p.ready, dirty: () => p.rev !== p.savedRev || p.saver.state.saving,
+        savedText: () => p.st.saved.text, rev: () => p.st.rec.textRev || 0,
+        stateKey: () => { const s2 = stat(); return s2.changes + s2.rebuilt; }, largeKey: () => { const s2 = stat(); return s2.big + s2.assembled; },
+        prepare: () => L.dlSnapPrepare(PM, lex, p.session.doc(), p.st.saved.text),
+        writes: () => store.log.filter((x) => x.who === key && (x.op === 'set' || x.op === 'delete') && x.status === 200 && clock.now() - (x.at || 0) < 60000).length,
+        note: (t) => p.notes.push(t), onChange: () => {},
+      });
+    }
     // the editor's change counter: every change of the text, this page's or another's, is a change (the editor hears both)
     const onUpdate = () => { p.rev += 1; if (p.saver && p.ready) p.saver.changed(); };
     p.listen = () => p.session.doc().on('update', onUpdate);
     p.session.start();
-    p.session.join((how) => { p.how = how; p.joinedAt = clock.now(); p.ready = true; p.savedRev = NaN; p.listen(); });
+    p.session.join((how) => { p.how = how; p.joinedAt = clock.now(); p.ready = true; p.savedRev = NaN; p.listen(); if (po.snap && p.session.isWriter()) { p.wasWriter = true; p.saver.plan(false); } }); // like coReady, which ends with coChanged()
     W.pages.push(p);
     return p;
   };
@@ -93,6 +108,10 @@ export function world(src, o = {}) {
   W.type = (p, i, text, at) => { const para = p.doc().getXmlFragment(W.frag).get([0, 1, 3][i]); const t = para.get(0); p.doc().transact(() => t.insert(at === undefined ? t.length : at, text), 'local'); };
   // Back: the saver's leave, then the session stops (leaveCo)
   W.leave = async (p) => { const r = await p.saver.leave(); if (r === 'go') { p.saver.stop(); p.session.stop(); bus.disconnect(p.key); p.left = true; } return r; };
-  W.run = (ms, step) => run(clock, bus, ms, step);
+  W.run = async (ms, step) => {
+    if (!W.pages.some((p) => p.snapSaver)) return run(clock, bus, ms, step);
+    for (let left = ms; left > 0; left -= 500) { for (const p of W.pages) if (p.snapSaver && !p.left) p.snapSaver.tick(); await run(clock, bus, Math.min(500, left), step); }
+    return undefined;
+  };
   return W;
 }

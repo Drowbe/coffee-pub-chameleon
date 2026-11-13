@@ -928,7 +928,7 @@
   function coStatsPaint() {
     try {
       const st = ed.co.session.stats();
-      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel, save: { ...ed.co.saver.counts, textRev: ed.rec.textRev || 0, heard: ed.textHeard || 0, version: ed.docVersion, failed: ed.co.saver.state.failed, saving: ed.co.saver.state.saving, hold: ed.co.saver.hold(), ops: ed.co.ops, writes: ed.co.writeLog.filter((t) => Date.now() - t < 60000).length } });
+      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel, save: { ...ed.co.saver.counts, textRev: ed.rec.textRev || 0, heard: ed.textHeard || 0, version: ed.docVersion, failed: ed.co.saver.state.failed, saving: ed.co.saver.state.saving, hold: ed.co.saver.hold(), snap: { ...ed.co.snap.counts, have: ed.co.snap.state.have, running: ed.co.snap.state.running }, ops: ed.co.ops, writes: ed.co.writeLog.filter((t) => Date.now() - t < 60000).length } });
     } catch (err) { /* only for the tests */ }
   }
   async function openCoEditor(id) {
@@ -950,11 +950,14 @@
     c.store = coStore(c);
     ed.co = c;
     c.saver = coSaver(c);
+    c.snap = coSnapSaver(c);
+    const snapJoin = dlSnapJoin(DlPM, { store: c.store, id, lex, storedText: got.text, storedRev: rec.textRev || 0, me, now: () => Date.now() });
     rich = true;
     c.session = dlSyncSession(DlPM, {
       doc: ydoc, lex, topic: dlSyncTopic(id), me, live: host.live, editor: true,
       seed: (d, sid) => dlSyncSeed(DlPM, d, dlRichRead(DlPM, got.text, lex).doc, id, got.text, sid),
       marker: { store: c.store, doc: id, seedId: dlSyncSeedId(id, got.text) },
+      snapshot: { ...snapJoin, adopted: (h) => c.snap.adopted(h, h.hashes) },
       onRebuild: (nd) => coRebuilt(nd),
       onState: () => coChanged(),
       onChannel: (s) => { c.channel = s; if (s === 'open') c.session.reconnected(); coChanged(); },
@@ -968,6 +971,8 @@
     renderChrome();
     const statsTimer = setInterval(() => { if (!$('app') || !ed || ed.co !== c) return void clearInterval(statsTimer); coStatsPaint(); }, 500);
     c.statsTimer = statsTimer;
+    const snapTimer = setInterval(() => { if (!$('app') || !ed || ed.co !== c) return void clearInterval(snapTimer); Promise.resolve(c.snap.tick()).catch(() => {}); }, 1000);
+    c.snapTimer = snapTimer;
     c.session.start();
     c.session.join((how, mayType) => coReady(c, mayType));
   }
@@ -981,6 +986,7 @@
     renderChrome();
     if (c.editor) ed.editor.focus();
     $('app').dataset.coedit = 'ready';
+    coChanged(); // the writer's first save check (and so the first copy) does not wait for a roster change
   }
   // The roster or the channel changed: the cap, the Markdown box, and saving once this page is alone.
   function coChanged() {
@@ -1095,6 +1101,22 @@
       refused: (why) => note(why === 'title' ? 'Give the document a title.' : why === 'long' ? 'This document is too long. Split it into two.' : 'This document was deleted. Your changes are kept here.'),
     });
   }
+  // The writer's copy of the shared state in storage (documents-lib-w-coedit-snapshot.js): a late joiner opens from it instead of waiting for the pieces.
+  function coSnapSaver(c) {
+    const mine = ed;
+    const stat = () => c.session.stats();
+    return dlSnapSaver({
+      store: c.store, id: mine.id, me, now: () => Date.now(), iso: () => new Date().toISOString(),
+      isWriter: () => c.session.isWriter(), ready: () => ed === mine && c.ready && !c.box,
+      dirty: () => ed !== mine || dirtyNow() || c.saver.state.saving,
+      savedText: () => mine.saved.text, rev: () => mine.rec.textRev || 0,
+      stateKey: () => { const s = stat(); return s.changes + s.rebuilt; },
+      largeKey: () => { const s = stat(); return s.big + s.assembled; },
+      prepare: () => dlSnapPrepare(DlPM, lex, c.session.doc(), mine.saved.text),
+      writes: () => c.writeLog.filter((t) => Date.now() - t < 60000).length,
+      note, onChange: () => {},
+    });
+  }
   async function leaveCo() {
     const mine = ed;
     if (!mine || !mine.co || mine.leaving) return;
@@ -1111,7 +1133,7 @@
     } finally { if (!done) mine.leaving = false; } // if anything threw, Back works again
   }
   function coClose(c) {
-    clearInterval(c.statsTimer);
+    clearInterval(c.statsTimer); clearInterval(c.snapTimer);
     c.saver.stop();
     c.session.stop();
     try { c.session.doc().destroy(); } catch (err) { /* already gone */ }

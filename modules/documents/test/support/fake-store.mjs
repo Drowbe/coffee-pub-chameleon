@@ -24,7 +24,7 @@ export class FakeStore {
   // The store as one person sees it: role 'viewer' may read only.
   as(who, { role = 'editor' } = {}) {
     const st = this;
-    const note = (op, key, status) => st.log.push({ op, key, who, status });
+    const note = (op, key, status) => st.log.push({ op, key, who, status, at: st.now() });
     const guard = async (op, key) => {
       await st.wait();
       if (st.fault) { const e = st.fault(op, key, who); if (e) { note(op, key, e.status || 0); throw e; } }

@@ -62,6 +62,7 @@ const DL_SYNC = Object.freeze({
   seedGraceMs: 3000, // a seed marker younger than this is its writer seeding right now: never taken over
   seedCapMs: 30000, // a seed marker older than this is taken over whoever wrote it; a page also takes over a marker it has watched this long
   claimRetryMs: 2000, // a page that lost the marker looks again at most this often
+  firstVectorMs: 800, // a page with a stored copy to load sends its first vector when the copy is in, or after this long
 });
 
 const DL_SYNC_TOPIC = /^[a-z0-9._-]{1,40}$/;
@@ -140,7 +141,9 @@ function dlCleanSeedMarker(v) {
   if (!Number.isInteger(id) || id < 1 || id > 0xffffffff) return null;
   if (typeof by !== 'string' || !/^[A-Za-z0-9._:-]{1,64}$/.test(by)) return null;
   if (typeof at !== 'string' || at.length > 40 || !Number.isFinite(Date.parse(at))) return null;
-  return { id, by, at };
+  if (v.epoch === undefined || v.epoch === 0) return { id, by, at };
+  if (!Number.isInteger(v.epoch) || v.epoch < 1 || v.epoch > 1e6) return null;
+  return { id, by, at, epoch: v.epoch }; // the epoch counts re-seeds (documents-lib-w-coedit-snapshot.js); a marker of the first seed has none
 }
 // May a marker written by someone else be taken over? `seenAt`: when this page first saw it (0 if just now); `here(key)`: is that person editing this document.
 function dlSeedMarkerStale(m, o) {
@@ -155,7 +158,7 @@ function dlSeedMarkerStale(m, o) {
 // { won: false, marker, version } (someone else seeds: wait for their state), or { error } (the marker could not be used: the page seeds as 4a did).
 async function dlSeedClaim(store, o) {
   const key = dlSeedMarkerKey(o.doc);
-  const mine = (id) => ({ id, by: o.me, at: new Date(o.now()).toISOString() });
+  const mine = (id, epoch) => ({ id, by: o.me, at: new Date(o.now()).toISOString(), ...(epoch ? { epoch } : {}) });
   try {
     for (let round = 0; round < 3; round += 1) {
       try { await store.set(key, mine(o.seedId), { version: 0 }); return { won: true, id: o.seedId, took: false }; } catch (err) { if (!err || err.status !== 409) throw err; }
@@ -164,7 +167,7 @@ async function dlSeedClaim(store, o) {
       const m = dlCleanSeedMarker(cur.value);
       if (m && !dlSeedMarkerStale(m, { ...o, now: o.now() })) return { won: false, marker: m, version: cur.version };
       const id = m ? m.id : o.seedId;
-      try { await store.set(key, mine(id), { version: cur.version }); return { won: true, id, took: true }; } catch (err) { if (!err || err.status !== 409) throw err; }
+      try { await store.set(key, mine(id, m && m.epoch), { version: cur.version }); return { won: true, id, took: true }; } catch (err) { if (!err || err.status !== 409) throw err; }
     }
     const cur = await store.get(key);
     const m = cur && dlCleanSeedMarker(cur.value);
@@ -310,6 +313,7 @@ function dlSyncSession(PM, o) {
     sent: 0, sentBytes: 0, maxSentBytes: 0, edits: 0, editBytes: 0, maxEditBytes: 0, got: 0, applied: 0, refused: 0, quiet: 0, bad: 0, gaps: 0,
     vectorsOut: 0, vectorsIn: 0, answers: 0, pieces: 0, piecesIn: 0, assembled: 0, assemblyLost: 0, big: 0, rebuilt: 0, resized: 0, failed: 0, slow: 0, lastError: '', lastRefusal: '', details: {}, reasons: {},
     elections: 0, marker: '', markerFailed: 0, markerCalls: 0,
+    changes: 0, snapshotLoaded: 0, snapshotRejected: 0, snapshotReason: '', snapshotMs: -1, rebuiltFromText: 0, compacted: 0, compactWhy: '', joinMs: -1, snapshotLoadMs: -1,
   };
   const hold = dlSyncWriterHold(cfg.writerQuietMs);
   let writerKey = ''; // who writes the text, as this page holds it ('' while there is none)
@@ -365,7 +369,9 @@ function dlSyncSession(PM, o) {
   function detach() { if (guard) { guard.destroy(); guard = null; } try { doc.off('update', onLocal); } catch (e) { /* gone */ } }
   // Anything that did not come through the guard and was not the seed is this person's own edit.
   function onLocal(u, origin) {
-    if (origin === ORIGIN || origin === SEED || stopped) return;
+    if (stopped) return;
+    stats.changes += 1; // every real change of the document, whoever made it (a duplicate update is no change): the stored copy's trigger
+    if (origin === ORIGIN || origin === SEED) return;
     goodDirty = true;
     if (!editor) return;
     stats.edits += 1;
@@ -613,7 +619,7 @@ function dlSyncSession(PM, o) {
       if (typeof live.on === 'function' && o.onChannel) o.off.push(live.on('state', (s) => o.onChannel(s)));
       setTimer(beat, cfg.repairMs);
       setTimer(electTick, cfg.electTickMs);
-      sendVector(null);
+      if (!o.snapshot) sendVector(null); // with a stored copy to look at, the join sends the first vector once the copy is in (or after firstVectorMs)
     },
     stop() {
       if (stopped) return;
@@ -638,6 +644,10 @@ function dlSyncSession(PM, o) {
       let claiming = false; let held = null; let heldAt = 0; let nextClaim = 0; // the seed marker: while one is being asked for / the one another page holds
       const t0 = clock.now(); let askedAt = t0;
       joining = true; peerSeen = false; peerAt = 0; pieceAt = 0;
+      // The stored copy (documents-lib-w-coedit-snapshot.js): loaded while the join waits. snapPending holds the seed back until it is judged; reseedWanted:
+      // a seed that must start a new lineage (the copy was rejected, or too big and this page is alone).
+      let snapPending = Boolean(o.snapshot); let snapRes = null; let firstSent = !o.snapshot; let reseedWanted = false; let loadTimer = null; let firstTimer = null;
+      const sendFirst = () => { if (firstSent) return; firstSent = true; if (firstTimer !== null) clearTimer(firstTimer); sendVector(null); };
       const content = () => doc.getXmlFragment(gateApi.limits.root).length > 0;
       const finish = (how, seedId) => {
         if (finished) return;
@@ -645,7 +655,10 @@ function dlSyncSession(PM, o) {
         if (wait !== null) clearTimer(wait);
         if (settle !== null) clearTimer(settle);
         if (tick !== null) clearTimer(tick);
-        if (!content()) { o.seed(doc, seedId); if (guard) guard.reseed(); goodDirty = true; take(); }
+        if (loadTimer !== null) clearTimer(loadTimer);
+        if (!content()) { o.seed(doc, seedId); if (guard) guard.reseed(); goodDirty = true; take(); if (reseedWanted) stats.rebuiltFromText += 1; }
+        sendFirst();
+        stats.joinMs = clock.now() - t0;
         admitted = roster.others().length;
         if (!roster.admit()) editor = false; // the cap: this page reads along
         announced = true;
@@ -658,11 +671,21 @@ function dlSyncSession(PM, o) {
       // The page wants to seed. With a marker: it asks for the right first (dlSeedClaim); the page that gets it seeds, any other waits for the state of
       // the one that has it. Without one (no store, or a page that may not write): the 4a rule, seed now.
       const trySeed = (how) => {
-        if (finished || stopped) return;
+        if (finished || stopped || snapPending) return;
         if (content() || !o.marker || !editor) { finish(how); return; }
         if (claiming || clock.now() < nextClaim) return;
         if (held && !markerStale(held)) return;
         claiming = true; nextClaim = clock.now() + cfg.claimRetryMs; stats.markerCalls += 1;
+        if (reseedWanted) { // a new lineage: epoch + 1 and a fresh seed id, by compare-and-set; the page that wins seeds
+          o.snapshot.reseed().then((r) => {
+            claiming = false;
+            if (finished || stopped || content()) return;
+            if (r.won) { stats.marker = 'reseed'; finish(how, r.id); return; }
+            if (r.error) { stats.markerFailed += 1; stats.marker = 'failed'; stats.lastError = String(r.error && r.error.message).slice(0, 80); finish(how); return; }
+            reseedWanted = false; held = r.marker; if (!heldAt) heldAt = clock.now(); stats.marker = 'waiting'; changed();
+          });
+          return;
+        }
         dlSeedClaim(o.marker.store, { doc: o.marker.doc, seedId: o.marker.seedId, me: o.me, now: () => clock.now(), seenAt: heldAt, here: (k) => roster.has(k), graceMs: cfg.seedGraceMs, capMs: cfg.seedCapMs }).then((r) => {
           claiming = false;
           if (finished || stopped) return;
@@ -672,9 +695,56 @@ function dlSyncSession(PM, o) {
           held = r.marker; if (!heldAt) heldAt = clock.now(); stats.marker = 'waiting'; changed();
         });
       };
+      // ---- the stored copy -------------------------------------------------------------------------------------------------------
+      const elapsed = () => clock.now() - t0;
+      const knownAlone = () => atModule !== null || elapsed() >= cfg.joinWaitMs; // is "nobody here" something this page knows yet
+      const aloneNow = () => !peerSeen && knownAlone() && !roster.others().length && !roster.anyone() && !othersAtModule();
+      const retrySeed = () => { if (!peerSeen && !finished && !stopped) { if (aloneNow()) trySeed('alone'); else if (elapsed() >= cfg.joinWaitMs) trySeed('timeout'); } };
+      const snapDone = () => { snapPending = false; sendFirst(); retrySeed(); };
+      const snapReject = (why) => {
+        stats.snapshotRejected += 1; stats.snapshotReason = why; reason(`snapshot_${why}`);
+        reseedWanted = true; // the stored text is the truth; a page that seeds from it starts a new lineage
+        changed(); snapDone();
+      };
+      const snapStep = () => {
+        if (!snapPending || finished || stopped || !snapRes) return;
+        const r = snapRes;
+        if (content()) { snapPending = false; return; } // a peer's state came first
+        if (r.none) { snapDone(); return; }
+        if (r.reject) { snapReject(r.reject); return; }
+        if (!r.judged) r.judged = o.snapshot.judge(r.bytes, r.header);
+        const j = r.judged;
+        if (j.reject) { snapReject(j.reject); return; }
+        const cmp = dlSnapCompaction({ header: r.header, textLen: o.snapshot.textLen(), vectorBytes: j.vectorBytes });
+        if (cmp.compact) {
+          if (!knownAlone()) return; // not yet known whether anyone is here: look again
+          if (aloneNow()) { try { j.doc.destroy(); } catch (e) { /* gone */ } stats.compacted += 1; stats.compactWhy = cmp.why; reseedWanted = true; changed(); snapDone(); return; }
+        }
+        // apply: a document made through the gate replaces the empty one; the join then asks the others only for what came after it
+        detach();
+        doc = j.doc;
+        makeGuard();
+        guard.prime();
+        goodDirty = true; take();
+        if (o.onRebuild) o.onRebuild(doc);
+        stats.snapshotLoaded += 1; stats.snapshotMs = elapsed();
+        if (o.snapshot.adopted) o.snapshot.adopted(r.header);
+        snapPending = false; sendFirst();
+        if (settle === null) settle = setTimer(() => finish('state'), cfg.settleMs);
+        changed();
+      };
+      if (o.snapshot) {
+        const startedAt = clock.now();
+        const got = (r) => { if (finished || stopped || snapRes) return; snapRes = r; stats.snapshotLoadMs = clock.now() - startedAt; if (loadTimer !== null) { clearTimer(loadTimer); loadTimer = null; } snapStep(); };
+        loadTimer = setTimer(() => { loadTimer = null; got({ reject: 'read_slow' }); }, o.snapshot.loadMs || 8000);
+        o.snapshot.load().then(got, () => got({ reject: 'read_failed' }));
+        firstTimer = setTimer(sendFirst, cfg.firstVectorMs);
+      }
       const look = () => {
         tick = null;
         if (finished || stopped) return;
+        snapStep();
+        if (finished) return;
         const t = clock.now();
         if (content()) { if (settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); }
         else if (peerSeen && t - t0 >= cfg.joinWaitMs) {
@@ -684,10 +754,11 @@ function dlSyncSession(PM, o) {
         tick = setTimer(look, cfg.joinTickMs);
       };
       joinCheck = (why) => {
+        if (snapPending) { snapStep(); if (snapPending) return; }
         if (why === 'applied') { if (content() && settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); return; }
         if (!peerSeen && !roster.others().length && !roster.anyone() && !othersAtModule()) trySeed('alone');
       };
-      wait = setTimer(() => { wait = null; if (!peerSeen) trySeed('timeout'); }, cfg.joinWaitMs);
+      wait = setTimer(() => { wait = null; snapStep(); if (!peerSeen) trySeed('timeout'); }, cfg.joinWaitMs);
       tick = setTimer(look, cfg.joinTickMs);
     },
     // After the channel came back: both sides say what they have.
