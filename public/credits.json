@@ -1,0 +1,583 @@
+{
+ "_about": "The open-source software and data the product ships or relies on, read by the About tab of the Manage page (public/admin.js) and checked by tools/check-credits.mjs. Fields: name, version, group (the heading it is listed under), use (plain words), licence (SPDX id), link, notice (the copyright or attribution text the licence asks us to show, else empty), licenceFile (the repository path of the licence text), covers (files or folders in the repository this entry accounts for).",
+ "components": [
+  {
+   "name": "express",
+   "version": "5.2.1",
+   "group": "On the server",
+   "use": "The web server.",
+   "licence": "MIT",
+   "link": "https://expressjs.com",
+   "notice": "Copyright (c) 2009-2014 TJ Holowaychuk <tj@vision-media.ca>\nCopyright (c) 2013-2014 Roman Shtylman <shtylman+expressjs@gmail.com>\nCopyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>",
+   "licenceFile": "node_modules/express/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "livekit-server-sdk",
+   "version": "2.19.0",
+   "group": "On the server",
+   "use": "Starts and manages calls on the LiveKit server.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/livekit/node-sdks",
+   "notice": "",
+   "licenceFile": "node_modules/livekit-server-sdk/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "qrcode",
+   "version": "1.5.4",
+   "group": "On the server",
+   "use": "Draws the QR codes people scan to sign in.",
+   "licence": "MIT",
+   "link": "https://github.com/soldair/node-qrcode",
+   "notice": "Copyright (c) 2012 Ryan Day",
+   "licenceFile": "node_modules/qrcode/license",
+   "covers": []
+  },
+  {
+   "name": "yauzl",
+   "version": "3.4.0",
+   "group": "On the server",
+   "use": "Reads the zip files modules are installed from.",
+   "licence": "MIT",
+   "link": "https://github.com/thejoshwolfe/yauzl",
+   "notice": "Copyright (c) 2014 Josh Wolfe",
+   "licenceFile": "node_modules/yauzl/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "livekit-client",
+   "version": "2.22.3",
+   "group": "Calls and video",
+   "use": "The browser side of calls: audio, video and screen sharing.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/livekit/client-sdk-js",
+   "notice": "",
+   "licenceFile": "node_modules/livekit-client/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "@livekit/track-processors",
+   "version": "0.8.0",
+   "group": "Calls and video",
+   "use": "Blurs or replaces the background behind a person on video.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/livekit/track-processors-js",
+   "notice": "",
+   "licenceFile": "node_modules/@livekit/track-processors/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "@mediapipe/tasks-vision",
+   "version": "0.10.14",
+   "group": "Calls and video",
+   "use": "Finds the person in the picture, for background blur. Runs in the browser, nothing is sent out.",
+   "licence": "Apache-2.0",
+   "link": "https://ai.google.dev/edge/mediapipe",
+   "notice": "",
+   "licenceFile": "node_modules/@mediapipe/tasks-vision/package.json",
+   "covers": []
+  },
+  {
+   "name": "@livekit/mutex",
+   "version": "1.1.1",
+   "group": "Calls and video",
+   "use": "A small lock used inside the calls code.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/livekit/ts-mutex",
+   "notice": "",
+   "licenceFile": "node_modules/@livekit/mutex/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "@livekit/protocol",
+   "version": "1.50.4",
+   "group": "Calls and video",
+   "use": "LiveKit's message formats, built into the calls code.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/livekit/protocol",
+   "notice": "",
+   "licenceFile": "node_modules/@livekit/protocol/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "@bufbuild/protobuf",
+   "version": "1.10.1",
+   "group": "Calls and video",
+   "use": "Reads and writes those messages. Built into the calls code.",
+   "licence": "Apache-2.0 AND BSD-3-Clause",
+   "link": "https://github.com/bufbuild/protobuf-es",
+   "notice": "Copyright 2021-2024 Buf Technologies, Inc.",
+   "licenceFile": "node_modules/@bufbuild/protobuf/package.json",
+   "covers": []
+  },
+  {
+   "name": "events",
+   "version": "3.3.0",
+   "group": "Calls and video",
+   "use": "Event handling, built into the calls code.",
+   "licence": "MIT",
+   "link": "https://github.com/Gozala/events",
+   "notice": "Copyright Joyent, Inc. and other Node contributors.",
+   "licenceFile": "node_modules/events/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "loglevel",
+   "version": "1.9.2",
+   "group": "Calls and video",
+   "use": "Log messages, built into the calls code.",
+   "licence": "MIT",
+   "link": "https://github.com/pimterry/loglevel",
+   "notice": "Copyright (c) 2013 Tim Perry",
+   "licenceFile": "node_modules/loglevel/LICENSE-MIT",
+   "covers": []
+  },
+  {
+   "name": "machina",
+   "version": "7.0.1",
+   "group": "Calls and video",
+   "use": "State machines, built into the calls code.",
+   "licence": "MIT",
+   "link": "https://github.com/ifandelse/machina.js",
+   "notice": "Copyright (c) 2011-2023 Jim Cowart\nCopyright (c) 2010-2012 Jeremy Ashkenas, DocumentCloud (the extend function, taken from Backbone.js)",
+   "licenceFile": "node_modules/machina/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "sdp-transform",
+   "version": "2.15.0",
+   "group": "Calls and video",
+   "use": "Reads call connection descriptions, built into the calls code.",
+   "licence": "MIT",
+   "link": "https://github.com/clux/sdp-transform",
+   "notice": "Copyright (c) 2013 Eirik Albrigtsen",
+   "licenceFile": "node_modules/sdp-transform/LICENSE",
+   "covers": []
+  },
+  {
+   "name": "tslib",
+   "version": "2.8.1",
+   "group": "Calls and video",
+   "use": "Helper code, built into the calls code.",
+   "licence": "0BSD",
+   "link": "https://github.com/Microsoft/tslib",
+   "notice": "Copyright (c) Microsoft Corporation.",
+   "licenceFile": "node_modules/tslib/LICENSE.txt",
+   "covers": []
+  },
+  {
+   "name": "webrtc-adapter",
+   "version": "9.0.6",
+   "group": "Calls and video",
+   "use": "Smooths over differences between browsers, built into the calls code.",
+   "licence": "BSD-3-Clause",
+   "link": "https://github.com/webrtchacks/adapter",
+   "notice": "Copyright (c) 2014, The WebRTC project authors. All rights reserved.\nCopyright (c) 2018, The adapter.js project authors. All rights reserved.",
+   "licenceFile": "node_modules/webrtc-adapter/LICENSE.md",
+   "covers": []
+  },
+  {
+   "name": "MediaPipe Selfie Segmenter model",
+   "version": "general model, 2021",
+   "group": "Calls and video",
+   "use": "The picture-to-person model behind background blur.",
+   "licence": "Apache-2.0",
+   "link": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Selfie%20Segmentation.pdf",
+   "notice": "Model by Tingbo Hou, Siargey Pisarchyk and Karthik Raveendran, Google. Licensed under the Apache License, Version 2.0 (as the model's own documentation says).",
+   "licenceFile": "public/models/LICENSE",
+   "covers": [
+    "public/models"
+   ]
+  },
+  {
+   "name": "pdf.js",
+   "version": "6.4.299",
+   "group": "Files",
+   "use": "Shows PDF files, inside a sandbox with no network.",
+   "licence": "Apache-2.0",
+   "link": "https://github.com/mozilla/pdf.js",
+   "notice": "Copyright 2024 Mozilla Foundation",
+   "licenceFile": "public/sdk/pdfjs/LICENSE",
+   "covers": [
+    "public/sdk/pdfjs"
+   ]
+  },
+  {
+   "name": "Font Awesome Free",
+   "version": "7.3.1",
+   "group": "Fonts and icons",
+   "use": "Every icon in the product.",
+   "licence": "CC-BY-4.0 AND OFL-1.1 AND MIT",
+   "link": "https://fontawesome.com",
+   "notice": "Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com. License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License). Copyright 2026 Fonticons, Inc.",
+   "licenceFile": "node_modules/@fortawesome/fontawesome-free/LICENSE.txt",
+   "covers": [
+    "node_modules/@fortawesome/fontawesome-free"
+   ]
+  },
+  {
+   "name": "Figtree",
+   "version": "",
+   "group": "Fonts and icons",
+   "use": "The text font.",
+   "licence": "OFL-1.1",
+   "link": "https://github.com/erikdkennedy/figtree",
+   "notice": "Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree)",
+   "licenceFile": "public/fonts/figtree/OFL.txt",
+   "covers": [
+    "public/fonts/figtree",
+    "public/design-system/legacy/system-v1/fonts/figtree"
+   ]
+  },
+  {
+   "name": "Fraunces",
+   "version": "",
+   "group": "Fonts and icons",
+   "use": "The heading font.",
+   "licence": "OFL-1.1",
+   "link": "https://github.com/undercasetype/Fraunces",
+   "notice": "Copyright 2020 The Fraunces Project Authors (github.com/undercasetype/Fraunces)",
+   "licenceFile": "public/fonts/fraunces/OFL.txt",
+   "covers": [
+    "public/fonts/fraunces",
+    "public/design-system/legacy/system-v1/fonts/fraunces"
+   ]
+  },
+  {
+   "name": "Noto Sans (map label glyphs)",
+   "version": "",
+   "group": "Maps",
+   "use": "The letters on a map: Regular and Medium, Latin and general punctuation.",
+   "licence": "OFL-1.1",
+   "link": "https://github.com/notofonts",
+   "notice": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts)",
+   "licenceFile": "public/maps-glyphs/OFL.txt",
+   "covers": [
+    "public/maps-glyphs"
+   ]
+  },
+  {
+   "name": "marked",
+   "version": "18.2.0",
+   "group": "Documents",
+   "use": "Reads Markdown.",
+   "licence": "MIT",
+   "link": "https://github.com/markedjs/marked",
+   "notice": "Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)\nCopyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)\nCopyright © 2004, John Gruber",
+   "licenceFile": "modules/documents/vendor/LICENSE.marked",
+   "covers": [
+    "modules/documents/src/documents-lib-0-marked.js"
+   ]
+  },
+  {
+   "name": "prosemirror-model",
+   "version": "1.25.13",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-model",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-transform",
+   "version": "1.12.5",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-transform",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-state",
+   "version": "1.4.4",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-state",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-view",
+   "version": "1.42.9",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-view",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-commands",
+   "version": "1.7.2",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-commands",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-keymap",
+   "version": "1.2.3",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-keymap",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-history",
+   "version": "1.5.1",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-history",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-inputrules",
+   "version": "1.5.1",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-inputrules",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-schema-list",
+   "version": "1.6.0",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-schema-list",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-tables",
+   "version": "1.8.5",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2016 by Marijn Haverbeke <marijnh@gmail.com> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-tables",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-dropcursor",
+   "version": "1.8.4",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-dropcursor",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-gapcursor",
+   "version": "1.4.1",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-gapcursor",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "prosemirror-markdown",
+   "version": "1.13.9",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.prosemirror-markdown",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "orderedmap",
+   "version": "2.1.1",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.orderedmap",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "rope-sequence",
+   "version": "1.3.4",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin>",
+   "licenceFile": "modules/documents/vendor/LICENSE.rope-sequence",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "w3c-keyname",
+   "version": "2.2.8",
+   "group": "Documents",
+   "use": "Part of ProseMirror, the rich text editor.",
+   "licence": "MIT",
+   "link": "https://prosemirror.net",
+   "notice": "Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others",
+   "licenceFile": "modules/documents/vendor/LICENSE.w3c-keyname",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "yjs",
+   "version": "13.6.33",
+   "group": "Documents",
+   "use": "Keeps the rich editor in step between people.",
+   "licence": "MIT",
+   "link": "https://github.com/yjs/yjs",
+   "notice": "Copyright (c) 2023 Kevin Jahns <kevin.jahns@protonmail.com>, Chair of Computer Science 5 (Databases & Information Systems), RWTH Aachen University, Germany",
+   "licenceFile": "modules/documents/vendor/LICENSE.yjs",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "y-prosemirror",
+   "version": "1.3.7",
+   "group": "Documents",
+   "use": "Joins the rich editor to Yjs.",
+   "licence": "MIT",
+   "link": "https://github.com/yjs/y-prosemirror",
+   "notice": "Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.",
+   "licenceFile": "modules/documents/vendor/LICENSE.y-prosemirror",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "lib0",
+   "version": "0.2.120",
+   "group": "Documents",
+   "use": "Helper code for Yjs.",
+   "licence": "MIT",
+   "link": "https://github.com/dmonad/lib0",
+   "notice": "Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.",
+   "licenceFile": "modules/documents/vendor/LICENSE.lib0",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "isomorphic.js",
+   "version": "0.2.5",
+   "group": "Documents",
+   "use": "Helper code for Yjs.",
+   "licence": "MIT",
+   "link": "https://github.com/dmonad/isomorphic.js",
+   "notice": "Copyright (c) 2020 Kevin Jahns <kevin.jahns@protonmail.com>.",
+   "licenceFile": "modules/documents/vendor/LICENSE.isomorphic.js",
+   "covers": [
+    "modules/documents/src/documents-lib-0-prosemirror.js"
+   ]
+  },
+  {
+   "name": "MapLibre GL JS",
+   "version": "5.24.0",
+   "group": "Maps",
+   "use": "Draws the map.",
+   "licence": "BSD-3-Clause",
+   "link": "https://maplibre.org",
+   "notice": "Copyright (c) 2023, MapLibre contributors\nCopyright (c) 2020, Mapbox (code from mapbox-gl-js 1.13 and earlier)\nCopyright (C) 2011 by Evan Wallace (glfx.js)",
+   "licenceFile": "modules/maps/vendor/LICENSE.maplibre-gl",
+   "covers": [
+    "modules/maps/src/maps-lib-a-maplibre.js",
+    "modules/maps/src/maps-lib-a-maplibre.css"
+   ]
+  },
+  {
+   "name": "PMTiles",
+   "version": "4.5.0",
+   "group": "Maps",
+   "use": "Reads map files (PMTiles) a piece at a time.",
+   "licence": "BSD-3-Clause",
+   "link": "https://github.com/protomaps/PMTiles",
+   "notice": "Copyright 2021 Protomaps LLC",
+   "licenceFile": "modules/maps/vendor/LICENSE.pmtiles",
+   "covers": [
+    "modules/maps/src/maps-lib-b-pmtiles.js"
+   ]
+  },
+  {
+   "name": "fflate",
+   "version": "0.8.2",
+   "group": "Maps",
+   "use": "Unpacks compressed map pieces. Built into the PMTiles reader.",
+   "licence": "MIT",
+   "link": "https://github.com/101arrowz/fflate",
+   "notice": "Copyright (c) 2023 Arjun Barrett",
+   "licenceFile": "modules/maps/vendor/LICENSE.fflate",
+   "covers": []
+  },
+  {
+   "name": "OpenStreetMap data",
+   "version": "",
+   "group": "Maps",
+   "use": "The map itself. The Maps module always shows this credit on a map, and no setting hides it.",
+   "licence": "ODbL-1.0",
+   "link": "https://www.openstreetmap.org/copyright",
+   "notice": "© OpenStreetMap contributors. Data available under the Open Database Licence.",
+   "licenceFile": "modules/maps/THIRD-PARTY.md",
+   "covers": []
+  }
+ ]
+}

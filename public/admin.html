@@ -461,13 +461,14 @@
         <p data-fill><a href="/?layout=1" target="_top">Call layout readout</a> -- opens the {spaces} page with a live readout of the call's real sizes over it. Join {a space}, and send a screenshot of the readout in the Conference view and in the Chat view.</p>
         <p><a href="/diag.html?fit=auto" target="_top">Layout diagnostics, edge-to-edge off</a> -- the same page with the page kept inside the safe area, to compare.</p>
       </div>
-      <div class="panel about">
-        <h2>Built on</h2>
-        <p><strong><a href="https://livekit.io" target="_blank" rel="noopener">LiveKit</a></strong> -- real-time audio and video runs on LiveKit, the open-source WebRTC platform. LiveKit, its server, and its client and server SDKs are &copy; LiveKit, Inc. and licensed under the Apache License 2.0.</p>
-        <p><strong><a href="https://github.com/livekit/track-processors-js" target="_blank" rel="noopener">LiveKit track processors</a></strong> and <strong><a href="https://ai.google.dev/edge/mediapipe" target="_blank" rel="noopener">MediaPipe</a></strong> -- background blur and custom backgrounds. Both Apache License 2.0.</p>
-        <p><strong><a href="https://fontawesome.com" target="_blank" rel="noopener">Font Awesome Free</a></strong> -- the icons. Icons CC BY 4.0, fonts SIL OFL 1.1, code MIT.</p>
-        <p data-fill><strong><a href="https://maplibre.org" target="_blank" rel="noopener">MapLibre GL JS</a></strong> and the <strong><a href="https://github.com/protomaps/PMTiles" target="_blank" rel="noopener">PMTiles</a></strong> reader -- the Maps {module}'s map. Both BSD 3-clause. Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL). Map labels use Noto Sans, SIL OFL 1.1.</p>
-        <p><strong><a href="https://expressjs.com" target="_blank" rel="noopener">Express</a></strong> on <strong><a href="https://nodejs.org" target="_blank" rel="noopener">Node.js</a></strong> -- the server. MIT.</p>
+      <!-- Open-source software (#773): the list is public/credits.json, drawn by admin.js's showCredits() the first time this tab
+           opens; tools/check-credits.mjs keeps the file complete. -->
+      <div class="panel about credits" id="credits-section">
+        <h2>Open-source software</h2>
+        <p>This product is built on open-source software and open data, each under its own licence. Here is what it uses, what for, and who made it. Open "Licence text" on a line to read its notice.</p>
+        <p>Calls run on <a href="https://livekit.io" target="_blank" rel="noopener">LiveKit</a>, an open-source server that runs beside this one, and this server runs on <a href="https://nodejs.org" target="_blank" rel="noopener">Node.js</a>. Each also has its own licence.</p>
+        <div id="credits-list"></div>
+        <p class="status" id="credits-status" role="status"></p>
       </div>
     </section>
 

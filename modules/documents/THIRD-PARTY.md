@@ -2,7 +2,7 @@
 
 **Audience:** whoever redistributes or audits the Documents module.
 
-Everything here is free for commercial use and redistribution. Nothing is loaded from outside.
+Everything here is free for commercial use and redistribution. Nothing is loaded from outside. Each piece is also listed, with its copyright notice, in `public/credits.json`, which the About tab of the Manage page shows (`tools/check-credits.mjs` keeps the two in step).
 
 | Piece | Where | Licence | Source |
 |---|---|---|---|
