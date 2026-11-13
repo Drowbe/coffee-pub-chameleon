@@ -515,7 +515,7 @@ try {
   passed.close();
   const mCall = await call('POST', '/api/call/join', { cookie: samC, body: { space: keep.id } });
   same([mCall.status, claims(mCall.json.token).sub, typeof mCall.json.call], [200, sam.key, 'string'], 'a member\'s call token');
-  same((await call('POST', '/api/call/join', { cookie: louC, body: { space: keep.id } })).status, 403, 'not a member: no token');
+  same((await call('POST', '/api/call/join', { cookie: louC, body: { space: keep.id } })).status, 404, 'not a member of an invited-only space: no token, and answered as an unknown id');
 
   // --- asides and the kick on the live stream (step 4; the Verify section, point 4) ------------------------------
   // No LiveKit answers here: who is in the space and on the call is the register's, and every nudge goes on the stream.
