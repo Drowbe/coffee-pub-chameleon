@@ -66,28 +66,38 @@ function buildModule(dir) {
   if (!fs.existsSync(manifestPath)) throw new Error('that folder has no module.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const read = (name, ext) => fs.readFileSync(path.join(dir, 'src', `${name}.${ext}`), 'utf8');
+  const srcFiles = fs.readdirSync(path.join(dir, 'src'));
   // Code more than one of the module's pages shares can live in src/<id>-lib.js, put where the page's script has
   // `/*__LIB__*/`. Function replacements throughout, so "$&" and friends in the code are not treated as patterns.
-  // (or several: src/<id>-lib.js first, then src/<id>-lib-*.js in name order).
-  const libFile = `${manifest.id}-lib.js`;
-  const isLib = (f) => f === libFile || (f.startsWith(`${manifest.id}-lib-`) && f.endsWith('.js'));
-  const libNames = fs.readdirSync(path.join(dir, 'src')).filter(isLib).sort((x, y) => (x === libFile ? -1 : y === libFile ? 1 : x.localeCompare(y)));
+  // (or several: src/<id>-lib.js first, then src/<id>-lib-*.js in name order). A page of its own (src/<id>-<part>.html, see
+  // below) carries its own library the same way, from src/<id>-<part>-lib.js and src/<id>-<part>-lib-*.js, never the module's.
   // Plain data a library carries (src/<id>-lib-<name>.json) goes in first as `const LIB_<NAME> = <json>;` (dashes in the name
   // become underscores), so the file stays data a check can read and the code finds it as a constant.
-  const dataLib = fs.readdirSync(path.join(dir, 'src')).filter((f) => f.startsWith(`${manifest.id}-lib-`) && f.endsWith('.json')).sort()
-    .map((f) => {
-      const name = f.slice(`${manifest.id}-lib-`.length, -5);
-      if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`${f}: the name after "${manifest.id}-lib-" must be lower case letters, digits and dashes`);
-      let data;
-      try { data = JSON.parse(read(f.slice(0, -5), 'json')); } catch (err) { throw new Error(`${f} is not valid JSON: ${err.message}`); }
-      return `const LIB_${name.toUpperCase().replace(/-/g, '_')} = ${JSON.stringify(data)};`;
-    });
-  const lib = [...dataLib, ...libNames.map((f) => read(f.slice(0, -3), 'js'))].join('\n');
-  // Stylesheets of a library the page carries (src/<id>-lib-*.css, in name order) come before the page's own.
-  const cssLib = fs.readdirSync(path.join(dir, 'src')).filter((f) => f.startsWith(`${manifest.id}-lib-`) && f.endsWith('.css')).sort().map((f) => read(f.slice(0, -4), 'css')).join('\n');
-  const build = (name) => read(name, 'html')
-    .replace('/*__CSS__*/', () => (name === manifest.id ? cssLib + '\n' : '') + read(name, 'css'))
-    .replace('/*__JS__*/', () => read(name, 'js').replace('/*__LIB__*/', () => lib).replace(/<\/script/gi, '<\\/script'));
+  const libOf = (owner) => {
+    const libFile = `${owner}-lib.js`;
+    const isLib = (f) => f === libFile || (f.startsWith(`${owner}-lib-`) && f.endsWith('.js'));
+    const libNames = srcFiles.filter(isLib).sort((x, y) => (x === libFile ? -1 : y === libFile ? 1 : x.localeCompare(y)));
+    const dataLib = srcFiles.filter((f) => f.startsWith(`${owner}-lib-`) && f.endsWith('.json')).sort()
+      .map((f) => {
+        const name = f.slice(`${owner}-lib-`.length, -5);
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`${f}: the name after "${owner}-lib-" must be lower case letters, digits and dashes`);
+        let data;
+        try { data = JSON.parse(read(f.slice(0, -5), 'json')); } catch (err) { throw new Error(`${f} is not valid JSON: ${err.message}`); }
+        return `const LIB_${name.toUpperCase().replace(/-/g, '_')} = ${JSON.stringify(data)};`;
+      });
+    return {
+      js: [...dataLib, ...libNames.map((f) => read(f.slice(0, -3), 'js'))].join('\n'),
+      // Stylesheets of a library the page carries (src/<owner>-lib-*.css, in name order) come before the page's own.
+      css: srcFiles.filter((f) => f.startsWith(`${owner}-lib-`) && f.endsWith('.css')).sort().map((f) => read(f.slice(0, -4), 'css')).join('\n'),
+    };
+  };
+  const sharedLib = libOf(manifest.id);
+  const build = (name, owner = manifest.id) => {
+    const lib = owner === manifest.id ? sharedLib : libOf(owner);
+    return read(name, 'html')
+      .replace('/*__CSS__*/', () => (name === owner ? lib.css + '\n' : '') + read(name, 'css'))
+      .replace('/*__JS__*/', () => read(name, 'js').replace('/*__LIB__*/', () => lib.js).replace(/<\/script/gi, '<\\/script'));
+  };
   // The page and the panel are one file; a dashboard widget is its own (src/<id>-widget.*), and so is a keyed
   // page (src/<id>-keyed.*) -- a transparent box for something like OBS is a different page from the module's
   // own, not a variant of it. Both share the same lib.
@@ -99,7 +109,10 @@ function buildModule(dir) {
   for (const [surface, def] of entries) {
     if (!def || typeof def.entry !== 'string' || seen.has(def.entry)) continue;
     seen.add(def.entry);
-    files.push([def.entry, Buffer.from(surface === 'widget' ? build(`${manifest.id}-widget`) : surface === 'keyed' ? build(`${manifest.id}-keyed`) : shared)]);
+    // A destination part whose entry is `<part>.html` is its own page when src/<id>-<part>.html exists (Maps' list part, list.html).
+    const partPage = surface === 'destination' ? `${manifest.id}-${path.basename(def.entry, '.html')}` : null;
+    const own = partPage && partPage !== manifest.id && srcFiles.includes(`${partPage}.html`) ? partPage : null;
+    files.push([def.entry, Buffer.from(surface === 'widget' ? build(`${manifest.id}-widget`) : surface === 'keyed' ? build(`${manifest.id}-keyed`) : own ? build(own, own) : shared)]);
   }
   return { manifest, fileCount: files.length, zip: zipFiles(files) };
 }

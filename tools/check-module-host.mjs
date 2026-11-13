@@ -257,12 +257,12 @@ test('actions.list passes a valid ref on, cleaned, and drops a bad one; the drop
     const main = listen(hub, 'main');
     const got = [];
     const leave = hub.join('panel', (s) => got.push(s));
-    const place = { module: 'places', kind: 'place', id: 'p1', scope: 'space', space: 'gq2zb7pq', title: 'not a pointer field' };
+    const place = { module: 'maps', kind: 'place', id: 'p1', scope: 'space', space: 'gq2zb7pq', title: 'not a pointer field' };
     hub.fromPart('panel', { selected: place });
-    assert.deepEqual(main.at(-1).selected, { module: 'places', kind: 'place', id: 'p1', scope: 'space', space: 'gq2zb7pq' });
+    assert.deepEqual(main.at(-1).selected, { module: 'maps', kind: 'place', id: 'p1', scope: 'space', space: 'gq2zb7pq' });
     hub.fromPart('main', { selected: null });
     assert.equal(got.at(-1).selected, null);
-    status(() => hub.fromPart('main', { selected: { module: 'places', kind: 'place', id: 'p1', scope: 'room', room: 'x' } }), 400);
+    status(() => hub.fromPart('main', { selected: { module: 'maps', kind: 'place', id: 'p1', scope: 'room', room: 'x' } }), 400);
     status(() => hub.fromPart('panel', { day: '2026-10-02' }), 403);
     // Either part may ask the page to show a part (a phone's tabs); nothing else, and never the page's own `phone`.
     hub.fromPart('main', { reveal: 'panel' });

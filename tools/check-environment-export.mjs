@@ -258,7 +258,7 @@ const FILES = {
     'modules/registry.json', 'modules/settings.json', 'modules/activity.json', 'modules/announced.json', 'modules/links.json', 'modules/schedules.json', 'modules/notifications.json', 'modules/bus.json',
     'modules/todo/data/environment.json', 'modules/todo/data/space-trip01.json', 'modules/todo/trash/space-trip01.json',
     'modules/research/uploads/space-trip01/abc123.png', 'modules/research/uploads/space-trip01/abc123.json', 'modules/todo/versions/1.0.0/module.json',
-    'modules/vault/library/space-trip01.json', 'modules/places/geocode.json', 'modules/maps/image-map/castle.png',
+    'modules/vault/library/space-trip01.json', 'modules/maps/geocode.json', 'modules/maps/image-map/castle.png',
   ],
   leftOut: [
     'secrets.key', 'modules/secrets.json', 'pre-names/a-part/app.json', 'chat-private.json', 'ai-threads.moved.json', 'ai-threads.json', LEGACY_ENVIRONMENT_RECORD, 'tmp/region-cut/x.pmtiles',

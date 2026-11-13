@@ -1,5 +1,5 @@
-// check-maps-live.mjs: the Maps and Places pair in the running product (headless Chromium, the screenshot seed), each rule at the
-// size where it once broke (the health audit of Maps and Places, MP-02, MP-03, MP-07, MP-08, MP-21).
+// check-maps-live.mjs: Maps (the map and its list) in the running product (headless Chromium, the screenshot seed), each rule at the
+// size where it once broke (the health audit of Maps and Places, before they were one module, MP-02, MP-03, MP-07, MP-08, MP-21).
 //   1. The "+" on the Map page at a phone's and a narrow window's width opens Places' dialog where it can be seen: a box with a
 //      width and a height (it opened inside the list part, which a narrow width hides, so the page froze behind nothing).
 //   2. Places reads what points at its places in one request, not one per place.
@@ -103,8 +103,8 @@ async function main() {
     }
 
     // 3. The Itinerary records what its cards point at. The seed's plan card a11 points at the place p1.
-    const refOf = (id) => encodeURIComponent(JSON.stringify({ module: 'places', kind: 'place', id, scope: 'space', space: S.ctx.trip }));
-    const links = async () => (await api('GET', `/api/objects/links?from=places&dir=to&ref=${refOf('p1')}`, undefined, 'mia')).json;
+    const refOf = (id) => encodeURIComponent(JSON.stringify({ module: 'maps', kind: 'place', id, scope: 'space', space: S.ctx.trip }));
+    const links = async () => (await api('GET', `/api/objects/links?from=maps&dir=to&ref=${refOf('p1')}`, undefined, 'mia')).json;
     const before = await links();
     const v3 = await open(browser, S, 1280, 'mia', '/modules/travel?space={trip}', '#module-frame >>> .day-add');
     try { await sleep(2500); } finally { await v3.done(); }
@@ -114,7 +114,7 @@ async function main() {
     say(`backlinks of p1: before ${((before && before.summaries) || []).length}, after ${names.join(', ') || 'none'}`);
 
     // 4. A member who may not edit places or the map is not shown the "+".
-    const members = await api('PATCH', '/api/roles/member', { 'module.places.edit': false, 'module.maps.edit': false }, 'admin');
+    const members = await api('PATCH', '/api/roles/member', { 'module.maps.edit': false }, 'admin');
     if (members.status !== 200) failures.push(`could not take the edit rights from the member role (${members.status})`);
     else {
       const v = await open(browser, S, 1280, 'sam', url, wait);
@@ -122,7 +122,7 @@ async function main() {
         const plus = await v.tab.eval(PLUS);
         if (plus) failures.push('the Map page shows "Add a place" to a member whose role may not edit places or the map');
         say(`a member who may not edit: the "+" is ${plus ? 'shown' : 'not shown'}`);
-      } finally { await v.done(); await api('PATCH', '/api/roles/member', { 'module.places.edit': true, 'module.maps.edit': true }, 'admin'); }
+      } finally { await v.done(); await api('PATCH', '/api/roles/member', { 'module.maps.edit': true }, 'admin'); }
     }
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }

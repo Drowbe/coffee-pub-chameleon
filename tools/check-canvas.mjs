@@ -187,8 +187,8 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     ['nothing stored: what opens instead, by name',
       opensWithSummary({ list: null, modules: ['todo', 'polls'], nameOf: (id) => ({ chat: 'Chat', todo: 'To-do', polls: 'Polls' })[id] }),
       'Nothing switched on: Chat, To-do and Polls open.'],
-    ['the summary says each switch once: Places and To-do under Maps and Calendar',
-      opensWithSummary({ list: null, modules: ['maps', 'places', 'calendar', 'todo'], nameOf: (id) => ({ maps: 'Maps', calendar: 'Calendar' })[id] || id, groupOf: (id) => ({ places: 'maps', todo: 'calendar' })[id] || id }),
+    ['the summary says each switch once: To-do under Calendar',
+      opensWithSummary({ list: null, modules: ['maps', 'calendar', 'todo'], nameOf: (id) => ({ maps: 'Maps', calendar: 'Calendar' })[id] || id, groupOf: (id) => ({ todo: 'calendar' })[id] || id }),
       'Nothing switched on: chat, Maps and Calendar open.'],
     ['nothing stored, the environment\'s list: its names',
       opensWithSummary({ list: null, environment: ['todo'], modules: ['todo', 'polls'], nameOf: (id) => ({ todo: 'To-do' })[id] }),
@@ -847,42 +847,42 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   assert.deepEqual(aliasesFor(['calendar', 'todo']), { calendar: 'dest:calendar', todo: 'dest:calendar', 'dest:map': [] }, 'on: both parts read as the composite');
   assert.deepEqual(aliasesFor(['todo']), { 'dest:calendar': ['todo'], 'dest:map': [] }, 'off: the composite reads as the parts on');
   assert.deepEqual(aliasesFor([]), { 'dest:calendar': [], 'dest:map': [] }, 'off, nothing on: the composite reads as nothing');
-  // The Map (plan-map-places.md step 3): the same table row, `dest:map` for `/map`, its main Maps, its parts Maps and
-  // Places; Maps on in the space is not enough, the page asks the destination for the space first (a map file,
-  // server/destinations.js `needsFile`) and the composite is on only where it answered (`shown`). Refused, Maps and
-  // Places keep their own surfaces and a stored `dest:map` reads as whichever of them is on.
+  // The Map (plan-map-places.md step 3): the same table row, `dest:map` for `/map`, its main Maps, its one part Maps (Places folded
+  // into Maps; the composite stays with one part this build, plan-places-and-maps.md question 3); Maps on in the space is not enough, the page asks the destination for the space first (a map file,
+  // server/destinations.js `needsFile`) and the composite is on only where it answered (`shown`). Refused, Maps
+  // keeps its own surfaces and a stored `dest:map` reads as Maps.
   const map = COMPOSITES.find((c) => c.id === 'dest:map');
-  if (!map || map.main !== 'maps' || map.path !== '/map' || map.dest !== 'map' || [...map.parts].join() !== 'maps,places' || map.ask !== true) fail(F, 'dest:map holds /map, its main Maps, its parts Maps and Places, and asks the destination first');
-  assert.deepEqual(compositesToAsk(['maps', 'places', 'calendar']).map((c) => c.id), ['dest:map'], 'compositesToAsk: the Map, while Maps is on; never the Calendar');
-  assert.deepEqual(compositesToAsk(['places']).map((c) => c.id), [], 'nothing to ask with Maps off');
-  assert.deepEqual(compositesOn(['maps', 'places']).map((c) => c.id), [], 'the Map is off where the destination was not asked or refused (no map file)');
-  assert.deepEqual(compositesOn(['maps', 'places'], ['map']).map((c) => c.id), ['dest:map'], 'and on where it answered for the space');
-  assert.deepEqual(compositesOn(['places'], ['map']).map((c) => c.id), [], 'never with Maps off, whatever answered');
+  if (!map || map.main !== 'maps' || map.path !== '/map' || map.dest !== 'map' || [...map.parts].join() !== 'maps' || map.ask !== true) fail(F, 'dest:map holds /map, its main Maps, its one part Maps, and asks the destination first');
+  assert.deepEqual(compositesToAsk(['maps', 'calendar']).map((c) => c.id), ['dest:map'], 'compositesToAsk: the Map, while Maps is on; never the Calendar');
+  assert.deepEqual(compositesToAsk(['travel']).map((c) => c.id), [], 'nothing to ask with Maps off');
+  assert.deepEqual(compositesOn(['maps']).map((c) => c.id), [], 'the Map is off where the destination was not asked or refused (no map file)');
+  assert.deepEqual(compositesOn(['maps'], ['map']).map((c) => c.id), ['dest:map'], 'and on where it answered for the space');
+  assert.deepEqual(compositesOn(['travel'], ['map']).map((c) => c.id), [], 'never with Maps off, whatever answered');
   assert.deepEqual(compositesOn(['calendar', 'maps'], ['map']).map((c) => c.id), ['dest:calendar', 'dest:map'], 'both on together');
-  assert.deepEqual(aliasesFor(['maps', 'places'], ['map']), { 'dest:calendar': [], maps: 'dest:map', places: 'dest:map' }, 'the Map on: Maps and Places read as it');
-  assert.deepEqual(aliasesFor(['maps', 'places']), { 'dest:calendar': [], 'dest:map': ['maps', 'places'] }, 'the Map off (no map file): a stored dest:map reads as Maps and Places as they are');
-  assert.deepEqual(readAs(Object.freeze(['places', 'travel', 'maps']), aliasesFor(['maps', 'places', 'travel'], ['map'])), ['dest:map', 'travel'], 'a stored list naming places and maps reads as one Map, where the first is named');
-  assert.deepEqual(readAs(['dest:map', 'travel'], aliasesFor(['maps', 'places', 'travel'])), ['maps', 'places', 'travel'], 'a stored dest:map reads as Maps and Places where there is no map file');
-  const mapList = [{ id: 'travel', name: 'Planner', icon: 'route' }, { id: 'places', name: 'Places', icon: 'location-dot' }, { id: 'maps', name: 'Maps', icon: 'map-location-dot', color: 'pink', version: '0.9.0', scope: ['environment', 'space'] }];
+  assert.deepEqual(aliasesFor(['maps'], ['map']), { 'dest:calendar': [], maps: 'dest:map' }, 'the Map on: Maps reads as it');
+  assert.deepEqual(aliasesFor(['maps']), { 'dest:calendar': [], 'dest:map': ['maps'] }, 'the Map off (no map file): a stored dest:map reads as Maps as it is');
+  assert.deepEqual(readAs(Object.freeze(['maps', 'travel', 'maps']), aliasesFor(['maps', 'travel'], ['map'])), ['dest:map', 'travel'], 'a stored list naming maps twice reads as one Map, where the first is named');
+  assert.deepEqual(readAs(['dest:map', 'travel'], aliasesFor(['maps', 'travel'])), ['maps', 'travel'], 'a stored dest:map reads as Maps where there is no map file');
+  const mapList = [{ id: 'travel', name: 'Planner', icon: 'route' }, { id: 'maps', name: 'Maps', icon: 'map-location-dot', color: 'pink', version: '0.9.0', scope: ['environment', 'space'] }];
   const mapShown = composeList(mapList, ['map']);
-  assert.deepEqual(mapShown.map((m) => m.id), ['travel', 'dest:map'], 'the Show list: one Map in Maps\' place, Places left out');
+  assert.deepEqual(mapShown.map((m) => m.id), ['travel', 'dest:map'], 'the Show list: one Map in Maps\' place');
   if (mapShown[1].name !== 'Maps' || mapShown[1].icon !== 'map-location-dot' || mapShown[1].color !== 'pink' || mapShown[1].composite?.path !== '/map') fail(F, 'the Map composite reads as Maps: its name, icon and colour, its page /map');
-  assert.deepEqual(composeList(mapList).map((m) => m.id), ['travel', 'places', 'maps'], 'with no map file the Show list keeps Maps and Places as they are');
-  // Opens with, grouped as the canvas groups (Set up's First visit): Maps carries Places, Calendar carries To-do.
-  assert.deepEqual(groupedParts(['chat', 'maps', 'places', 'calendar', 'todo']), ['todo', 'places'], 'no row for Places or To-do while Maps and Calendar have one');
-  assert.deepEqual(groupedParts(['places', 'todo']), [], 'with no Maps or Calendar row the parts keep their own');
-  assert.equal(switchOn(['places'], 'maps'), true, 'a stored places shows the Maps row on');
+  assert.deepEqual(composeList(mapList).map((m) => m.id), ['travel', 'maps'], 'with no map file the Show list keeps Maps as it is');
+  // Opens with, grouped as the canvas groups (Set up's First visit): Calendar carries To-do.
+  assert.deepEqual(groupedParts(['chat', 'maps', 'calendar', 'todo']), ['todo'], 'no row for To-do while Calendar has one');
+  assert.deepEqual(groupedParts(['todo']), [], 'with no Calendar row the part keeps its own');
+  assert.equal(switchOn(['maps'], 'maps'), true, 'a stored maps shows the Maps row on');
   assert.equal(switchOn(['todo'], 'calendar'), true, 'a list with only todo shows Calendar on');
   assert.equal(switchOn(['chat'], 'maps'), false, 'and off when none is named');
-  assert.equal(groupOf('places'), 'maps'); assert.equal(groupOf('todo'), 'calendar'); assert.equal(groupOf('chat'), 'chat');
-  assert.deepEqual(setSwitch(['chat', 'places', 'todo'], 'maps', false), ['chat', 'todo'], 'turning Maps off removes the main and its parts');
-  assert.equal(setSwitch(['places', 'maps'], 'maps', false), null, 'and an empty list is null');
+  assert.equal(groupOf('maps'), 'maps'); assert.equal(groupOf('todo'), 'calendar'); assert.equal(groupOf('chat'), 'chat');
+  assert.deepEqual(setSwitch(['chat', 'maps', 'todo'], 'maps', false), ['chat', 'todo'], 'turning Maps off removes the main');
+  assert.equal(setSwitch(['maps'], 'maps', false), null, 'and an empty list is null');
   assert.deepEqual(setSwitch(['chat'], 'maps', true), ['chat', 'maps'], 'turning Maps on stores the main id');
   assert.deepEqual(setSwitch(['todo', 'chat'], 'calendar', false), ['chat'], 'turning Calendar off clears a lone todo');
   assert.deepEqual(setSwitch(['chat'], 'chat', false), null);
-  const before = Object.freeze(['places']);
+  const before = Object.freeze(['maps']);
   setSwitch(before, 'maps', false);
-  assert.deepEqual([...before], ['places'], 'the list given is never changed');
+  assert.deepEqual([...before], ['maps'], 'the list given is never changed');
   const stored = Object.freeze(['todo', 'chat', 'calendar', 'notes']);
   assert.deepEqual(readAs(stored, aliasesFor(['calendar', 'todo', 'notes'])), ['dest:calendar', 'chat', 'notes'], 'a stored list reads with the composite once, in the first part\'s place');
   assert.deepEqual([...stored], ['todo', 'chat', 'calendar', 'notes'], 'and is never written back');
@@ -901,7 +901,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const popOutSrc = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8').match(/function popOut\(id\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
   if (!/if \(!win\) \{ onPopBlocked\?\.\(\); return; \}/.test(popOutSrc) || popOutSrc.indexOf('onPopBlocked') > popOutSrc.indexOf('closeModule(m.id)')) fail('public/canvas.js', 'a module\'s pop-out the browser blocks must keep the module and call onPopBlocked, closing it only once the window opened');
   if (/mode === 'window'\) \{ closeModule\(id\)/.test(fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8'))) fail('public/canvas.js', 'setMode(window) must not close the module before popOut has its window');
-  if (!/compositesOn\(ids, shown\)\.find\(\(c\) => c\.parts\.includes\(id\)\)/.test(moduleJs) || !/location\.replace\(`\$\{composite\.path\}\?\$\{q\}\$\{location\.hash\}`\)/.test(moduleJs)) fail('public/module.js', 'a part\'s pop-out (/modules/calendar?space=, /modules/todo?space=, /modules/maps?space=, /modules/places?space=) goes to the destination\'s page for the space, the hash kept');
+  if (!/compositesOn\(ids, shown\)\.find\(\(c\) => c\.parts\.includes\(id\)\)/.test(moduleJs) || !/location\.replace\(`\$\{composite\.path\}\?\$\{q\}\$\{location\.hash\}`\)/.test(moduleJs)) fail('public/module.js', 'a part\'s pop-out (/modules/calendar?space=, /modules/todo?space=, /modules/maps?space=) goes to the destination\'s page for the space, the hash kept');
   // The Map's pop-out asks the destination for the space first (a 404 keeps the part's own page), as the canvas does.
   if (!/for \(const c of compositesToAsk\(ids\)\)/.test(moduleJs) || !/await api\('GET', `\/api\/destinations\/\$\{encodeURIComponent\(c\.dest\)\}\?\$\{q\}`\); shown\.push\(c\.dest\);/.test(moduleJs)) fail('public/module.js', 'a part of a composite that asks (Maps, Places) redirects only where GET /api/destinations/map?space= answers');
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');

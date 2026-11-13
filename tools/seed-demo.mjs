@@ -34,8 +34,8 @@ export function resolveTarget(env = process.env) {
 }
 
 const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
-// The core modules first (Maps needs Places), then every other bundled module, so the demo space has them all on.
-const MODULE_IDS = ['travel', 'places', 'todo', 'polls', 'calendar', 'budget', 'research', 'maps'];
+// The core modules first, then every other bundled module, so the demo space has them all on.
+const MODULE_IDS = ['travel', 'maps', 'todo', 'polls', 'calendar', 'budget', 'research'];
 
 class SeedError extends Error {}
 
@@ -113,13 +113,13 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   // --- the place search, which the Map's search field uses (Photon, the public service, unless SEED_SEARCH_URL is set) ---
   {
     const all = (await ok('admin', 'GET', '/api/module-settings/environment')).modules || [];
-    const places = all.find((m) => m.id === 'places');
-    const now = (key) => ((places && places.settings.find((x) => x.key === key)) || {}).value;
+    const maps = all.find((m) => m.id === 'maps');
+    const now = (key) => ((maps && maps.settings.find((x) => x.key === key)) || {}).value;
     if (searchUrl) {
-      await ok('admin', 'PUT', '/api/modules/places/settings/environment', { values: { searchProvider: 'custom', search: searchUrl, saveResults: true } });
+      await ok('admin', 'PUT', '/api/modules/maps/settings/environment', { values: { searchProvider: 'custom', search: searchUrl, saveResults: true } });
       configured.push(`Place search: ${searchUrl} (SEED_SEARCH_URL), results saved.`);
     } else if (!now('searchProvider') || now('searchProvider') === 'none') {
-      await ok('admin', 'PUT', '/api/modules/places/settings/environment', { values: { searchProvider: 'photon', saveResults: true } });
+      await ok('admin', 'PUT', '/api/modules/maps/settings/environment', { values: { searchProvider: 'photon', saveResults: true } });
       configured.push('Place search: Photon, the public service (photon.komoot.io), results saved.');
     } else {
       configured.push(`Place search: left as it was (${now('searchProvider')}).`);
@@ -153,7 +153,7 @@ export async function runSeed({ base, login = 'admin', adminPassword, today, say
   // --- counts ---
   const planRows = ((await ok('admin', 'GET', `/api/modules/travel/data?scope=space&space=${space.id}&prefix=plan:`)).items || []).map((i) => i.value);
   const c = report.created;
-  const counts = { planner: planRows.length, places: c.places, calendar: c.calendar, todo: c.todo, polls: c.polls, budget: c.budget, research: c.research, chat: c.chat + aiDone * 2 };
+  const counts = { planner: planRows.length, places: c.maps, calendar: c.calendar, todo: c.todo, polls: c.polls, budget: c.budget, research: c.research, chat: c.chat + aiDone * 2 };
   const settings = (await ok('admin', 'GET', '/api/settings')).settings;
   const mapReason = settings.topBarReasons && settings.topBarReasons.map;
   return { space, S, users, pass, guestUrl: report.guestUrl, counts, mapReason, aiDone, planRows, configured, hosted: Boolean(brand.json.hosted), created: report.created, skipped: report.skipped };

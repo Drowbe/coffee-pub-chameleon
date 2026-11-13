@@ -46,7 +46,6 @@
   "moduleIcons": {},
   "modules": [
     "travel",
-    "places",
     "maps",
     "research",
     "calendar",

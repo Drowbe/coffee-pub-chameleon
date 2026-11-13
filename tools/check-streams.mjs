@@ -338,7 +338,7 @@ async function serverChecks(S, jar, api) {
   const pageOnly = rawStream(S.base, '/api/modules/stream', jar('mia'));
   await sleep(400);
   assert.deepEqual([both.status, spaceOnly.status, pageOnly.status], [200, 200, 200]);
-  const w1 = await api('sam', 'PUT', `/api/modules/places/data/${encodeURIComponent('place:streamraw')}?scope=space&space=${S.ctx.trip}`, { value: { title: 'Raw stream place', owners: [] } });
+  const w1 = await api('sam', 'PUT', `/api/modules/maps/data/${encodeURIComponent('place:streamraw')}?scope=space&space=${S.ctx.trip}`, { value: { title: 'Raw stream place', owners: [] } });
   assert.equal(w1.status, 200, JSON.stringify(w1.json));
   await sleep(500);
   const pick = (s) => s.events.filter((e) => e.event === 'change' && e.data.key === 'place:streamraw');
@@ -475,7 +475,7 @@ async function main() {
         // 3. sam saves a place in the trip; it reaches the Map window's list.
         if (map.ok) {
           const title = 'Stream check viewpoint';
-          const put = await api('sam', 'PUT', `/api/modules/places/data/${encodeURIComponent('place:streamcheck1')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.7139, lng: -9.1334 } } });
+          const put = await api('sam', 'PUT', `/api/modules/maps/data/${encodeURIComponent('place:streamcheck1')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.7139, lng: -9.1334 } } });
           if (put.status !== 200) failures.push(`sam could not save a place through the API (${put.status}: ${JSON.stringify(put.json)})`);
           const t0 = Date.now();
           const seen = await until(tab, ROWS('/map', '.place-row'), (v) => Array.isArray(v) && v.some((x) => x.includes(title)), 5000);
@@ -509,7 +509,7 @@ async function main() {
         if (!map.ok) failures.push('the standalone Map page did not draw its place list');
         if (!streams.some((u) => u.startsWith('/api/modules/stream'))) failures.push('the standalone Map page opened no module stream of its own');
         const title = 'Stream check harbour';
-        await api('sam', 'PUT', `/api/modules/places/data/${encodeURIComponent('place:streamcheck2')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.705, lng: -9.145 } } });
+        await api('sam', 'PUT', `/api/modules/maps/data/${encodeURIComponent('place:streamcheck2')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.705, lng: -9.145 } } });
         const seen = await until(tab, ROWS(null, '.place-row'), (v) => Array.isArray(v) && v.some((x) => x.includes(title)), 5000);
         if (!seen.ok) failures.push('a place sam saved did not reach the standalone Map page within 5 s');
       } finally { net.stop(); await tab.close(); }
@@ -537,7 +537,7 @@ async function main() {
           else {
             await sleep(1500); // the frame has joined the page's stream by now
             const title = 'Stream check popout pier';
-            await api('sam', 'PUT', `/api/modules/places/data/${encodeURIComponent('place:streamcheck3')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.69, lng: -9.2 } } });
+            await api('sam', 'PUT', `/api/modules/maps/data/${encodeURIComponent('place:streamcheck3')}?scope=space&space=${S.ctx.trip}`, { value: { title, address: '', notes: '', owners: [], point: { lat: 38.69, lng: -9.2 } } });
             const t0 = Date.now();
             const seen = await until(tab, POP_ROWS, (v) => Array.isArray(v) && v.some((x) => x.includes(title)), 5000);
             say(`popped-out call: ${seen.ok ? `the Map window heard a new place after ${((Date.now() - t0) / 1000).toFixed(1)} s` : 'the Map window never heard the new place'}`);

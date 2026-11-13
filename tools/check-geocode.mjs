@@ -40,33 +40,33 @@ test('a rough rectangle, when the service gives one', () => {
   assert.equal(r[1].extent, undefined); // a point result carries no rectangle
   // Never kept: the geocode cache only ever stores a point.
   const c = new GeocodeCache(dir);
-  const kept = c.remember('places', r);
+  const kept = c.remember('maps', r);
   assert.equal(kept[0].extent, undefined);
-  c.purge('places', 'all', 0);
+  c.purge('maps', 'all', 0);
 });
 
 test('keeping, finding, marking and purging', () => {
   const c = new GeocodeCache(dir);
   const found = parsePhoton({ features: ['Cafe Alpha', 'Cafe Beta', 'Bar Gamma'].map((t, i) => feat(t, 10 + i, 20, { city: 'Lisboa' })) });
-  const kept = c.remember('places', found);
+  const kept = c.remember('maps', found);
   assert.equal(kept.length, 3);
-  assert.equal(c.stats('places').saved, 3);
-  assert.equal(c.stats('places').used, 0);
-  c.remember('places', found.slice(0, 1));
-  assert.equal(c.places('places').get(kept[0].key).seen, 2);
-  assert.deepEqual(c.search('places', 'cafe', null).map((r) => r.name), ['Cafe Alpha', 'Cafe Beta']);
-  assert.deepEqual(c.search('places', 'lisboa bar', null).map((r) => r.name), ['Bar Gamma']);
-  assert.deepEqual(c.search('places', 'nothing', null), []);
-  assert.deepEqual(c.search('places', 'cafe', { lat: 11, lon: 20 }).map((r) => r.name), ['Cafe Beta', 'Cafe Alpha']);
-  assert.equal(c.markUsed('places', kept[2].key), true);
-  assert.equal(c.markUsed('places', 'nope'), false);
+  assert.equal(c.stats('maps').saved, 3);
+  assert.equal(c.stats('maps').used, 0);
+  c.remember('maps', found.slice(0, 1));
+  assert.equal(c.places('maps').get(kept[0].key).seen, 2);
+  assert.deepEqual(c.search('maps', 'cafe', null).map((r) => r.name), ['Cafe Alpha', 'Cafe Beta']);
+  assert.deepEqual(c.search('maps', 'lisboa bar', null).map((r) => r.name), ['Bar Gamma']);
+  assert.deepEqual(c.search('maps', 'nothing', null), []);
+  assert.deepEqual(c.search('maps', 'cafe', { lat: 11, lon: 20 }).map((r) => r.name), ['Cafe Beta', 'Cafe Alpha']);
+  assert.equal(c.markUsed('maps', kept[2].key), true);
+  assert.equal(c.markUsed('maps', 'nope'), false);
   // Never stored: what was asked, or by whom.
   assert.deepEqual(Object.keys(kept[0]).sort(), ['address', 'category', 'firstSeen', 'key', 'lastSeen', 'lat', 'lng', 'name', 'osmId', 'osmType', 'seen', 'used']);
-  assert.equal(c.purge('places', 'unused', 1), 0); // nothing is a day old
-  assert.equal(c.purge('places', 'unused', 0), 2);
-  assert.equal(c.stats('places').saved, 1); // the used one is kept
-  assert.equal(c.purge('places', 'all', 0), 1);
-  assert.equal(c.stats('places').saved, 0);
+  assert.equal(c.purge('maps', 'unused', 1), 0); // nothing is a day old
+  assert.equal(c.purge('maps', 'unused', 0), 2);
+  assert.equal(c.stats('maps').saved, 1); // the used one is kept
+  assert.equal(c.purge('maps', 'all', 0), 1);
+  assert.equal(c.stats('maps').saved, 0);
   assert.ok(ENOUGH >= 1);
 });
 

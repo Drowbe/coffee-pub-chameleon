@@ -47,8 +47,8 @@ async function start() {
     if (guestToken) q.set('guest', guestToken);
     const list = (await api('GET', `/api/modules/for-space?${q}`)).modules;
     const found = list.find((m) => m.id === id);
-    // A part of a composite that is on in this space (the Calendar and the To-do while the Calendar is on; Maps and
-    // Places while the space's Map is shown; composites.js, plan-calendar-todo.md and plan-map-places.md step 3) has no
+    // A part of a composite that is on in this space (the Calendar and the To-do while the Calendar is on; the Map
+    // while the space's Map is shown; composites.js, plan-calendar-todo.md and plan-map-places.md step 3) has no
     // page of its own there: its pop-out is the destination's page for the space, the same the Workspace's composite
     // holds, the pointer in the address (#ref=) kept. A composite that asks (the Map needs a map file) is on only where
     // its destination answers for the space, as the canvas asks; refused, the part keeps its own page here.

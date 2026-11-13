@@ -5,7 +5,7 @@
 // { seed(call) -> { trip, second, users, ... }, chat(dataDir, ids) }; the games one also answers `key`, the stream key, for the OBS view.
 //
 // seedServer(call) fills a throwaway server through its API: the travel template, an admin and two members, three modules'
-// worth of everything (Planner, Places, To-do, Polls, Calendar, Budget, Research), two trips, the phases with fixed dates.
+// worth of everything (Planner, Maps, To-do, Polls, Calendar, Budget, Research), two trips, the phases with fixed dates.
 // seedChat(dataDir, ids) then writes the chat (an AI answer with suggestion cards, a message with a link card, ordinary
 // messages) straight into DATA_DIR, because the AI and the link reader are not available here. Run with the server stopped
 // and with tools/shots-clock.cjs preloaded, so the message times are the same fixed day as the server's.
@@ -27,7 +27,7 @@ export const PASSWORD = 'testpass1234';
 const day = (n) => { const d = new Date(`${TODAY}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 export { day };
 
-const MODULES = ['travel', 'places', 'todo', 'polls', 'calendar', 'budget', 'research', 'maps', 'assistant', 'stream'];
+const MODULES = ['travel', 'maps', 'todo', 'polls', 'calendar', 'budget', 'research', 'assistant', 'stream'];
 
 // `call(method, url, body, as)` answers { status, json }; `as` is 'admin' or a member's login. Throws on an unexpected refusal.
 export async function seedServer(call) {
@@ -82,7 +82,7 @@ export async function seedServer(call) {
     ['a8', { kind: 'block', type: 'free', title: 'Free time', date: day(12), time: '14:00', minutes: 120, order: 2 }],
     ['a9', { kind: 'stop', type: 'sight', title: 'Castelo de Sao Jorge', date: day(12), time: '17:00', minutes: 90, order: 3, pinned: true }],
     ['a10', { kind: 'lane', type: 'rest', title: 'Rest day', after: day(12), order: 1 }],
-    ['a11', { kind: 'link', title: 'Tram 28', date: day(13), ref: { module: 'places', kind: 'place', id: 'p1', scope: 'space', space: trip.id }, order: 1 }],
+    ['a11', { kind: 'link', title: 'Tram 28', date: day(13), ref: { module: 'maps', kind: 'place', id: 'p1', scope: 'space', space: trip.id }, order: 1 }],
     ['a12', { kind: 'stop', type: 'restaurant', title: 'Lunch near the market', date: day(13), time: '13:00', minutes: 60, order: 2, notes: 'Conflicts with the tour below.' }],
     ['a14', { kind: 'stop', type: 'show', title: 'Fado night', date: day(14), time: '21:00', minutes: 120, admissionCount: 3, gate: 'Door B', confirm: 'FD-22', order: 1 }],
     ['a15', { kind: 'journey', mode: 'bus', title: 'Airport shuttle bus', date: day(19), time: '10:00', minutes: 40, to: 'Humberto Delgado Airport', operator: 'Aerobus', order: 1 }],
@@ -90,7 +90,7 @@ export async function seedServer(call) {
   ];
   for (const [id, v] of plan) await put('travel', `plan:${id}`, { by, ...v });
 
-  // --- Places
+  // --- Places (kept by Maps)
   const places = [
     ['p1', { title: 'Tram 28 stop, Martim Moniz', category: 'transport', address: 'Largo Martim Moniz', point: { lat: 38.7167, lng: -9.1359 }, notes: 'Get there before 9 to find a seat.', owners: [users.mia] }],
     ['p2', { title: 'Time Out Market', category: 'food', status: 'want', address: 'Av. 24 de Julho 49', point: { lat: 38.7066, lng: -9.1459 }, notes: 'Lots of stalls, one bench for three.', owners: [] }],
@@ -98,7 +98,7 @@ export async function seedServer(call) {
     ['p4', { title: 'Cabo da Roca', category: 'nature', address: 'Colares', point: { lat: 38.7804, lng: -9.4989 }, notes: 'The westernmost point of mainland Europe.', owners: [] }],
     ['p5', { title: 'A bookshop with a cat', category: 'shopping', address: 'Rua Anchieta 4', point: { lat: 38.7108, lng: -9.1417 }, notes: '', owners: [] }],
   ];
-  for (const [id, v] of places) await put('places', `place:${id}`, { address: '', notes: '', owners: [], by, ...v });
+  for (const [id, v] of places) await put('maps', `place:${id}`, { address: '', notes: '', owners: [], by, ...v });
 
   // --- To-do
   const tasks = [

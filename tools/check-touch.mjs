@@ -1,7 +1,7 @@
 // check-touch.mjs: what a phone person meets when a field takes focus, measured in the running product (headless Chromium, the
 // screenshot seed, touch emulation: Emulation.setTouchEmulationEnabled plus a mobile device override, so (pointer: coarse) answers).
 //   1. iOS Safari zooms the page when a field with text under 16px takes focus. Every visible text field, text area and select on
-//      the Workspace, Places, Research, Maps, Polls, the home page's chat and an open editor window must compute to 16px or more,
+//      the Workspace, Research, Maps, Polls, the home page's chat and an open editor window must compute to 16px or more,
 //      at 390 and 360 wide and in landscape (844x390).
 //   2. The host console (hosted: BASE_DOMAIN set) must not scroll sideways at 360 or 390: its Host tab holds long web addresses.
 //      Booting a hosted server needs a host name that resolves to this machine, so that part reads the CSS rule instead
@@ -66,12 +66,11 @@ async function main() {
     const mod = (id, wait, steps) => ({ id, as: 'mia', url: `/modules/${id}?space={trip}`, wait, steps });
     const W = { id: 'workspace', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true };
     const HOME = { id: 'home chat', as: 'mia', url: '/', wait: '.space-choice' };
-    const PLACES = { ...mod('places', '#module-frame >>> .place-row', [{ click: '.mf-add-btn' }]), id: 'places editor' };
     const RESEARCH = mod('research', '#module-frame >>> button');
     const POLLS = mod('polls', '#module-frame >>> .poll');
     const MAPS = mod('maps', '#module-frame >>> *');
     // Each screen at the sizes where it once failed (the run stays near 30 seconds).
-    const runs = [[390, 844, [W, HOME, PLACES, RESEARCH, MAPS]], [844, 390, [W, PLACES, POLLS]], [360, 780, [PLACES]]];
+    const runs = [[390, 844, [W, HOME, RESEARCH, MAPS]], [844, 390, [W, POLLS]], [360, 780, [MAPS]]];
     let total = 0; let views = 0;
     for (const [w, h, screens] of runs) {
       for (const screen of screens) {

@@ -171,7 +171,7 @@ await test('the bundled Research, To-do, Calendar and Polls declare what they ta
   for (const kind of ['event', 'task', 'poll', 'note', 'link', undefined]) assert.equal(takersOf(providesOf(calendar, 'createEvent').takes, kind).length, 1, String(kind));
   assert.equal(takersOf(providesOf(research, 'saveNote').takes, 'image').length, 0, 'a picture is only for savePhoto');
   // With every bundled module on, the prompt lists every kind; the Planner off, still every kind but the travel ones.
-  const every = await Promise.all(['travel', 'research', 'todo', 'calendar', 'polls', 'places', 'maps', 'stream', 'assistant'].map(bundled));
+  const every = await Promise.all(['travel', 'research', 'todo', 'calendar', 'polls', 'maps', 'stream', 'assistant'].map(bundled));
   assert.deepEqual(kindsTaken(every), KINDS);
   assert.deepEqual(kindsTaken(every.filter((m) => m.id !== 'travel')), ['event', 'task', 'poll', 'note', 'link']);
   assert.deepEqual(kindsTaken([todo]), ['task']);

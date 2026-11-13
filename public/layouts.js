@@ -35,7 +35,7 @@ export const COLUMN_IDS = Object.freeze(['conference', 'chat']);
 const inColumn = (id) => COLUMN_IDS.includes(id);
 // `aliases` (composites.js's aliasesFor; plan-calendar-todo.md and plan-map-places.md, step 3): a module id in a stored
 // layout read as another ({ calendar: 'dest:calendar', todo: 'dest:calendar' } while the Calendar is on in the space;
-// { maps: 'dest:map', places: 'dest:map' } while the space's Map is shown), or as a list of others.
+// { maps: 'dest:map' } while the space's Map is shown), or as a list of others.
 // A layout naming both parts places the composite once, where the first is named; the layout itself is never rewritten.
 const aliasOf = (id, aliases) => (aliases && Object.prototype.hasOwnProperty.call(aliases, id) ? aliases[id] : id);
 const PITCH_DEFAULT = 130;

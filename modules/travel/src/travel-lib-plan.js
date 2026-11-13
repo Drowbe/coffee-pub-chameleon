@@ -93,7 +93,7 @@
     };
 
     // What the plan points at, told to the host (setLinks), so the object pointed at can show "Used by" and warn before it is deleted
-    // (Places does). Fire and forget: a viewer who may not write is refused, and the plan works the same.
+    // (Maps does). Fire and forget: a viewer who may not write is refused, and the plan works the same.
     const planRef = (id) => host.objects.make('plan', id);
     // The one thing an item points at: a link's object, or the Place a stop is at.
     const linkOf = (item) => item.ref || item.placeRef || null;

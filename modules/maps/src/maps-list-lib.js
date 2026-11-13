@@ -2,7 +2,7 @@
   // (`place:<id>`): { title, category, address, point?, notes, owners, by, ref?, type?, icon?, iconOwn?, color?, status? }. `point` is a
   // field of its own so the module's summary can name it (a summary's `place`); a place with only an address has none. The page
   // defines `geo` (host.util.geo) and `word` (host.util.word) ahead of this code, as the check does, and the build puts the bundled types library
-  // (places-lib-types.json) ahead of it as `LIB_TYPES` (plan-places-library.md, Part B).
+  // (maps-list-lib-types.json) ahead of it as `LIB_TYPES` (plan-places-library.md, Part B).
   const PLACE_PREFIX = 'place:';
   const CATEGORY_ID = /^[a-z][a-z0-9-]{0,29}$/;
   const ICON_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -195,7 +195,9 @@
     if (!v || typeof v !== 'object' || !v.ref || typeof v.ref !== 'object') return null;
     const home = cleanHome(v.ref);
     if (!home || home.scope === 'person' || typeof v.ref.id !== 'string' || !PLACE_ID.test(v.ref.id)) return null;
-    const ref = { module: typeof v.ref.module === 'string' ? v.ref.module : 'places', kind: 'place', id: v.ref.id, ...home };
+    // The pointer names the module that keeps places; one that names any other (a bookmark from before Places folded into Maps) is not read.
+    if (v.ref.module !== 'maps') return null;
+    const ref = { module: 'maps', kind: 'place', id: v.ref.id, ...home };
     if (key !== bookmarkKey(ref)) return null;
     return { key, ref, title: geo.oneLine(v.title, 120) };
   }

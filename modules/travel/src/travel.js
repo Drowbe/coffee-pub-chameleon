@@ -237,7 +237,7 @@
     return el;
   }
 
-  // A stop at a Place from Places: the place as a chip on its card that opens it (the card's own "open" action, by the pointer it carries).
+  // A stop at a Place from Maps: the place as a chip on its card that opens it (the card's own "open" action, by the pointer it carries).
   // A place that is gone, or that this person may not see, is not drawn as a link; the name the person typed shows as before.
   function placeChipInto(el, item) {
     if (item.kind !== 'stop' || !item.placeRef) return;
@@ -2340,9 +2340,9 @@
     (el.querySelector('.sdk-card-body') || el).append(box);
     host.ui.fileChips(box, item.files, { canEdit, onRemoveLink: (ref) => { plan.removeFile(item.id, ref).catch((err) => host.ui.toast(err.message)); } });
   }
-  // --- the stop's Place (plan-places-and-maps.md): the name typed stays valid on its own; a Place from Places can be linked to it ---
+  // --- the stop's Place (plan-places-and-maps.md): the name typed stays valid on its own; a Place from Maps can be linked to it ---
   // The editor holds the link in state.editing.placeRef until Save; the plan records it (setLinks) when the stop is saved, and removes it
-  // when it is unlinked or the stop goes. Save as a place makes a Place from the typed name (the Places action addPlace, when a module offers it).
+  // when it is unlinked or the stop goes. Save as a place makes a Place from the typed name (the Maps action addPlace, when a module offers it).
   let placeAction;
   async function addPlaceAction() {
     if (placeAction !== undefined) return placeAction;
@@ -2360,7 +2360,7 @@
     hide($('f-place-open'), !linked || gone);
     hide($('f-place-unlink'), !linked);
     hide($('f-place-save'), linked || !$('f-place').value.trim() || !ed.canSavePlace);
-    $('f-place-pick').textContent = linked ? 'Pick another' : 'Pick from Places';
+    $('f-place-pick').textContent = linked ? 'Pick another' : 'Pick from Maps';
   }
   function placeFieldInit(item) {
     const ed = state.editing;
@@ -2376,7 +2376,7 @@
     $('f-place').addEventListener('input', () => { say(''); placeFieldSync(); });
     $('f-place-pick').addEventListener('click', () => attempt(async () => {
       say('');
-      const picked = await host.objects.pick({ modules: ['places'], kinds: ['place'], title: 'Pick a place' });
+      const picked = await host.objects.pick({ modules: ['maps'], kinds: ['place'], title: 'Pick a place' });
       if (!picked || state.editing !== ed) return;
       const ref = await sharedRef(picked);
       const summary = await host.objects.resolve(ref);
@@ -2405,7 +2405,7 @@
           ed.placeRef = out.result.ref;
           ed.placeTitle = name;
           say('Saved as a place.');
-        } else say('Places did not answer. Open Places, then try again.');
+        } else say('Maps did not answer. Open Maps, then try again.');
       } finally { $('f-place-save').disabled = false; }
       placeFieldSync();
     }));

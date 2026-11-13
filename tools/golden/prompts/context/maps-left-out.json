@@ -311,7 +311,7 @@
     "notSent": [
       {
         "why": "setting",
-        "module": "places",
+        "module": "maps",
         "count": 1
       },
       {

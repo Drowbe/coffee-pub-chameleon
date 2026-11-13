@@ -16,12 +16,8 @@
     "hash": "945bb98ae45b15f2"
   },
   "maps": {
-    "version": "0.9.15",
-    "hash": "6931e39de5f68c99"
-  },
-  "places": {
-    "version": "0.12.22",
-    "hash": "c7b61c8aaeae05a6"
+    "version": "0.10.2",
+    "hash": "d624bcfa26825dc4"
   },
   "polls": {
     "version": "1.15.29",
@@ -40,8 +36,8 @@
     "hash": "c598305c64f350e0"
   },
   "travel": {
-    "version": "0.16.6",
-    "hash": "2adb7c3f9da548c5"
+    "version": "0.16.7",
+    "hash": "eb99831e8f22479c"
   },
   "vault": {
     "version": "0.4.7",

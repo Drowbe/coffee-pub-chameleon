@@ -68,7 +68,7 @@
       "count": 1
     },
     {
-      "module": "places",
+      "module": "maps",
       "selector": ".place-row > .sdk-card-body",
       "reason": "not yet moved to the host-drawn component (plan-unified-layout.md slice 11)",
       "count": 1

@@ -1212,7 +1212,7 @@ function syncStoredKeys(env, id) {
   if (JSON.stringify(next) !== JSON.stringify(applied)) env.modules.setAppliedRenames(id, next);
 }
 
-// Bundled modules with each one after the modules it requires (Places before Maps), so a requirement is updated and
+// Bundled modules with each one after the modules it requires (a module before the one that requires it), so a requirement is updated and
 // back on before what needs it is turned back on. Otherwise by id, as bundledModules lists them. A cycle, or a
 // requirement that does not ship here, simply keeps the listed order for what is left.
 function requirementsFirst(list) {
@@ -2912,7 +2912,7 @@ hostRouter.delete('/api/host/shared/:module/:folder/files/:name', requireHostAdm
 });
 
 // The place search a host-level "Add a region" find needs, since the host holds no geocoder of its own: the
-// first enabled module across every environment that has one configured (Places, typically), each checked
+// first enabled module across every environment that has one configured (Maps, typically), each checked
 // inside its own envContext.run so moduleSettings and modules resolve to that one environment, the same as a
 // request to it would -- admin.<base> never otherwise resolves one.
 async function findRegionBoxAcrossEnvironments(q) {
@@ -2948,7 +2948,7 @@ hostRouter.get('/api/host/shared/:module/:folder/region-cut/find', requireHostAd
   if (q.length < 2) return res.status(400).json({ error: 'type a place name first' });
   try {
     const found = await findRegionBoxAcrossEnvironments(q);
-    if (found === null) return res.status(404).json({ error: 'no place search is set up on any environment (a module with one, such as Places, names where to look)' });
+    if (found === null) return res.status(404).json({ error: 'no place search is set up on any environment (a module with one, such as Maps, names where to look)' });
     res.json(found.box ? { found: true, name: found.name, box: found.box } : { found: false });
   } catch (err) {
     res.status(502).json({ error: 'search is not available right now' });
@@ -4973,7 +4973,7 @@ function bundledList() {
     return {
       id: m.id, name: m.name, icon: m.icon, description: fillManifest(m, words).description, version: m.version, installed: have,
       displayName: display.name, displayIcon: display.icon, ownDisplayName: display.ownName, ownDisplayIcon: display.ownIcon, templateDisplayName: display.templateName, templateDisplayIcon: display.templateIcon,
-      requires: m.requires || [], // what it needs installed and on (Maps needs Places), so the list can say so before Install
+      requires: m.requires || [], // what it needs installed and on (a module can name others it needs), so the list can say so before Install
       update: Boolean(have) && compareVersions(m.version, have) > 0 && !modules.view(m.id)?.versions.includes(m.version),
       notInPlan: !moduleAllowedByPlan(m.id), // plan-environments.md, "Phase 3": the Available list marks these "Not in your plan"
     };
@@ -10197,7 +10197,7 @@ function regionCutSetup(req, res) {
 }
 const boxFromBody = (b) => ({ minLon: Number(b?.minLon), minLat: Number(b?.minLat), maxLon: Number(b?.maxLon), maxLat: Number(b?.maxLat) });
 // A place's rough rectangle, from whichever enabled module has a place search configured (never named here: found the same
-// way any other generic conduit is, by what a module declares, not by which one it happens to be). Places is the one that
+// way any other generic conduit is, by what a module declares, not by which one it happens to be). Maps is the one that
 // offers this today; anything with a `geocoder` in its manifest would be found the same way.
 // Returns null when no enabled module has a configured search, otherwise `{ name, box }` (box null when nothing matched).
 async function findRegionBox(q) {
@@ -10219,7 +10219,7 @@ app.get('/api/modules/:id/region-cut/find', requireOwner, async (req, res) => {
   if (q.length < 2) return res.status(400).json({ error: 'type a place name first' });
   try {
     const found = await findRegionBox(q);
-    if (found === null) return res.status(404).json({ error: `no place search is set up on this server (${word('module', { a: true })} with one, such as Places, names where to look)` });
+    if (found === null) return res.status(404).json({ error: `no place search is set up on this server (${word('module', { a: true })} with one, such as Maps, names where to look)` });
     res.json(found.box ? { found: true, name: found.name, box: found.box } : { found: false });
   } catch (err) {
     res.status(502).json({ error: 'search is not available right now' });

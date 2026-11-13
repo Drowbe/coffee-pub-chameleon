@@ -81,7 +81,7 @@
   }
 
   // ---- contexts: which stylesheets a page or module really has ----
-  const MODULE_ORDER = ['assistant', 'budget', 'calendar', 'maps', 'places', 'polls', 'research', 'stream', 'todo', 'travel'];
+  const MODULE_ORDER = ['assistant', 'budget', 'calendar', 'maps', 'polls', 'research', 'stream', 'todo', 'travel'];
   function ctxLabel(ctx) {
     if (ctx === 'app') return 'An app page (public/style.css, the theme and public/sdk/system.css)';
     if (ctx === 'host') return 'A module page (public/sdk/system.css and public/sdk/host.css)';

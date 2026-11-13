@@ -1,13 +1,13 @@
 [
   {
-    "name": "places__setPlacePoint",
-    "module": "places",
+    "name": "maps__setPlacePoint",
+    "module": "maps",
     "action": "setPlacePoint",
     "label": "Give a place a position",
     "description": "Give a saved place a position on the map, as a latitude and longitude.",
     "effect": "write",
     "input": {
-      "place": "ref:places:place",
+      "place": "ref:maps:place",
       "lat": "number",
       "lng": "number"
     },

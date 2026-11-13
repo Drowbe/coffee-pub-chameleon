@@ -633,17 +633,17 @@ test('the "+": one entry for one add (Thomas, 2026-10-14: the Map\'s "+" offered
   assert.equal(R.cleanAddEntries([{ id: 'a', label: 'Add a place', icon: 'location-dot' }, { id: 'b', label: 'Add a place', icon: 'plane' }]).length, 2, 'the same words with another icon are two adds');
   const cats = R.cleanAddEntries([{ label: 'A', items: [{ id: 'x', label: 'Same' }, { id: 'y', label: 'Other' }] }, { label: 'B', items: [{ id: 'z', label: 'Same' }, { id: 'w', label: 'Else' }] }]);
   assert.equal(cats.reduce((n, e) => n + e.items.length, 0), 4, 'a name in two categories is two adds');
-  // Two parts of one page (a composite's Map and its Places panel) offering the same add: the later one leaves it out.
+  // Two parts of one page (a composite's Map and its list panel) offering the same add: the later one leaves it out.
   const parts = R.dropRepeatedAdds([
     [{ id: 'place', label: 'Add a place', icon: 'location-dot' }],
     [{ id: 'place', label: 'Add a place', icon: 'location-dot' }, { id: 'other', label: 'Add a note' }],
   ]);
   assert.deepEqual(parts, [[{ id: 'place', label: 'Add a place', icon: 'location-dot' }], [{ id: 'other', label: 'Add a note' }]], 'the first part keeps it');
   assert.deepEqual(R.dropRepeatedAdds([[], null]), [[], []]);
-  // destination.js builds the composite's "+" through it, and the bundled Map and Places both still offer "Add a place".
+  // destination.js builds the composite's "+" through it, and the bundled Map and its list both still offer "Add a place".
   assert.match(read('public/destination.js'), /dropRepeatedAdds\(parts\.map\(\(p\) => p\.adds\)\)/, 'the composite\'s "+" drops an add two parts both offer');
   const label = (f) => (read(f).match(/ADD_PLACE = (?:\{[^}]*label: |)'([^']+)'/) || [])[1];
-  assert.equal(label('modules/maps/src/maps.js'), label('modules/places/src/places.js'), 'Map and Places word the add alike, which is how the two are seen as one');
+  assert.equal(label('modules/maps/src/maps.js'), label('modules/maps/src/maps-list.js'), 'the Map and its list word the add alike, which is how the two are seen as one');
 });
 
 test('a composite\'s editor window: the Workspace lifts the frame, as it does a sandboxed module\'s', () => {
