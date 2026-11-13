@@ -124,7 +124,7 @@
       "n": 2,
       "kind": "Place",
       "title": "Secret bar",
-      "text": "Only for readers of Places."
+      "text": "Only for readers of Maps."
     },
     {
       "n": 3,
@@ -148,7 +148,7 @@
       "id": "n1"
     },
     {
-      "module": "places",
+      "module": "maps",
       "kind": "place",
       "scope": "space",
       "space": "s1",
@@ -290,7 +290,7 @@
         "id": "n1"
       },
       {
-        "module": "places",
+        "module": "maps",
         "kind": "place",
         "scope": "space",
         "space": "s1",

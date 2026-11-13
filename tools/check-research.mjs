@@ -86,7 +86,7 @@ await test('items are checked: what a kind needs, and nothing else', () => {
   const photo = lib.cleanItem('photo', 'c', { title: 'Harbour', file: { id: FILE, hasThumb: true } });
   assert.deepEqual(photo.file, { id: FILE, hasThumb: true });
   assert.equal(lib.cleanItem('photo', 'c', { title: 'x', file: { id: '../../etc' } }), null);
-  const answer = lib.cleanItem('answer', 'd', { title: 'Hotels', content: 'Near the station.', ai: { question: 'where?', sources: [{ module: 'places', kind: 'place', id: 'p1' }, { bad: 1 }] } });
+  const answer = lib.cleanItem('answer', 'd', { title: 'Hotels', content: 'Near the station.', ai: { question: 'where?', sources: [{ module: 'maps', kind: 'place', id: 'p1' }, { bad: 1 }] } });
   assert.equal(answer.ai.sources.length, 1);
   // What is stored: only what the kind uses, plus the words its summary carries.
   const v = lib.itemValue(link);
@@ -143,7 +143,7 @@ await test('the store: save, edit with versions, remove (and the picture), and w
   await again.load();
   assert.equal(again.list().length, 1);
   r.provide('u1');
-  const out = await f.handlers.saveNote({ title: 'From elsewhere', body: 'text', tags: '#Hotel, Lisbon', ref: { module: 'places', kind: 'place', id: 'p' } }, { by: 'u2' });
+  const out = await f.handlers.saveNote({ title: 'From elsewhere', body: 'text', tags: '#Hotel, Lisbon', ref: { module: 'maps', kind: 'place', id: 'p' } }, { by: 'u2' });
   assert.equal(out.ref.kind, 'note');
   assert.equal(r.get(out.ref.id).by, 'u2', 'a note asked for by someone else is theirs, not the open page\'s');
   assert.deepEqual(r.get(out.ref.id).tags, ['hotel', 'lisbon']);
@@ -168,7 +168,7 @@ await test('the store: save, edit with versions, remove (and the picture), and w
   const mine = lib.createResearch(f.host, { scope: 'person' });
   mine.provide('u1');
   const before = f.links.length;
-  await f.handlers.saveNote({ title: 'Private', ref: { module: 'places', kind: 'place', id: 'p' } });
+  await f.handlers.saveNote({ title: 'Private', ref: { module: 'maps', kind: 'place', id: 'p' } });
   assert.equal(f.links.length, before);
 });
 
@@ -220,7 +220,7 @@ await test('saveNote, saveLink and savePhoto with an object; the flat fields as 
   let thumbs = 0;
   let readied = 0;
   r.provide('u1', { ready: async () => { readied += 1; }, makeThumb: async (id) => { thumbs += 1; f.files.find((x) => x.id === id).hasThumb = true; } });
-  const note = await f.handlers.saveNote({ title: 'Southwest 2483', object: SOUTHWEST, ref: { module: 'places', kind: 'place', id: 'p' } }, { by: 'u2' });
+  const note = await f.handlers.saveNote({ title: 'Southwest 2483', object: SOUTHWEST, ref: { module: 'maps', kind: 'place', id: 'p' } }, { by: 'u2' });
   const kept = r.get(note.ref.id);
   assert.equal(kept.title, 'Southwest 2483');
   assert.ok(kept.body.startsWith('Booked with **points**.\n\nAirline: Southwest'));

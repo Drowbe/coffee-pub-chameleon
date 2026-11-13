@@ -34,7 +34,7 @@
 .lookup-choice:hover { background: var(--secondary-hover); }
 .lookup-choice span { color: var(--text-dim); font-size: var(--text-12); }
 
-/* a stop's Place: the name, the linked Place as a chip, and the ways to link it (Pick from Places, Save as a place, Open in maps, Unlink) */
+/* a stop's Place: the name, the linked Place as a chip, and the ways to link it (Pick from Maps, Save as a place, Open in maps, Unlink) */
 .tv-place-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 .tv-place-actions > [hidden], .tv-place-linked[hidden] { display: none; }
 .tv-place-linked { margin-top: var(--space-2); }

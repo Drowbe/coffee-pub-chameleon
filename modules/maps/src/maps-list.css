@@ -59,7 +59,7 @@
 /* ---- whose places (mine, this space, everyone): host.ui.viewSwitch draws the switch itself in the toolbar ---- */
 .view-note { display: flex; align-items: center; gap: 6px; margin: -2px 0 0; color: var(--text-muted); font-size: var(--text-12); }
 
-/* something from another module dragged over the pane (see the drop target in places.js) */
+/* something from another module dragged over the pane (see the drop target in maps-list.js) */
 .app.drop-target { outline: 2px dashed var(--accent-fill); outline-offset: -4px; }
 .view-note .ic { color: var(--accent); }
 

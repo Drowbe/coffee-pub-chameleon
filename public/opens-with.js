@@ -20,7 +20,7 @@
 export const COLUMN_IDS = Object.freeze(['conference', 'chat']);
 // `aliases` (composites.js's aliasesFor; plan-calendar-todo.md and plan-map-places.md, step 3): a stored id read as
 // another, or as a list of others ({ calendar: 'dest:calendar', todo: 'dest:calendar' } while the Calendar is on in the
-// space; { maps: 'dest:map', places: 'dest:map' } while the space's Map is shown), each once, in the first place it is
+// space; { maps: 'dest:map' } while the space's Map is shown), each once, in the first place it is
 // named. The lists themselves are never rewritten.
 export function readAliased(list, aliases = {}) {
   const out = [];
@@ -78,7 +78,7 @@ export function shouldAutoJoin({ setting = false, inCall = false, canJoin = fals
 export function opensWithSummary({ list = null, environment = null, modules = [], canOpen = () => true, nameOf = (id) => id, groupOf = (id) => id } = {}) {
   const opens = whatOpens({ own: list, environment, modules, canOpen });
   if (Array.isArray(list)) return opens.length ? '' : 'None of the ones switched on can open now, so nothing opens.';
-  const names = [...new Set(opens.map(groupOf))].map(nameOf); // `groupOf`: a part reads as the switch it sits under (Places as Maps)
+  const names = [...new Set(opens.map(groupOf))].map(nameOf); // `groupOf`: a part reads as the switch it sits under (To-do as Calendar)
   if (!names.length) return 'Nothing switched on: nothing opens.';
   const said = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   return `Nothing switched on: ${said} ${names.length > 1 ? 'open' : 'opens'}.`;

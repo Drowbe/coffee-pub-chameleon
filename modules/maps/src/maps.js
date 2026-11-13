@@ -239,16 +239,16 @@
     state.searcher = null;
     if (!host.actions || !host.actions.list) return;
     try {
-      // The environment page on its own has nothing beside it that keeps places: these actions are carried out by the asking
-      // person's own open page, so asking here would wait for a page that is not open. Its map is a view.
-      if (alone) return;
-      const list = await host.actions.list();
-      // Who may add is Places' call, not Maps': its own page refuses someone who may not (see askNewPlace), and a listing that
+      // These actions are carried out by the list part of this module beside the map (src/maps-list.js), in the asking person's
+      // own open page, so asking from anywhere but the Map destination would wait for a part that is not there.
+      if (!part) return;
+      const list = await host.actions.list({ self: true });
+      // Who may add is the list's call, not the map's: it refuses someone who may not (see askNewPlace), and a listing that
       // says `may: false` for the action takes the add tools away at once.
       state.adder = list.find((a) => a.name === 'newPlace' && a.input && a.input.lat && a.input.lng && a.may !== false && !state.refused) || null;
       state.searcher = list.find((a) => a.name === 'searchPlaces' && a.input && a.input.q) || null;
       state.picked = list.find((a) => a.name === 'positionPicked') || null; // where a picked spot (or none) is told
-      // Whether this person may add places is Places' call: with its page open here, ask, and show no "+" when the answer is no.
+      // Whether this person may add places is the list's call: ask it, and show no "+" when the answer is no.
       const may = state.adder && list.find((a) => a.name === 'mayAdd' && a.open === true);
       if (may) {
         try {
@@ -256,7 +256,7 @@
           if (out.status === 'done' && out.result && out.result.ok && out.result.data && out.result.data.may === false) state.adder = null;
         } catch (err) { /* the add stays offered; a refusal is still handled when it comes */ }
       }
-      // The colours an owner chose for Places' categories: asked of the Places open in this page, if one is.
+      // The colours an owner chose for the categories: asked of the list part in this page.
       const colors = list.find((a) => a.name === 'categoryColors' && a.open === true);
       if (colors) askColors(colors);
     } catch (err) {
@@ -710,11 +710,8 @@
     if (!name) { s.hidden = true; s.replaceChildren(); delete s.dataset.kind; return; }
     s.replaceChildren(...parts(name));
     if (name === 'tpl-state-error') s.dataset.kind = 'error'; else delete s.dataset.kind;
-    // This module's name and the places module's, as this environment shows them (host.info's, and the one that
-    // offers the place actions); the markup's own words until they are known.
+    // This module's name, as this environment shows it (host.info's); the markup's own word until it is known.
     for (const el of s.querySelectorAll('[data-slot="own-name"]')) el.textContent = info.module.name || el.textContent;
-    const keeper = state.searcher || state.adder;
-    if (keeper && keeper.moduleName) for (const el of s.querySelectorAll('[data-slot="places-name"]')) el.textContent = keeper.moduleName;
     for (const el of s.querySelectorAll('[data-slot="maps-app"]')) hide(el, state.picture); // nobody's maps app has an invented world
     s.hidden = false;
     hydrate(s);
@@ -982,7 +979,9 @@
     return [{ id: 'place', label: ADD_PLACE, icon: 'location-dot' }];
   }
   function setBar() {
-    const field = !part && Boolean(state.searcher || state.adder || alone || state.picture);
+    // Standing alone (a window or the page, no list part beside it) the field is always there: it goes to a pasted position or link,
+    // and searches saved places on a picture map. Beside the list (the destination) the page's own row has the search.
+    const field = !part;
     $('results').classList.toggle('under-search', field);
     const words = state.picture ? 'Search saved places' : 'Search, or paste coordinates or a link';
     const bar = field ? [{ type: 'search', id: 'find', value: searchValue, placeholder: words, label: state.picture ? 'Search saved places' : 'Search the map' }] : [];

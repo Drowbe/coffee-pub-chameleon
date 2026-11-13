@@ -1408,7 +1408,7 @@ async function loadModules() {
 // What a module needs turned on first, as HTML: the AI service (with the way to its tab), or another module.
 const needsText = (r) => (r === 'ai' ? '<a href="#modules/ai">the AI service</a> enabled' : `${escapeHtml(shownNameOf(r))} installed and turned on`);
 
-// What a bundled module still needs before it can be turned on (Maps needs Places): said in its row of the list, so the
+// What a bundled module still needs before it can be turned on (a module can name others it needs): said in its row of the list, so the
 // admin installs those first instead of meeting a disabled Approve button afterwards.
 function bundledNeeds(b) {
   const waiting = (b.requires || []).filter((r) => !installedModules.some((m) => m.id === r && m.enabled));

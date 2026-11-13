@@ -344,14 +344,14 @@ try {
   });
 
   await test('live: the page gone (a restart) between the clear and the undo: the server still has it', async () => {
-    const before = await list('places');
+    const before = await list('maps');
     assert.ok(before.length, 'the seed has places');
-    const cleared = await call('DELETE', data('places', ''));
+    const cleared = await call('DELETE', data('maps', ''));
     await stopServer(server);
     server = await startServer(dataDir, port, 'third', env);
-    const back = await restore('places', cleared.json.restoreToken);
+    const back = await restore('maps', cleared.json.restoreToken);
     assert.deepEqual([back.status, back.json.restored], [200, before.length], JSON.stringify(back.json));
-    same(await list('places'), before);
+    same(await list('maps'), before);
   });
 
   await test('live: a second clear while one is held is refused, with the time left; Clear is not offered meanwhile (QA F4)', async () => {
@@ -470,7 +470,7 @@ try {
     assert.equal((await call('PATCH', '/api/modules/vault', { enabled: true })).status, 200, 'the Vault turned on');
     const forSpace = Object.fromEntries((await call('GET', `/api/modules/for-space?space=${T}`)).json.modules.map((m) => [m.id, m.clear]));
     assert.equal(forSpace.vault, false, 'the Vault (its files are not module data)');
-    for (const id of ['maps', 'assistant', 'research']) if (id in forSpace) assert.equal(forSpace[id], false, `${id} holds nothing here`);
+    for (const id of ['assistant', 'research']) if (id in forSpace) assert.equal(forSpace[id], false, `${id} holds nothing here`);
     assert.equal(forSpace.polls, true, 'Polls holds something');
     const vault = await call('DELETE', data('vault', ''));
     assert.equal(vault.status, 400);

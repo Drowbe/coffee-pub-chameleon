@@ -109,7 +109,7 @@ try {
   const mods = (await api('GET', '/api/modules')).json;
   for (const b of mods.bundled) assert.ok(mods.modules.some((m) => m.id === b.id && m.enabled), `the ${b.id} module is on`);
   assert.ok(first.configured.some((l) => /^Place search: Photon/.test(l)), 'the place search is set to Photon');
-  const placesSet = (await api('GET', '/api/module-settings/environment')).json.modules.find((m) => m.id === 'places').settings;
+  const placesSet = (await api('GET', '/api/module-settings/environment')).json.modules.find((m) => m.id === 'maps').settings;
   assert.equal(placesSet.find((x) => x.key === 'searchProvider').value, 'photon');
 
   // Every earlier phase holds dated content: Planner objects, to-dos, Calendar events (Planning also a Research object).
@@ -150,7 +150,7 @@ try {
   assert.ok(has((i) => i.kind !== 'lane' && !i.date && i.after == null && i.phase), 'unscheduled with a phase');
   assert.ok(has((i) => i.kind !== 'lane' && !i.date && i.after == null && !i.phase && i.kind === 'stop'), 'unscheduled with no phase');
   assert.ok(has((i) => i.kind === 'link' && i.ref.module === 'calendar'), 'rows from the Calendar');
-  assert.ok(has((i) => i.kind === 'link' && i.ref.module === 'places'), 'rows pointing at places');
+  assert.ok(has((i) => i.kind === 'link' && i.ref.module === 'maps'), 'rows pointing at places');
   const days = Array.from({ length: 10 }, (_, n) => dayPlus(trip.start, n));
   const stays = plan.filter((i) => i.kind === 'stay');
   const empty = days.filter((day) => !plan.some((i) => i.date === day) && stays.some((s) => s.date < day && s.checkOut > day));

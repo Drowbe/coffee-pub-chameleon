@@ -7,7 +7,7 @@
     "modules/documents/src/documents.css": {
       "raw": 9
     },
-    "modules/places/src/places.css": {
+    "modules/maps/src/maps-list.css": {
       "shadow-scrim": 1
     },
     "modules/research/src/research.css": {

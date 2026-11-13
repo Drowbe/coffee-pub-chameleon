@@ -31,7 +31,7 @@ const { fillFor } = host.objects;
 
 const task = { module: 'todo', kind: 'task', id: 't1', scope: 'space', space: 'r' };
 const event = { module: 'calendar', kind: 'event', id: 'e1', scope: 'space', space: 'r' };
-const place = { module: 'places', kind: 'place', id: 'p1', scope: 'space', space: 'r' };
+const place = { module: 'maps', kind: 'place', id: 'p1', scope: 'space', space: 'r' };
 const summary = { title: 'Dinner at the pier', text: 'Book for four', date: '2026-10-03', place: { lat: 38.7, lng: -9.1, name: 'Pier' }, kind: 'restaurant' };
 
 let n = 0;
@@ -72,7 +72,7 @@ await test('date and datetime: the day under the pointer, else the summary\'s ow
 });
 
 await test('a place: lat and lng from the spot under the pointer, else the summary\'s own place', () => {
-  const pin = { input: { place: 'ref:places:place', lat: 'number', lng: 'number' } };
+  const pin = { input: { place: 'ref:maps:place', lat: 'number', lng: 'number' } };
   assert.deepEqual(fillFor(pin, { ref: place }, { summary: {}, place: { lat: 1, lng: 2 } }), { place, lat: 1, lng: 2 });
   assert.deepEqual(fillFor(pin, { ref: place }, { summary: { place: { lat: 3, lng: 4 } } }), { place, lat: 3, lng: 4 });
   assert.equal(fillFor(pin, { ref: place }, { summary: {} }), null, 'no position anywhere');
@@ -94,14 +94,14 @@ await test('a bare pointer is accepted as well as { ref }', () => {
 // What a drop offers beyond the target's own: the dropped object's own module's actions, by its exact kind, using something
 // from under the pointer. Every other module's action is left out, however well it fills.
 stub.summaries['todo:task:t1'] = { ref: task, title: 'Book flights', kind: 'task', module: { id: 'todo', icon: 'list-check' } };
-stub.summaries['places:place:p1'] = { ref: place, title: 'The pier', kind: 'place', module: { id: 'places', icon: 'location-dot' }, place: { lat: 3, lng: 4 } };
+stub.summaries['maps:place:p1'] = { ref: place, title: 'The pier', kind: 'place', module: { id: 'maps', icon: 'location-dot' }, place: { lat: 3, lng: 4 } };
 const ALL = [
   { action: 'calendar:createEvent', module: 'calendar', icon: 'calendar-days', label: 'Add it to the calendar', moduleName: 'Calendar', input: { title: 'string', date: 'date', ref: 'ref?' } },
   { action: 'research:saveNote', module: 'research', icon: 'book', label: 'Save a note', moduleName: 'Research', input: { title: 'string', body: 'text?', ref: 'ref?' } },
   { action: 'todo:createTask', module: 'todo', icon: 'list-check', label: 'Add a task', moduleName: 'To-do', input: { title: 'string', ref: 'ref?' } },
   { action: 'todo:setTaskDue', module: 'todo', icon: 'list-check', label: 'Set its due date', moduleName: 'To-do', input: { task: 'ref:todo:task', date: 'date' } },
   { action: 'todo:linkTask', module: 'todo', icon: 'list-check', label: 'Link it', moduleName: 'To-do', input: { task: 'ref:todo:task', target: 'ref' } },
-  { action: 'places:setPlacePoint', module: 'places', icon: 'location-dot', label: 'Move the pin', moduleName: 'Places', input: { place: 'ref:places:place', lat: 'number', lng: 'number' } },
+  { action: 'maps:setPlacePoint', module: 'maps', icon: 'location-dot', label: 'Move the pin', moduleName: 'Maps', input: { place: 'ref:maps:place', lat: 'number', lng: 'number' } },
   { action: 'maps:showOnMap', module: 'maps', icon: 'map', label: 'Show on the map', moduleName: 'Maps', input: { ref: 'ref' }, needs: ['place'] },
 ];
 
@@ -119,7 +119,7 @@ await test('offersFor: only the dropped object\'s own module\'s actions, by its 
   const nowhere = await host.objects.offersFor({ ref: task }, {});
   assert.deepEqual(nowhere, [], 'nothing under the pointer: nothing to offer beyond the target\'s own');
   const onMap = await host.objects.offersFor({ ref: place }, { place: { lat: 1, lng: 2 } });
-  assert.deepEqual(onMap.map((o) => o.id), ['places:setPlacePoint'], 'a place on a spot of the map: put it there');
+  assert.deepEqual(onMap.map((o) => o.id), ['maps:setPlacePoint'], 'a place on a spot of the map: put it there');
   assert.deepEqual(await host.objects.offersFor({ summary }, { date: '2026-10-03' }), [], 'a carried summary has no module of its own: only the target\'s own offers');
 });
 

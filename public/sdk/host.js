@@ -2962,7 +2962,7 @@
       // Up and Down move, Enter chooses, Escape or Close cancels. Resolves with the object's pointer (a ref), or with a list of
       // pointers when `multiple` is true (chosen with ticks, then the Pick button), or null when the person cancels.
       //   pick({ modules?, kinds?, scope?, space?, title?, multiple? }) -> ref | ref[] | null
-      //   modules: ['places'] keeps only those modules' objects; kinds: ['place'] only those kinds ("kind" or "module:kind");
+      //   modules: ['maps'] keeps only those modules' objects; kinds: ['place'] only those kinds ("kind" or "module:kind");
       //   scope and space are search()'s; title is the window's name (default "Pick an object", in the environment's word for it).
       // It does not store anything. Keep the ref (host.objects.setLinks if it should be linked) and resolve() it for its title.
       pick: (o) => {

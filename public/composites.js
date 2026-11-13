@@ -5,7 +5,7 @@
 //
 // Pure: no document, no storage, no imports, so tools/check-canvas.mjs runs it in node. canvas.js reads the table;
 // opens-with.js and layouts.js take the `aliases` map this file builds and read a stored list through it, so a
-// remembered list, an Opens with or a saved layout naming `calendar`, `todo`, `maps` or `places` opens the composite,
+// remembered list, an Opens with or a saved layout naming `calendar`, `todo` or `maps` opens the composite,
 // and nothing stored is rewritten.
 //
 // A composite: { id, dest, path, main, parts, width, height, ask? }. `main` is the module whose name, icon and tint the
@@ -16,7 +16,7 @@
 // is on only where that answered. The callers below take the dest ids that answered as `shown`.
 export const COMPOSITES = Object.freeze([
   Object.freeze({ id: 'dest:calendar', dest: 'calendar', path: '/calendar', main: 'calendar', parts: Object.freeze(['calendar', 'todo']), width: 760, height: 600 }),
-  Object.freeze({ id: 'dest:map', dest: 'map', path: '/map', main: 'maps', parts: Object.freeze(['maps', 'places']), width: 760, height: 600, ask: true }),
+  Object.freeze({ id: 'dest:map', dest: 'map', path: '/map', main: 'maps', parts: Object.freeze(['maps']), width: 760, height: 600, ask: true }),
 ]);
 
 export const isCompositeId = (id) => typeof id === 'string' && id.startsWith('dest:');
@@ -40,8 +40,8 @@ export function compositesOn(ids, shown = []) {
 
 // The aliases a stored list is read through, given the ids on in a space: each part of a composite that is on reads
 // as the composite; a composite that is off reads as whichever of its parts are on (so a remembered `dest:calendar`
-// still opens the To-do's own list where the Calendar went off, and a remembered `dest:map` opens Maps and Places as
-// they are where there is no map file). { <stored id>: <id> | [<ids>] }.
+// still opens the To-do's own list where the Calendar went off, and a remembered `dest:map` opens Maps as
+// it is where there is no map file). { <stored id>: <id> | [<ids>] }.
 export function aliasesFor(ids, shown = []) {
   const on = new Set(Array.isArray(ids) ? ids : []);
   const live = new Set(compositesOn(ids, shown).map((c) => c.id));
@@ -85,7 +85,7 @@ export function composeList(modules, shown = []) {
   return out;
 }
 
-// Opens with, grouped as the canvas groups (Set up's First visit): the Maps switch stands for Places too, the Calendar
+// Opens with, grouped as the canvas groups (Set up's First visit): the Calendar
 // switch for To-do. The stored list is never reshaped except by a switch being turned: a list naming the main or any of
 // its parts reads as the main being on; turning it on stores the main; turning it off takes the main and the parts out,
 // so nothing is left that no switch can turn off.

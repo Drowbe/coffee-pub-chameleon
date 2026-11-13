@@ -89,7 +89,7 @@ export function compare(found, allow) {
 }
 
 // The slice (plan-unified-layout.md) that moves a selector off the list, for the first list's reasons.
-const SLICE = { calendar: 2, maps: 2, todo: 3, polls: 4, research: 5, places: 6, budget: 7, travel: 8, stream: 9, assistant: 9 };
+const SLICE = { calendar: 2, maps: 2, todo: 3, polls: 4, research: 5, budget: 7, travel: 8, stream: 9, assistant: 9 };
 function sliceFor(id, selector) {
   if (/sdk-(row|list)/.test(selector)) return 10;
   if (/sdk-card/.test(selector)) return 11;

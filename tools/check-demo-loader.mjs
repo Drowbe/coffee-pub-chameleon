@@ -37,11 +37,11 @@ const loaderPath = process.env.DEMO_LOADER_UNDER_TEST ? path.resolve(process.env
 const WORDS = require(path.join(ROOT, 'server', 'words.js'));
 const { loadDemo, readDemoFile, DemoError, MARKER, dayPlus } = require(loaderPath);
 const PASSWORD = 'testpass1234';
-const ALL = ['travel', 'places', 'todo', 'polls', 'calendar', 'budget', 'research', 'maps'];
-const WANT = { travel: 76, places: 37, calendar: 77, todo: 16, polls: 3, budget: 18, research: 4, chat: 25 };
+const ALL = ['travel', 'maps', 'todo', 'polls', 'calendar', 'budget', 'research'];
+const WANT = { travel: 76, maps: 37, calendar: 77, todo: 16, polls: 3, budget: 18, research: 4, chat: 25 };
 const TODAY = '2031-03-01';
 // Who last wrote each object, per module (the item's `by`, as a demo login): the demo people, never the admin who ran the loader.
-const WRITERS = { travel: { mia: 77 }, places: { mia: 37 }, calendar: { mia: 77 }, todo: { mia: 16 }, polls: { lee: 4, mia: 3, sam: 4 }, budget: { mia: 18 }, research: { mia: 4 } };
+const WRITERS = { travel: { mia: 77 }, maps: { mia: 37 }, calendar: { mia: 77 }, todo: { mia: 16 }, polls: { lee: 4, mia: 3, sam: 4 }, budget: { mia: 18 }, research: { mia: 4 } };
 
 const free = () => new Promise((res, rej) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej); });
 const servers = [];
@@ -162,7 +162,7 @@ try {
   await step('(a) each module\'s last writer is a demo person, never the admin who ran the loader', async () => {
     const login = Object.fromEntries(first.people.map((p) => [p.key, p.login]));
     const tally = {};
-    for (const id of ['travel', 'places', 'calendar', 'todo', 'polls', 'budget', 'research']) {
+    for (const id of ['travel', 'maps', 'calendar', 'todo', 'polls', 'budget', 'research']) {
       const items = (await A.api('GET', `/api/modules/${id}/data?scope=space&space=${first.space.id}&prefix=`)).json.items;
       const by = {};
       for (const it of items) { const who = login[it.by] || `other:${it.by}`; by[who] = (by[who] || 0) + 1; }

@@ -12,7 +12,7 @@
  *        - the Planner's stop editor shows its time on the environment's 12-hour clock ("8:00 PM"); a typed "9:15p" is read as 21:15 and
  *          .value stays "HH:MM"; Up moves 5 minutes; Escape puts back the last good time and keeps the window open; with the setting at
  *          24 hours the same time reads "20:00";
- *        - Pick from Places opens the picker (rows with icons, only Places), typing narrows, Enter chooses: the editor shows the linked
+ *        - Pick from Maps opens the picker (rows with icons, only Maps' places), typing narrows, Enter chooses: the editor shows the linked
  *          Place; Save records the link (GET /api/objects/links lists the stop under the place) and the card shows the place as a chip;
  *          Unlink and Save take the link away again;
  *        - on the touch screen the time field and the picker's search and rows are 44px tall and 16px, and the editor's buttons are 44px;
@@ -57,13 +57,13 @@ const travelJs = read('modules/travel/src/travel.js');
 for (const id of ['f-time', 'f-endTime', 'f-checkOutTime', 'f-arrival-time', 'f-back-time', 'f-back-endTime', 'f-back-arrival-time']) ok(travelJs.includes(`'${id}'`) && /host\.ui\.timeField\(\$\(tid\)\)/.test(travelJs), `the Planner's ${id} is not drawn with host.ui.timeField`);
 const cal = read('modules/calendar/src/calendar.js');
 ok(/host\.ui\.timeField\(\$\('f-time'\)\)/.test(cal) && /host\.ui\.timeField\(\$\('f-end'\)\)/.test(cal), "the Calendar's times are not drawn with host.ui.timeField");
-ok(/host\.objects\.pick\(\{ modules: \['places'\]/.test(travelJs), 'the Planner does not pick a Place with host.objects.pick');
+ok(/host\.objects\.pick\(\{ modules: \['maps'\]/.test(travelJs), 'the Planner does not pick a Place with host.objects.pick');
 const pick = await import(`data:text/javascript;base64,${Buffer.from(read('public/object-pick.js')).toString('base64')}`);
-const clean = pick.cleanPick({ title: '  Pick one ', multiple: 1, modules: ['places', 3, ''], kinds: 'x' });
+const clean = pick.cleanPick({ title: '  Pick one ', multiple: 1, modules: ['maps', 3, ''], kinds: 'x' });
 ok(clean.title === 'Pick one' && clean.multiple === false && clean.modules.length === 1 && clean.kinds.length === 0, 'cleanPick keeps a clean title, only a true `multiple`, and only names');
 const fits = (s, o) => pick.pickFits(s, pick.cleanPick(o));
-const place = { ref: { module: 'places', kind: 'place', id: 'p1', scope: 'space' }, module: { id: 'places' }, title: 'A' };
-ok(fits(place, { modules: ['places'] }) && fits(place, { kinds: ['place'] }) && fits(place, { kinds: ['places:place'] }) && !fits(place, { modules: ['todo'] }) && !fits(place, { kinds: ['task'] }) && fits(place, {}), 'pickFits keeps the modules and kinds asked for');
+const place = { ref: { module: 'maps', kind: 'place', id: 'p1', scope: 'space' }, module: { id: 'maps' }, title: 'A' };
+ok(fits(place, { modules: ['maps'] }) && fits(place, { kinds: ['place'] }) && fits(place, { kinds: ['maps:place'] }) && !fits(place, { modules: ['todo'] }) && !fits(place, { kinds: ['task'] }) && fits(place, {}), 'pickFits keeps the modules and kinds asked for');
 ok(!fits({ error: 'gone' }, {}) && !fits({ title: 'no ref' }, {}), 'pickFits drops an answer with no pointer or an error');
 
 // ---- 2. Chromium ----
@@ -132,7 +132,7 @@ else {
       const shown = (id) => tab.eval(`(() => Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').get.call(${planner(id)}))()`);
       const valueOf = (id) => tab.eval(`${planner(id)}.value`);
       const dialogOpen = () => tab.eval(`(() => { let n = 0; const walk = (r) => { for (const d of r.querySelectorAll('dialog')) if (d.open) n += 1; for (const e of r.querySelectorAll('*')) if (e.shadowRoot) walk(e.shadowRoot); }; walk(document); return n; })()`);
-      const links = async () => (await api('GET', `/api/objects/links?from=places&dir=to&ref=${encodeURIComponent(JSON.stringify({ module: 'places', kind: 'place', id: 'p1', scope: 'space', space: S.ctx.trip }))}`, undefined, 'mia')).json;
+      const links = async () => (await api('GET', `/api/objects/links?from=maps&dir=to&ref=${encodeURIComponent(JSON.stringify({ module: 'maps', kind: 'place', id: 'p1', scope: 'space', space: S.ctx.trip }))}`, undefined, 'mia')).json;
       const waitFor = async (fn, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { const v = await fn(); if (v) return v; await sleep(150); } return null; };
 
       // Open the seeded dinner stop's editor.
@@ -175,9 +175,9 @@ else {
       const box = await tab.eval(`(() => { const i = ${planner('f-time')}; const r = i.getBoundingClientRect(); return { h: Math.round(r.height), font: parseFloat(getComputedStyle(i).fontSize) }; })()`);
       if (coarse) ok(box.h >= 44 && box.font >= 16, `${label}: the time field is ${box.h}px tall with ${box.font}px text; a touch screen needs 44px and 16px`);
 
-      // Pick from Places.
+      // Pick from Maps.
       await clickDeep('#f-place-pick');
-      ok(await waitFor(() => tab.eval(`!!document.querySelector('dialog.sdk-dialog-pick[open]')`)), `${label}: Pick from Places opened no picker`);
+      ok(await waitFor(() => tab.eval(`!!document.querySelector('dialog.sdk-dialog-pick[open]')`)), `${label}: Pick from Maps opened no picker`);
       await waitFor(() => tab.eval(`document.querySelectorAll('.sdk-pick-row').length > 0`));
       const rows = await tab.eval(`[...document.querySelectorAll('.sdk-pick-row')].map((r) => ({ t: r.querySelector('.sdk-row-title').textContent, icon: Boolean(r.querySelector('.sdk-card-icon i')), h: Math.round(r.getBoundingClientRect().height), m: r.querySelector('.sdk-row-meta') ? r.querySelector('.sdk-row-meta').textContent : '' }))`);
       ok(rows.length >= 5 && rows.every((r) => r.icon && r.m === 'Place'), `${label}: the picker shows ${rows.length} rows (${rows.map((r) => r.m).join(',')}); wanted the seed's Places, each with an icon`);

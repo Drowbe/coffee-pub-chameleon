@@ -27,7 +27,7 @@ test('an AI reply: summaries drawn in place, a stray marker never trusted', () =
 });
 
 test('keeping a card: a title, a body that reads the provenance, tags as one string, at most one ref', () => {
-  const ref1 = { module: 'places', kind: 'place', id: 'p1' };
+  const ref1 = { module: 'maps', kind: 'place', id: 'p1' };
   const ref2 = { module: 'research', kind: 'note', id: 'n1' };
   const names_ = new Map([[ref1, 'The Pier'], [ref2, 'Hotel ideas']]);
   const label = (r) => names_.get(r) || '';
@@ -52,7 +52,7 @@ test('keeping a card: a title, a body that reads the provenance, tags as one str
   assert.match(kept2.body, /From: The Pier, Hotel ideas/);
 
   // A gone source names as nothing, so it is simply left out of "From:".
-  const goneCard = { title: 'X', content: 'y', sources: [ref1, { module: 'places', kind: 'place', id: 'gone' }] };
+  const goneCard = { title: 'X', content: 'y', sources: [ref1, { module: 'maps', kind: 'place', id: 'gone' }] };
   const keptGone = lib.keepInput(goneCard, '', () => '');
   assert.ok(!keptGone.body.includes('From:'));
 
@@ -62,7 +62,7 @@ test('keeping a card: a title, a body that reads the provenance, tags as one str
 });
 
 test('kept text: an answer with no links keeps Asked and From, and never External source', () => {
-  const ref1 = { module: 'places', kind: 'place', id: 'p1' };
+  const ref1 = { module: 'maps', kind: 'place', id: 'p1' };
   const summary = { title: 'Hotel', content: 'Near the station.', sources: [ref1] };
   const text = lib.keptText(summary, { question: 'Where is the hotel?', sourceNames: ['The Pier'] });
   assert.match(text, /Near the station\./);
@@ -97,7 +97,7 @@ test('kept text: an imported object ends with External source and never Asked or
     content: 'Open late.',
     basis: 'imported',
     links: [{ title: 'Menu', url: 'https://example.com/menu' }],
-    sources: [{ module: 'places', kind: 'place', id: 'p1' }],
+    sources: [{ module: 'maps', kind: 'place', id: 'p1' }],
   };
   const text = lib.keptText(summary, { question: 'Where to eat?', sourceNames: ['The Pier'] });
   assert.match(text, /Open late\./);

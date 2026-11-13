@@ -1,6 +1,6 @@
-// The Places module's page: the space's saved places, listed by category, each with an address, an optional position, notes and
-// owners. The places live in the module's store (see places-lib.js) and, with a position, give their summary a `place` that a map
-// module draws. This page draws into the markup in places.html by cloning its templates and filling their [data-slot] and
+// Maps' list part (the Places module's page before it folded into Maps): the space's saved places, listed by category, each with an address, an optional position, notes and
+// owners. The places live in the module's store (see maps-list-lib.js) and, with a position, give their summary a `place` that a map
+// module draws. This page draws into the markup in maps-list.html by cloning its templates and filling their [data-slot] and
 // [data-icon] hooks, and toggles the state classes and data attributes CONTRACT.md lists. It builds no markup from strings
 // and sets no style (the item menu is placed under the button that opened it). Nothing here names another module.
 // As the Map destination's list (plan-map-destination) it lists Mine, the environment's own and each chosen space's places
@@ -54,7 +54,7 @@
   try {
     info = await host.ready();
   } catch (err) {
-    showMsg('Places could not start', err.message, () => location.reload());
+    showMsg('The list could not start', err.message, () => location.reload());
     return;
   }
   // On a space's canvas or on the module's own page: a space has its own list; the page has only mine and everyone's.
@@ -80,7 +80,7 @@
   // On a phone the link opens the person's own maps app; on a desktop it is OpenStreetMap's website, and says so.
   const MAPS_APP = apple || /Android/i.test(navigator.userAgent) ? 'Open in my maps app' : 'Open in OpenStreetMap';
   // The categories are the environment's list (the module's `categories` setting, an owner's to change in Manage), in order:
-  // [{ id, label, icon, color }]. This is what it starts as (places-lib.js). A place keeps the id it was saved with; one whose id is
+  // [{ id, label, icon, color }]. This is what it starts as (maps-list-lib.js). A place keeps the id it was saved with; one whose id is
   // not on the list is shown under Other (catRow) and is not rewritten. The five ids from before the library (eat, do, travel) are
   // read as the new ones, and the other way round for a list stored before it. `other` is always on the list.
   const DEFAULT_CATS = DEFAULT_CATEGORIES;
@@ -89,7 +89,7 @@
   const catsRead = new Promise((r) => { catsReadDone = r; }); // the owner's list has been read (or could not be)
   const catRow = (id) => findCategory(cats, id) || findCategory(cats, 'other') || cats[cats.length - 1];
   const catOf = (p) => catRow(p.category);
-  // What a place is drawn with (icon, colour): its own, else its type's, else its category's (lookOf in places-lib.js).
+  // What a place is drawn with (icon, colour): its own, else its type's, else its category's (lookOf in maps-list-lib.js).
   const lookFor = (p) => lookOf(p, cats);
   // Colour: a theme tint (the owner's list takes the eight in turn for the grey that means "automatic", a place may choose one) or a
   // colour chosen in the list, used as it is. Set as the element's --tone, with the text colour that reads on it.
@@ -124,7 +124,7 @@
   let showAction = null;
   async function findShowAction() {
     try {
-      const list = await host.actions.list({ accepts: 'places:place' });
+      const list = await host.actions.list({ accepts: 'maps:place', self: true });
       showAction = list.find((a) => a.name === 'showOnMap') || null;
     } catch (err) {
       showAction = null;
@@ -136,7 +136,7 @@
   let pickAction = null;
   async function findPickAction() {
     try {
-      const list = await host.actions.list();
+      const list = await host.actions.list({ self: true });
       pickAction = list.find((a) => a.name === 'pickPoint' && a.open === true) || null;
     } catch (err) {
       pickAction = null;

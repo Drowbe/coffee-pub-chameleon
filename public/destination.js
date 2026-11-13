@@ -617,7 +617,7 @@ function layout() {
 // flyout). One leaf in all: the "+" runs it at once. The icons likewise, "<part's place>.<id>". The status: the main part's
 // items, then the panel's shown (the status bar keeps the first six here: the calendar's two and the To-do's four). On the page they are drawn in its frame's title bar
 // and status bar; in a composite's frame they are handed up to the composite's window on the Workspace.
-// The same add offered by two parts (the Map's "Add a place" and its Places panel's) is one entry, the first part's.
+// The same add offered by two parts (the Map's "Add a place" and its list part's) is one entry, the first part's.
 function chromeAdds() {
   const lists = dropRepeatedAdds(parts.map((p) => p.adds));
   const shown = new Map(parts.map((p, i) => [p, lists[i]]));

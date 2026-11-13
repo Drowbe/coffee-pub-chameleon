@@ -63,7 +63,7 @@ await test('every bundled action that is not local and not asker-only says what 
 });
 
 await test('the bundled catalog is the four actions on objects that already exist, as the plan names them', () => {
-  assert.deepEqual(catalog.tools.map((t) => t.name), ['places__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);
+  assert.deepEqual(catalog.tools.map((t) => t.name), ['maps__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);
   for (const t of catalog.tools) {
     assert.equal(t.effect, 'write', `${t.name} is not destructive`);
     assert.ok(TOOL_NAME_RE.test(t.name), t.name);
@@ -71,9 +71,9 @@ await test('the bundled catalog is the four actions on objects that already exis
   }
   // Every other action is left out, each for its reason.
   const why = Object.fromEntries(catalog.leftOut.map((x) => [`${x.module}:${x.action}`, x.why]));
-  for (const id of ['todo:createTask', 'travel:addStop', 'travel:acceptSuggestion', 'places:addPlace', 'calendar:createEvent', 'research:saveNote', 'research:saveLink', 'budget:addCost']) assert.equal(why[id], 'new-object', id);
+  for (const id of ['todo:createTask', 'travel:addStop', 'travel:acceptSuggestion', 'maps:addPlace', 'calendar:createEvent', 'research:saveNote', 'research:saveLink', 'budget:addCost']) assert.equal(why[id], 'new-object', id);
   assert.equal(why['research:savePhoto'], 'asker-only');
-  for (const id of ['maps:showOnMap', 'places:sharePlace', 'todo:addTask', 'assistant:askAssistant']) assert.equal(why[id], 'local', id);
+  for (const id of ['maps:showOnMap', 'maps:sharePlace', 'todo:addTask', 'assistant:askAssistant']) assert.equal(why[id], 'local', id);
 });
 
 await test('the catalog has not drifted from the bundled manifests (tools/golden/catalog.json)', () => {
@@ -239,7 +239,7 @@ try {
   const C = `/api/ai/catalog?space=${space.id}`;
   // Nothing is installed in a fresh environment: no tools until a module with some is on.
   assert.deepEqual((await call('GET', C, { cookie: tok.pat })).json, { tools: [] });
-  for (const id of ['todo', 'places', 'travel', 'research']) {
+  for (const id of ['todo', 'maps', 'travel', 'research']) {
     assert.equal((await call('POST', `/api/modules/bundled/${id}/install`, { cookie: owner, body: {} })).status, 201, id);
     assert.equal((await call('PATCH', `/api/modules/${id}`, { cookie: owner, body: { enabled: true } })).status, 200, id);
   }
@@ -266,7 +266,7 @@ try {
   await test('GET /api/ai/catalog: the person\'s write tools here, narrowed by write access and What AI may see', async () => {
     let r = await call('GET', C, { cookie: tok.pat });
     assert.equal(r.status, 200, r.text);
-    assert.deepEqual(names(r), ['places__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);
+    assert.deepEqual(names(r), ['maps__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);
     const due = r.json.tools.find((t) => t.name === 'todo__setTaskDue');
     assert.deepEqual(Object.keys(due).sort(), ['action', 'description', 'effect', 'label', 'module', 'moduleName', 'name', 'schema']);
     assert.deepEqual([due.module, due.action, due.effect, typeof due.moduleName], ['todo', 'setTaskDue', 'write', 'string']);
@@ -275,13 +275,13 @@ try {
     // A member whose role may not change the To-do list loses its tools, not the others.
     assert.equal((await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.todo.edit': false } })).status, 200);
     r = await call('GET', C, { cookie: tok.pat });
-    assert.deepEqual(names(r), ['places__setPlacePoint', 'travel__addToDay']);
+    assert.deepEqual(names(r), ['maps__setPlacePoint', 'travel__addToDay']);
     await call('PATCH', '/api/roles/member', { cookie: owner, body: { 'module.todo.edit': true } });
     // The key `lookup` (the read tools) is the same one on a space: setting it is allowed beside `modules`, and the write tools follow
     // `modules` only.
     let patch = await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: { lookup: false } } });
     assert.deepEqual([patch.status, patch.json.space.aiSees], [200, { lookup: false }]);
-    assert.deepEqual(names(await call('GET', C, { cookie: tok.pat })), ['places__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay'], 'lookup off leaves the write tools');
+    assert.deepEqual(names(await call('GET', C, { cookie: tok.pat })), ['maps__setPlacePoint', 'todo__linkTask', 'todo__setTaskDue', 'travel__addToDay'], 'lookup off leaves the write tools');
     patch = await call('PATCH', `/api/spaces/${space.id}`, { cookie: owner, body: { aiSees: { lookup: false, modules: ['todo', 'travel'] } } });
     assert.deepEqual([patch.status, patch.json.space.aiSees], [200, { lookup: false, modules: ['todo', 'travel'] }]);
     assert.deepEqual(names(await call('GET', C, { cookie: tok.pat })), ['todo__linkTask', 'todo__setTaskDue', 'travel__addToDay']);

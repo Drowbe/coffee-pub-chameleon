@@ -163,7 +163,7 @@ function world({ sees = {}, spaceSees = null } = {}) {
     { ref: ref('research', 'note', 'n2'), title: 'Ferry back to Athens', when: '2026-11-16', text: 'Evening boat.' },
     { ref: ref('research', 'note', 'h1'), title: 'Read me first', text: HOSTILE },
     { ref: ref('calendar', 'event', 'e1'), title: 'Museum visit', when: '2026-11-14', place: { name: 'Acropolis' }, text: 'Tickets at the gate.' },
-    { ref: ref('places', 'place', 'p1'), title: 'Secret ferry bar', place: { name: 'Psirri' }, text: 'Only for readers of Places.' },
+    { ref: ref('maps', 'place', 'p1'), title: 'Secret ferry bar', place: { name: 'Psirri' }, text: 'Only for readers of Maps.' },
     { ref: ref('research', 'note', 'k1'), title: `Wifi router ${GUEST_TOKEN}`, text: 'Router notes.' },
     { ref: ref('research', 'note', 'o1', 'space', 's2'), title: 'Porto ferry dinner', text: 'OTHERSPACE text.' },
     { ref: ref('todo', 'task', 't1', 'environment'), title: 'Renew passports before the ferry', text: 'ENVTASK text.' },
@@ -173,7 +173,7 @@ function world({ sees = {}, spaceSees = null } = {}) {
   const key = (r) => `${r.module}|${r.kind}|${r.scope}|${r.space || ''}|${r.id}`;
   const gone = new Set();
   const lost = new Set(); // people who lost every read right, mid-question
-  const canRead = (who, o) => !gone.has(o.ref.id) && !lost.has(who.user.key) && !(o.ref.module === 'places' && who.user.key === 'noread');
+  const canRead = (who, o) => !gone.has(o.ref.id) && !lost.has(who.user.key) && !(o.ref.module === 'maps' && who.user.key === 'noread');
   const summaryOf = (o, withText) => ({ ref: o.ref, kind: o.ref.kind, kindName: o.ref.kind[0].toUpperCase() + o.ref.kind.slice(1), module: { id: o.ref.module, name: o.ref.module[0].toUpperCase() + o.ref.module.slice(1) }, open: true, title: o.title, ...(o.when ? { when: o.when } : {}), ...(o.place ? { place: o.place } : {}), ...(o.paidBy ? { paidBy: o.paidBy } : {}), ...(o.spaces ? { spaces: o.spaces } : {}), ...(withText && o.text ? { text: o.text } : {}) });
   const resolveRef = (who, r, _from, { withText } = {}) => {
     const o = objects.find((x) => key(x.ref) === key(r));
@@ -182,7 +182,7 @@ function world({ sees = {}, spaceSees = null } = {}) {
   };
   const links = [
     { from: ref('research', 'note', 'n1'), to: ref('calendar', 'event', 'e1') },
-    { from: ref('research', 'note', 'n1'), to: ref('places', 'place', 'p1') },
+    { from: ref('research', 'note', 'n1'), to: ref('maps', 'place', 'p1') },
     { from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'o1', 'space', 's2') },
     { from: ref('research', 'note', 'm1', 'person'), to: ref('research', 'note', 'n1') },
   ];
@@ -196,7 +196,7 @@ function world({ sees = {}, spaceSees = null } = {}) {
   const word = (w, o = {}) => { const map = { space: ['space', 'spaces'], object: ['object', 'objects'], guest: ['guest', 'guests'], owner: ['owner', 'owners'], member: ['member', 'members'], moderator: ['moderator', 'moderators'], module: ['module', 'modules'], environment: ['environment', 'environments'] }; const s = map[w][o.many ? 1 : 0]; return o.cap ? s[0].toUpperCase() + s.slice(1) : o.a ? `a ${s}` : s; };
   const policy = policyLib.createAiPolicy({
     store, ai: aiStub, word, resolveRef, hasOwnerRights: (u) => u.role === 'owner', aiCallsRefusal: () => '',
-    modules: { enabledAll: () => ['research', 'calendar', 'places', 'todo'].map((id) => ({ manifest: { id } })) },
+    modules: { enabledAll: () => ['research', 'calendar', 'maps', 'todo'].map((id) => ({ manifest: { id } })) },
     limits: { take: () => ({ ok: true }), refund: () => {} },
   });
   const moduleLinks = { from: (r) => links.filter((l) => key(l.from) === key(r)).map((l) => l.to), to: (r) => links.filter((l) => key(l.to) === key(r)).map((l) => l.from) };

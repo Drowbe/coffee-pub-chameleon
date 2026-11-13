@@ -354,10 +354,9 @@ const SCREENS = [
   ['space-setup-space', [1280]], ['space-setup-members', [1280]], ['space-setup-phases', [1280]], ['space-setup-settings', [1280]],
   ['space-setup-space-phone', [390]], ['space-setup-members-phone', [390]], ['space-setup-phases-phone', [390]], ['space-setup-settings-phone', [390]],
   ['space-phase-sheet', BOTH], ['space-layout-save-sheet', [1280]],
-  ['planner-form-note', BOTH], ['places-form-add', [1280]], ['budget-form-target', [390]], ['polls-form-new', [1280]],
-  ['space-menu-layout', [1280]], ['space-menu-user', [390]], ['space-menu-who-here', [1280]], ['planner-day-menu', [1280]], ['places-item-menu', [1280]],
-  ['places-toast', [1280]],
-  ['planner-empty', [1280]], ['places-empty', [390]], ['budget-empty', [1280]], ['polls-empty', [1280]], ['research-empty', [390]], ['space-empty', [1280]],
+  ['planner-form-note', BOTH], ['budget-form-target', [390]], ['polls-form-new', [1280]],
+  ['space-menu-layout', [1280]], ['space-menu-user', [390]], ['space-menu-who-here', [1280]], ['planner-day-menu', [1280]],
+  ['planner-empty', [1280]], ['budget-empty', [1280]], ['polls-empty', [1280]], ['research-empty', [390]], ['space-empty', [1280]],
   ['login', BOTH],
 ];
 
@@ -733,7 +732,7 @@ async function main() {
     // 4. The app's own pages and states, from the screenshot table (tools/shots-screens.json): Home, Manage, Profile, Set up,
     // the phase sheet, dialogs, menus, a toast, empty states. Padding symmetry only (the bands above are the modules' windows).
     // They run after the windows above (a space page's strip shows the Budget's fact once the Workspace has opened it), with the
-    // Map off and its picture map removed (with a map file, Places is part of the Map and /modules/places goes to /map).
+    // Map off and its picture map removed (the Map's list is a part of the Map; it has no screen of its own until Maps' List view).
     const screenJobs = [];
     const screenList = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'shots-screens.json'), 'utf8')).screens;
     for (const [id, sizes] of SCREENS) {
