@@ -198,6 +198,33 @@ await test('a message from another lineage that the marker does not back (a made
   assert.equal(W.textOf(a.doc(), a.table), W.textOf(b.doc(), b.table));
 });
 
+// 0.11.27 (F6): a forged seed marker and ONE live message carrying its epoch made every page stop, save and reopen.
+const forgeLineage = async (by, o = {}) => {
+  const W = world(src); W.make();
+  const a = await W.page('aaaa1111', { meta: true, lineageOk: o.lineageOk }); await W.run(300); const b = await W.page('bbbb2222', { meta: true, lineageOk: o.lineageOk }); await W.run(2000);
+  const c = await W.page('mallory9', { meta: true }); await W.run(3000); const mal = c.m; // an editor in the room
+  put(W, `ydoc:${ID}:seed`, { id: 99999, by, at: iso(W), epoch: 7 });
+  mal.live.publish(L.dlSyncTopic(ID), { u: 'AAAA', l: 7 });
+  await W.run(6000);
+  return { W, a, b, mal };
+};
+await test('a forged marker whose author is nobody in the room, and one message with its epoch: no page stops or reopens', async () => {
+  const { a, b } = await forgeLineage('ghost0000');
+  assert.equal(a.lineage.length + b.lineage.length, 0, 'no page left its lineage');
+  assert.equal(a.session.frozen() || b.session.frozen(), false);
+});
+await test('a marker written by a person who is in the room still moves the pages (a real re-seed), once; the page can refuse it (one reopen a minute)', async () => {
+  const real = await forgeLineage('mallory9');
+  assert.equal(real.a.lineage.length, 1); assert.equal(real.b.lineage.length, 1);
+  let asked = 0;
+  const limited = await forgeLineage('mallory9', { lineageOk: () => { asked += 1; return false; } });
+  assert.ok(asked >= 1, 'the page was asked'); assert.equal(limited.a.lineage.length + limited.b.lineage.length, 0, 'refused: nobody stopped');
+  assert.equal(limited.a.session.frozen(), false);
+  // and it keeps editing: a change reaches the other page
+  typeAt(limited.W, limited.a, 0, ' still here'); await limited.W.run(1500);
+  assert.equal(limited.W.textOf(limited.b.doc(), limited.b.table).includes('still here'), true);
+});
+
 // ---- 5. a hostile marker ---------------------------------------------------------------------------------------------------------------
 const settled = async (o = {}) => {
   const W = world(src); W.make();
@@ -428,8 +455,8 @@ await test('garbage in the key is no holder; a holder whose key another window t
   let lost = 0;
   L.dlLeaseHold(w1.handle, { doc: ID, me: 'aaaa1111', tab: w1.tab, version: w1.res.version, now: w1.o.now, set: (f, ms) => W.clock.set(f, ms), clear: (i) => W.clock.clear(i), onLost: () => { lost += 1; } });
   await W.run(3000);
-  put(W, L.dlLeaseKey(ID, 'aaaa1111'), { t: 'othertabother', at: iso(W) }); // another window took it (this one was starved)
-  await W.run(L.DL_LEASE.renewMs + 500);
+  put(W, L.dlLeaseKey(ID, 'aaaa1111'), { t: 'othertabother', at: iso(W) }); // another window took it (this one was starved) and renews it
+  for (let i = 0; i < 6; i += 1) { await W.run(L.DL_LEASE.renewMs - 200); put(W, L.dlLeaseKey(ID, 'aaaa1111'), { t: 'othertabother', at: iso(W) }); }
   assert.equal(lost, 1, 'told once');
   await W.run(30000);
   assert.equal(lost, 1);

@@ -45,6 +45,12 @@ function dlCoLockRules({ me, role, canType, lock, ownerWord }) {
   const may = role === 'owner' || role === 'admin' || lock.by === me;
   return { lock: false, unlock: may, reason: may ? '' : `Only ${lock.name} or ${ownerWord || 'someone in charge'} can unlock.` };
 }
+// May this person rename or delete a document (the same rules as the read view: whoever may edit; a locked one only by a person who may unlock it)?
+// -> { off, reason } (off: the entries are shown off, with the reason in plain words).
+function dlCoRemoveRules({ me, role, lock, ownerWord }) {
+  const r = dlCoLockRules({ me, role, canType: true, lock, ownerWord });
+  return lock && !r.unlock ? { off: true, reason: r.reason } : { off: false, reason: '' };
+}
 
 // The meta of a record: -> { title, paper, layout, pageSize, pageNumbers }, cleaned.
 function dlMetaOf(rec) {
@@ -171,7 +177,8 @@ const DL_LEASE = Object.freeze({
   renewMs: 5000, // the holder renews this often
   watchMs: 7500, // a window that finds a key it does not own looks again after this long
   staleMs: 60000, // a key whose time is older than this (by this window's clock) is dead at once, with no wait
-  failMs: 20000, // a holder whose renewals have failed this long stops editing (another window may have taken the key)
+  failMs: 20000, // a holder whose renewals have failed this long says it is offline (it keeps editing and keeps asking)
+  forgeMs: 8000, // another token that has not changed for this long (a renewing window changes it every renewMs) is forged or dead: it is taken back
 });
 const dlLeaseKey = (doc, me) => `ydoc:${doc}:w:${me}`;
 // The key's value, or null. Anything else is no lease.
@@ -199,6 +206,7 @@ async function dlLeaseAcquire(store, o) {
       if (v && v.t === o.tab) dead = true; // this window's own key (a renewal that was lost on its way back)
       else if (v && o.now() - Date.parse(v.at) >= DL_LEASE.staleMs) dead = true;
       if (!dead) {
+        if (o.checking) o.checking(); // the page says so while it waits
         await o.sleep(DL_LEASE.watchMs);
         const again = await store.get(key);
         if (again && again.version !== cur.version) return { won: false }; // renewed (or changed): its holder is there
@@ -210,28 +218,48 @@ async function dlLeaseAcquire(store, o) {
     return { won: false };
   } catch (err) { return { error: err }; }
 }
-// The holder's side: renews every renewMs, deletes the key on release. o: { doc, me, tab, version, now(), set(fn, ms) -> id, clear(id), onLost() }.
-// onLost fires once: another window took the key (a renewal found someone else's token), or the renewals failed for failMs.
+// The holder's side: renews every renewMs, deletes the key on release. o: { doc, me, tab, version, now(), set(fn, ms) -> id, clear(id), onLost(), onOffline?(bool), onNote?() }.
+// A failing write is never "another window": the holder stays, keeps asking every renewMs, and says onOffline(true) once the writes have failed for failMs (onOffline(false) when they work again).
+// onLost fires once, and only when the key shows ANOTHER window: a different token, fresh, whose key keeps changing (it renews). A different token that never changes is a forged or dead
+// one (any editor can write any key): after forgeMs it is taken back by compare-and-set, at most 3 times in 60 s (then onNote() is called once, for the page to say so, and the holder stays as it is).
 function dlLeaseHold(store, o) {
   const key = dlLeaseKey(o.doc, o.me);
-  let version = o.version; let timer = null; let done = false; let lost = false; let failedSince = 0; let busy = false;
+  let version = o.version; let timer = null; let done = false; let lost = false; let failedSince = 0; let busy = false; let offline = false; let other = null; let said = false;
+  const takeovers = [];
   const mine = () => ({ t: o.tab, at: new Date(o.now()).toISOString() });
   const lose = () => { if (lost || done) return; lost = true; if (timer !== null) { o.clear(timer); timer = null; } if (o.onLost) o.onLost(); };
+  const setOffline = (v) => { if (offline === v) return; offline = v; if (o.onOffline) o.onOffline(v); };
+  const worked = () => { failedSince = 0; setOffline(false); };
+  const failed = () => { if (!failedSince) failedSince = o.now(); if (o.now() - failedSince >= DL_LEASE.failMs) setOffline(true); };
+  // Another token is on the key: keep the key (forged or dead), or lose it (a window that renews).
+  async function contested(cur, v) {
+    const n = o.now();
+    const dead = !v || n - Date.parse(v.at) >= DL_LEASE.staleMs;
+    if (!dead) {
+      if (!other || other.t !== v.t) { other = { t: v.t, version: cur.version, since: n }; return; }
+      if (other.version !== cur.version) { lose(); return; } // it renews: a real window
+      if (n - other.since < DL_LEASE.forgeMs) return; // not yet sure it is dead
+    }
+    while (takeovers.length && n - takeovers[0] >= 60000) takeovers.shift();
+    if (takeovers.length >= 3) { if (!said) { said = true; if (o.onNote) o.onNote(); } return; }
+    takeovers.push(n);
+    try { const r = await store.set(key, mine(), { version: cur.version }); version = r && r.version; other = null; } catch (err) { if (!err || err.status !== 409) throw err; other = null; }
+  }
   async function renew() {
     timer = null;
     if (done || lost || busy) return;
     busy = true;
     try {
-      try { const r = await store.set(key, mine(), { version }); version = r && r.version; failedSince = 0; } catch (err) {
-        if (err && err.status === 409) {
-          const cur = await store.get(key);
-          const v = cur && dlCleanLease(cur.value);
-          if (cur && v && v.t === o.tab) { version = cur.version; failedSince = 0; } else if (!cur) {
-            try { const r = await store.set(key, mine(), { version: 0 }); version = r && r.version; failedSince = 0; } catch (e2) { lose(); return; } // the key was deleted: take it again, or lose it
-          } else { lose(); return; }
-        } else { if (!failedSince) failedSince = o.now(); if (o.now() - failedSince >= DL_LEASE.failMs) { lose(); return; } }
+      try { const r = await store.set(key, mine(), { version }); version = r && r.version; other = null; } catch (err) {
+        if (!err || err.status !== 409) throw err;
+        const cur = await store.get(key);
+        const v = cur && dlCleanLease(cur.value);
+        if (cur && v && v.t === o.tab) { version = cur.version; other = null; } else if (!cur) {
+          try { const r = await store.set(key, mine(), { version: 0 }); version = r && r.version; } catch (e2) { if (!e2 || e2.status !== 409) throw e2; } // the key was deleted: take it again (someone else did first: the next round sees whose it is)
+        } else await contested(cur, v);
       }
-    } catch (err) { if (!failedSince) failedSince = o.now(); if (o.now() - failedSince >= DL_LEASE.failMs) { lose(); return; } } finally { busy = false; }
+      worked();
+    } catch (err) { failed(); } finally { busy = false; }
     if (!done && !lost) timer = o.set(renew, DL_LEASE.renewMs);
   }
   timer = o.set(renew, DL_LEASE.renewMs);
