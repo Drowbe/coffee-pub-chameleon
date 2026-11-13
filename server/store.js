@@ -632,6 +632,11 @@ function cleanText(value, max = 60) {
     .slice(0, max);
 }
 
+// A person's display name as kept: hidden zero-width and text-direction characters removed, then cleaned and cut to 40.
+function cleanDisplayName(value) {
+  return cleanText(String(value ?? '').replace(/[\u200B-\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u061C]/g, ''), 40);
+}
+
 function cleanLogin(value) {
   return cleanText(value, 40).toLowerCase().replace(/\s+/g, '');
 }
@@ -936,7 +941,8 @@ class Store {
     return {
       key,
       login: cleanLogin(u.login) || key,
-      displayName: cleanText(u.displayName, 40) || cleanLogin(u.login) || key,
+      // A name ending in the guest mark (a restored zip, hand-made data) is not kept: the person is called by their login.
+      displayName: ((n) => (n && !endsWithGuestMark(n, this.word('guest')) ? n : null))(cleanDisplayName(u.displayName)) || cleanLogin(u.login) || key,
       // The stand-in is always `admin`; anything else reads as it is stored, or as a member when it is no role at all
       // (the names-roles migration has already renamed the old values, so this only ever meets them in hand-made data).
       role: u.hostAdmin ? 'admin' : ROLES.includes(u.role) ? u.role : 'member',
@@ -1618,8 +1624,9 @@ class Store {
   }
 
   // A member is never called by the guest mark ("Anna (Guest)"), so no one can pass as a guest, or a guest as them.
+  // Checked on the name as it will be kept (cleaned and cut to 40 first), so a long name or a hidden character can't hide the mark.
   checkDisplayName(displayName) {
-    if (typeof displayName === 'string' && endsWithGuestMark(displayName.trim(), this.word('guest'))) throw new StoreError(`A name can't end in (${this.word('guest')}).`);
+    if (typeof displayName === 'string' && endsWithGuestMark(cleanDisplayName(displayName), this.word('guest'))) throw new StoreError(`A name can't end in (${this.word('guest')}).`);
   }
 
   addUser({ login, displayName, role, passwordHash, hostAdmin, firstPassword }) {
@@ -1666,7 +1673,7 @@ class Store {
       draft.login = cleaned;
     }
     if (patch.displayName !== undefined) this.checkDisplayName(patch.displayName);
-    if (patch.displayName !== undefined) draft.displayName = cleanText(patch.displayName, 40) || draft.login;
+    if (patch.displayName !== undefined) draft.displayName = cleanDisplayName(patch.displayName) || draft.login;
     if (patch.role !== undefined && patch.role !== user.role) {
       if (!ASSIGNABLE_ROLES.includes(patch.role)) throw new StoreError('role must be owner or member');
       draft.role = patch.role;

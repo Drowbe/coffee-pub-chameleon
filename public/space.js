@@ -802,6 +802,13 @@ async function showGuestDocs() {
   }
   box.hidden = $('guest-docs-note').hidden = !guestDocs.length;
 }
+// The note over a guest's page: who they are in as, and Leave. A door guest leaves to the sign-in page; a guest by a link has
+// no session to end, so Leave shows the link's name form again.
+function showGuestBanner(leave) {
+  $('guest-banner-text').textContent = `You are in as ${me.displayName}.`;
+  $('guest-banner').hidden = false;
+  $('guest-banner-leave').addEventListener('click', leave);
+}
 $('guest-join').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('guest-join-error').hidden = true;
@@ -815,6 +822,7 @@ $('guest-join').addEventListener('submit', async (event) => {
     guestPass = guest.pass;
     setGuestPass(guestToken, guestPass); // the module host's stream and live messages know this guest by it
     await joinAsGuest(joinedId, joinedName);
+    if (entered) showGuestBanner(() => location.reload()); // not after a failed entry: the form is still there
   } catch (err) {
     if (err.status === 409) await showGuestDocs(); // the text changed: shown again, to read
     $('guest-join-error').textContent = err.message;
@@ -7995,10 +8003,7 @@ async function init() {
     $('guest-section').hidden = true;
     guestSpaceName = doorGuest.space.name;
     me = { key: doorGuest.guest.id, displayName: doorGuest.guest.name, role: 'guest', permissions: doorGuest.permissions };
-    const banner = $('guest-banner');
-    $('guest-banner-text').textContent = `You are in as ${me.displayName}.`;
-    banner.hidden = false;
-    $('guest-banner-leave').addEventListener('click', async () => {
+    showGuestBanner(async () => {
       try { await api('DELETE', '/api/guest-door'); } catch { /* the cookie is cleared by the answer, or already gone */ }
       location.href = '/login';
     });

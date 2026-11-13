@@ -4210,7 +4210,7 @@ function doorSpacesFor(guest) {
   return out;
 }
 // What a guest can't do, as the landing says it (the guest role, read now; the list is the plan's, "What a guest can do").
-const guestRefusals = () => [`start ${word('aside', { many: true })} or private conversations`, 'mute or remove anyone', 'use AI', 'open library files', 'save or change layouts', 'see the bell, the status line, the calendar or the map', 'have a profile'];
+const guestRefusals = () => [`start ${word('aside', { many: true })} or private conversations`, 'mute or remove anyone', 'use AI', 'open library files', 'save or change layouts', `see the bell or the status line, or the Calendar and Map pages that gather every ${word('space')}`, 'have a profile'];
 
 // POST /api/guest-door { name, versions }: the door. 403 with it closed (either switch), 429 past the address's limit,
 // 403 when full, 400 for a missing name or a member's, 409 when the texts changed; else the agreement is recorded and the
