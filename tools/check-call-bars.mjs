@@ -6,7 +6,7 @@
 // flow (position absolute or fixed), they must really be shown and hidden, and a mousemove that does not move the pointer
 // (what Chromium sends after a layout change under a resting pointer) must not bring them back.
 // It also looks at the call's own title bar in the column (plan-workspaces.md, decisions 15, 16, 18, 28): drawn with no call,
-// Start call on it and a large one in the call's area, Chat's menu with nothing of the call, and on the call the collapsed
+// Start call on it and no large one in the column (it belongs to a call that fills an area of its own), Chat's menu with nothing of the call, and on the call the collapsed
 // rail's icon with its dot and its name.
 // Usage: node tools/check-call-bars.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
@@ -104,7 +104,9 @@ async function runArea(browser, S) {
     const head = await tab.eval(box('call-head')); const join = await tab.eval(box('join-call')); const big = await tab.eval(box('call-start')); const empty = await tab.eval(box('call-empty'));
     if (!head?.shown) failures.push('no call: the call\'s title bar is not drawn (decision 15)');
     if (!join?.shown || join.parent !== 'call-head-tools' || join.label !== 'Start call') failures.push(`no call: Start call is not on the call's title bar (${JSON.stringify(join)})`);
-    if (!big?.shown || !empty?.shown || big.h < 40) failures.push(`no call: the large Start call is not in the call's area (${JSON.stringify(big)})`);
+    if (big?.shown || empty?.shown) failures.push(`no call: the large Start call must not show in the side column (${JSON.stringify([big, empty])})`);
+    const strip = await tab.eval(box('side-column-strip'));
+    if (strip?.shown && strip.h > 2) failures.push(`no call: an empty call band is left under the title bar (${JSON.stringify(strip)})`);
     if ((await tab.eval(`(document.getElementById('call-head-name') || {}).textContent`)) !== 'Call') failures.push('no call: the title bar does not read Call');
     // The call's menu holds the call items; Chat's holds only the chat's.
     await tab.click('#call-more'); await sleep(300);
@@ -116,7 +118,7 @@ async function runArea(browser, S) {
     const chatMenu = await tab.eval(items);
     if (chatMenu.some((l) => /call/i.test(l)) || !chatMenu.includes('Save the chat')) failures.push(`Chat's menu has something of the call, or lacks Save the chat (${chatMenu.join(' / ')})`);
     await tab.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await sleep(200);
-    say(`no call: title bar, Start call (${join?.w}px, in the bar), the large one (${big?.w}x${big?.h}); call menu: ${callMenu.join(' / ')}; chat menu: ${chatMenu.join(' / ')}`);
+    say(`no call: title bar, Start call (${join?.w}px, in the bar), no large one (${big?.shown ? 'SHOWN' : 'hidden'}), strip ${strip?.h}px; call menu: ${callMenu.join(' / ')}; chat menu: ${chatMenu.join(' / ')}`);
     // Collapsed, no call: the call's icon beside the chat's, no dot; pressing it opens the column and starts nothing.
     await tab.click('#side-column-toggle'); await sleep(400);
     const rail = await tab.eval(box('side-column-rail-call')); const dot0 = await tab.eval(box('side-column-rail-call-dot'));
