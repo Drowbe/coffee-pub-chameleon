@@ -4496,6 +4496,14 @@ a.crumb-here:hover {
   margin: 0;
 }
 
+.credit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.credit { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--bg-card); min-width: 0; }
+.credit-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.credit-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: var(--text-12); color: var(--text-dim); overflow-wrap: anywhere; }
+.credit-text summary { cursor: pointer; width: fit-content; min-height: var(--space-6); color: var(--text-link, var(--accent)); font-size: var(--text-12); }
+.credit-text summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.credit-text p { margin-top: var(--space-1); overflow-wrap: anywhere; }
+
 .studio-logo {
   display: block;
   max-height: 40px;

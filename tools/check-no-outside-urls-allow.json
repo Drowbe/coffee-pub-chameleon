@@ -9,5 +9,23 @@
   ],
   "modules/documents/src/documents-lib-f-format.js": [
     { "url": "https://", "reason": "the default address text that the link button puts inside a Markdown link for the person to overwrite (text in the box, not a request)" }
+  ],
+  "modules/maps/src/maps-lib-a-maplibre.css": [
+    { "url": "http://www.w3.org/2000/svg", "reason": "the SVG namespace name, never fetched (inside a data: image in the library's stylesheet)" }
+  ],
+  "modules/maps/src/maps-lib-a-maplibre.js": [
+    { "url": "https://github.com/maplibre/maplibre-gl-js/blob/v5.24.0/LICENSE.txt", "reason": "the library's licence header comment; read, never fetched" },
+    { "url": "https://github.com/mapbox/mapbox-gl-js/issues/2907", "reason": "a code comment pointing to an issue; never fetched" },
+    { "url": "https://maplibre.org/", "reason": "the library's own console message text for a developer to read; never fetched" },
+    { "url": "http://www.w3.org/2000/svg", "reason": "the SVG namespace name, never fetched" }
+  ],
+  "modules/maps/src/maps-lib-b-pmtiles.js": [
+    { "url": "https://github.com/protomaps/PMTiles/tree/main/js", "reason": "the library's console.error text for a developer to read; never fetched" }
+  ],
+  "modules/maps/src/maps.css": [
+    { "url": "http://www.w3.org/2000/svg", "reason": "the SVG namespace name, never fetched (inside a data: image)" }
+  ],
+  "modules/maps/src/maps.html": [
+    { "url": "https://www.openstreetmap.org/copyright", "reason": "the 'OpenStreetMap contributors' credit link the map must always show; a link the person may click, not loaded by the page" }
   ]
 }

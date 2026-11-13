@@ -179,6 +179,7 @@ function selectTab(name) {
   for (const b of $('subtabs').querySelectorAll('.subtab')) b.classList.toggle('active', b.dataset.tab === tab);
   if (tab === 'environment') showEnvPart(part);
   if (tab === 'modules') showModulePart(modPart);
+  if (tab === 'about') showCredits();
   nav.draw('secondary'); // the page bar's row holds the Environment tab's parts, or the Modules tab's, only while it is shown
   if (tab === 'environment') requestAnimationFrame(() => scrollToChosen($('env-subtabs')));
   if (tab === 'modules') requestAnimationFrame(() => scrollToChosen($('module-subtabs')));
@@ -192,6 +193,57 @@ function selectTab(name) {
     // The section's first field, or the control itself (#add-space, "+ New <space>" in the top bar's switcher).
     const field = at.matches('input, select, button, summary') ? at : at.querySelector('input[type="text"]') || at.querySelector('input, select, button, summary');
     if (field) field.focus({ preventScroll: true });
+  }
+}
+// The About tab's Open-source software list (#773): public/credits.json, drawn once, as text and never as markup. A group
+// is a heading and a list; each line is the name, what it is for, its licence and link, and a "Licence text" disclosure
+// (a native <details>, so the keyboard and screen readers have it) with the notice the licence asks us to show.
+let creditsShown = false;
+async function showCredits() {
+  if (creditsShown) return;
+  creditsShown = true;
+  const status = $('credits-status');
+  const make = (tag, text, cls) => { const el = document.createElement(tag); if (text) el.textContent = text; if (cls) el.className = cls; return el; };
+  try {
+    const res = await fetch('/credits.json');
+    if (!res.ok) throw new Error(String(res.status));
+    const { components } = await res.json();
+    const box = $('credits-list');
+    box.replaceChildren();
+    const groups = [...new Set(components.map((c) => c.group))];
+    for (const group of groups) {
+      box.append(make('h3', group));
+      const ul = make('ul', '', 'credit-list');
+      for (const c of components.filter((x) => x.group === group)) {
+        const li = make('li', '', 'credit');
+        const head = make('div', '', 'credit-head');
+        head.append(make('strong', c.name));
+        if (c.version) head.append(make('span', c.version, 'hint'));
+        li.append(head, make('div', c.use, 'hint'));
+        const meta = make('div', '', 'credit-meta');
+        meta.append(make('span', c.licence));
+        if (/^https:\/\//.test(c.link)) {
+          const a = make('a', 'Website');
+          a.href = c.link;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.setAttribute('aria-label', `${c.name} website`);
+          meta.append(a);
+        }
+        li.append(meta);
+        const more = make('details', '', 'credit-text');
+        more.append(make('summary', 'Licence text'));
+        more.append(make('p', [c.notice, `Licence: ${c.licence}. The full text is kept in the source, at ${c.licenceFile}.`].filter(Boolean).join('\n'), 'hint'));
+        li.append(more);
+        ul.append(li);
+      }
+      box.append(ul);
+    }
+    status.textContent = '';
+  } catch {
+    creditsShown = false;
+    status.textContent = "The list of open-source software didn't load. Open this tab again to retry.";
+    status.classList.add('error');
   }
 }
 $('subtabs').addEventListener('click', (event) => {
