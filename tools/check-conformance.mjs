@@ -583,6 +583,91 @@ async function main() {
         results.push({ context: 'Workspace, 1280 px, light', head: '  Status strip', rows, failed: rows.length > 1 });
       } finally { await closeTab(tab); }
     }]);
+    // 1b. The gutter between docked modules and at the canvas edge (#769): modules docked side by side (Documents is the one that
+    // was not "content": "flush", so its slot added a second gutter) touch (frames at most 1 px apart) and each one's first
+    // visible content (a card, a row, the sheet, a line of words) is the same single gutter in from the frame's inner left edge
+    // (var(--mf-inset), 12 px), in the list and in the reading view of Documents, light and dark.
+    jobs.push(['Docked gutter', async () => {
+      for (const id of ['documents']) {
+        const r1 = await fetch(S.base + `/api/modules/bundled/${id}/install`, { method: 'POST', headers: { cookie: admin } });
+        const r2 = await fetch(S.base + `/api/modules/${id}`, { method: 'PATCH', headers: { cookie: admin, 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
+        if (!r1.ok || !r2.ok) { failures.push({ context: 'Docked gutter', window: id, what: 'could not install the module', got: `${r1.status} ${r2.status}`, should: 'ok' }); return; }
+      }
+      const open = ['research', 'budget', 'documents'];
+      const before = `try { localStorage.setItem('app.canvas.${S.ctx.trip}', ${JSON.stringify(JSON.stringify({ __open: open }))}); } catch (e) {}`;
+      const MEASURE = `(() => {
+        const R = (e) => e.getBoundingClientRect();
+        const frames = [...document.querySelectorAll('.module-docked > .mod-content > .mf')].sort((a, b) => R(a).left - R(b).left);
+        const out = [];
+        frames.forEach((f, i) => {
+          const fr = R(f); const inner = fr.left + parseFloat(getComputedStyle(f).borderLeftWidth);
+          const root = f.querySelector('.module-root'); const sr = root && (root.shadowRoot || root);
+          const name = (f.querySelector('.mf-titlebar-title') || {}).textContent;
+          if (!sr || !name) return;
+          let first = null;
+          for (const e of sr.querySelectorAll('*')) {
+            if (!e.getClientRects().length) continue;
+            const b = R(e); if (b.width < 2 || b.height < 2 || b.left <= inner + 0.5) continue;
+            const c = getComputedStyle(e);
+            const own = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+            if (!(own || parseFloat(c.borderLeftWidth) > 0 || c.backgroundColor !== 'rgba(0, 0, 0, 0)')) continue;
+            if (first === null || b.left < first) first = b.left;
+          }
+          out.push({ name: name.trim(), left: fr.left, right: fr.right, offset: first === null ? null : Math.round((first - inner) * 10) / 10 });
+        });
+        return out;
+      })()`;
+      for (const mode of ['light', 'dark']) {
+        const ctx = `Docked gutter, 1280 px, ${mode}`;
+        const tab = new Tab(browser.cdp, S.ctx);
+        await tab.open(1280, mode, true);
+        for (const c of S.cookies.mia) await browser.cdp.send('Network.setCookie', { name: c.name, value: c.value, url: S.base, httpOnly: true }, tab.sid);
+        await browser.cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: before }, tab.sid);
+        await browser.cdp.send('Page.navigate', { url: S.base + fill('/#join={trip}', S.ctx) }, tab.sid);
+        try {
+          await tab.waitFor('.mf-titlebar .mf-titlebar-title', '', 45000);
+          await sleep(3500);
+          // Open each module from the Modules menu unless the canvas already has it.
+          for (const n of open) {
+            await tab.eval(`(() => { const title = '${n}'; const have = [...document.querySelectorAll('.module-docked .mf-titlebar-title')].some((t) => t.textContent.trim().toLowerCase() === title); if (have) return true; const b = document.querySelector('#modules-menu [data-module="${n}"]') || [...document.querySelectorAll('#modules-menu button')].find((x) => x.textContent.trim().toLowerCase() === title); if (b) b.click(); return !!b; })()`);
+            await sleep(1500);
+          }
+          await sleep(1500);
+          const docs = `(() => { const f = [...document.querySelectorAll('.module-docked > .mod-content > .mf')].find((x) => (x.querySelector('.mf-titlebar-title') || {}).textContent === 'Documents'); const root = f && f.querySelector('.module-root'); return root && (root.shadowRoot || root); })()`;
+          const judgeGutter = (view, got) => {
+            const rows = [];
+            const bad = (what, g, should) => { failures.push({ context: ctx, window: view, what, got: g, should }); rows.push(`    !! ${what}: ${g}, should be ${should}`); };
+            if (got.length < 3) { bad('docked modules', String(got.length), 'at least 3 (Research, Budget, Documents)'); return; }
+            for (let i = 1; i < got.length; i++) if (Math.abs(got[i].left - got[i - 1].right) > 1) bad(`gap between ${got[i - 1].name} and ${got[i].name}`, `${Math.round((got[i].left - got[i - 1].right) * 10) / 10} px`, 'at most 1 px');
+            const offs = got.filter((g) => g.offset !== null);
+            if (offs.length < got.length) bad('a docked module with no visible content', got.filter((g) => g.offset === null).map((g) => g.name).join(', '), 'content in every one');
+            if (offs.length && Math.max(...offs.map((g) => g.offset)) - Math.min(...offs.map((g) => g.offset)) > 1) bad('first content from the frame edge', offs.map((g) => `${g.name} ${g.offset}`).join(', '), 'the same single gutter in each (12 px, --mf-inset)');
+            rows.unshift(`    ${view}: ${got.map((g) => `${g.name} ${g.offset}`).join(', ')}`);
+            results.push({ context: ctx, head: `  ${view}`, rows, failed: rows.length > 1 });
+          };
+          // Read until every module has drawn content and two readings 300 ms apart agree (a loaded machine draws late).
+          const stable = async () => { let last = ''; let got = [];
+            for (let n = 0; n < 50; n++) { got = (await tab.eval(MEASURE).catch(() => null)) || []; const key = JSON.stringify(got); if (got.length >= 3 && got.every((g) => g.offset !== null) && key === last) break; last = key; await sleep(300); }
+            return got; };
+          judgeGutter('list', await stable());
+          await tab.eval(`(() => { const sr = ${docs}; const f = sr.querySelector('#make'); f.hidden = false; sr.querySelector('#make-title').value = 'Gutter'; f.requestSubmit(); })()`);
+          await sleep(2500);
+          const shown = await tab.eval(`(() => { const sr = ${docs}; const v = ['read', 'editor', 'list'].find((i) => { const e = sr.querySelector('#' + i); return e && !e.hidden && e.getClientRects().length; }); return v; })()`);
+          if (shown !== 'read' && shown !== 'editor') {
+            // a new document opens in the reading view or the editor; the list's own rows are measured once it is open
+            await tab.eval(`(() => { const sr = ${docs}; const b = sr.querySelector('.row-main'); if (b) b.click(); })()`);
+            await sleep(2000);
+          }
+          judgeGutter('document open', await stable());
+          // The open document's own page (the reading sheet, or the editor's) has the same gutter: the toolbar's buttons above it
+          // are in the content too and would hide a second gutter, so it is measured by itself.
+          const page = await tab.eval(`(() => { const sr = ${docs}; const v = ['read', 'editor'].map((i) => sr.querySelector('#' + i)).find((e) => e && !e.hidden && e.getClientRects().length); const k = v && (v.querySelector('.sheet') || v.querySelector('.ProseMirror') || v.querySelector('.sheet, .col')); if (!k) return null; const inner = sr.host.closest('.mf').getBoundingClientRect().left + 1; return { view: v.id, offset: Math.round((k.getBoundingClientRect().left - inner) * 10) / 10 }; })()`);
+          if (!page) { failures.push({ context: ctx, window: 'Documents', what: 'the open document\'s page', got: 'none', should: 'a sheet or an editor' }); }
+          else if (Math.abs(page.offset - 12) > 1) failures.push({ context: ctx, window: 'Documents', what: `first content from the frame edge (${page.view})`, got: `${page.offset} px`, should: '12 px (--mf-inset, one gutter)' });
+          results.push({ context: ctx, head: '  document page', rows: [`    ${page ? `${page.view} ${page.offset}` : 'none'}`], failed: !page || Math.abs(page.offset - 12) > 1 });
+        } finally { await closeTab(tab); }
+      }
+    }]);
     // 2. The Workspace on a phone, dark: each module through the tab bar.
     jobs.push(['Workspace, 390', async () => {
       const tab = await openTab(browser, S, 390, 'dark', '/#join={trip}', { call: true });
