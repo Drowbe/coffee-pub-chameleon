@@ -332,7 +332,7 @@ export function cleanToolbarItems(items) {
 // The select's `items` (data only; the HOST draws the menu under the button, host-menu.js): rows { id, label, current?, disabled?,
 // items? }, { divider: true } and { heading: 'Words' }. At most HEADER_MENU_MAX (50) entries, children counted; a row's `items`
 // are its children, ONE level (deeper is dropped); ids 1 to 40 of [a-z0-9._-], none twice; labels plain text of up to
-// HEADER_ITEM_LABEL characters (no HTML, no icon or class names, control characters removed); at most one `current` row.
+// HEADER_ITEM_LABEL characters, and an optional `hint` (why it is off, same limit) (no HTML, no icon or class names, control characters removed); at most one `current` row.
 export const HEADER_SELECT_LABEL = 40;
 export const HEADER_ITEM_LABEL = 60;
 export const HEADER_MENU_MAX = 50;
@@ -364,6 +364,8 @@ function cleanMenuItems(items) {
       const row = { id: i.id, label };
       if (i.current === true && !current) { current = true; row.current = true; }
       if (i.disabled === true) row.disabled = true;
+      const hint = plain(i.hint, HEADER_ITEM_LABEL); // why a row is off, drawn under its label
+      if (hint) row.hint = hint;
       if (!deep && Array.isArray(i.items)) {
         const kids = level(i.items, true);
         if (kids.some((k) => k.id)) row.items = kids;

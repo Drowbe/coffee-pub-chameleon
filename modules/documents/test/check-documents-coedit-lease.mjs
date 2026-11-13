@@ -155,7 +155,8 @@ await test('Rename and Delete with the switch on (F4): who may, the locked rule,
   assert.equal(R({ lock, me: 'aaaa1111' }).off, false, 'the person who locked it');
   assert.equal(R({ lock, role: 'owner' }).off, false); assert.equal(R({ lock, role: 'admin' }).off, false);
   const page = fs.readFileSync(path.join(src, 'documents.js'), 'utf8');
-  assert.ok(/Document['"] \}, \.\.\.doc\)/.test(page) && page.includes("e.id === 'rename' ? coRename() : coRemove()"), 'the Page menu\'s Document section holds them');
+  assert.ok(page.includes("if (v === 'rename') { if (!canEdit) return; if (ed && ed.co) coRename();") && page.includes("if (ed && ed.co) coRemove();"), 'the title bar\'s select holds them (the shared paths coRename and coRemove)');
+  assert.ok(!page.includes("coEntries(coLockNow()).map((e) => ({ ...e, onClick: () => (e.id === 'rename'"), 'the Page menu no longer repeats them');
   assert.ok(/function coRowMore\(li, rec\) \{\n    if \(!coediting \|\| !canEdit\) return;/.test(page), 'the list\'s More button exists only with the switch on');
 });
 
