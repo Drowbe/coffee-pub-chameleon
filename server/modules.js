@@ -735,6 +735,12 @@ function cleanSettings(raw) {
     if (!type) throw new ModuleError(`module.json: setting "${key}" needs a type: ${SETTING_TYPES.join(', ')}`);
     const scope = SETTING_SCOPES.includes(r.scope) ? r.scope : 'environment';
     const def = { key, label: text(r.label, 60) || key, help: longText(r.help, 600), type, scope };
+    // `needsModule`: the setting is offered, and counts, only while that other module is installed and on (the host asks;
+    // server/index.js settingOffered). Whether such a module exists is not known here, only that the id is a module id.
+    if (r.needsModule !== undefined) {
+      if (typeof r.needsModule !== 'string' || !ID_RE.test(r.needsModule)) throw new ModuleError(`module.json: setting "${key}" needsModule must be the id of another module`);
+      def.needsModule = r.needsModule;
+    }
     // A setting may be shown only while another one has a given value (`showWhen`), and a choice may start as one of its options
     // when another setting already holds a value and it has none of its own (`defaultIfSet`: for a setting that grew into a choice).
     if (r.showWhen && typeof r.showWhen === 'object') {
@@ -819,7 +825,7 @@ function cleanScope(raw) {
 // A module's parts of the host's destinations (plan-calendar-destination.md, "Server"; server/destinations.js): up to two,
 // each { id, part, entry, label?, order? }, for a destination the host knows, at most one main and one panel per
 // destination. A part is mounted at environment scope, so it needs that scope. Asks the admin for nothing new.
-const DESTINATION_PART_KEYS = ['id', 'part', 'entry', 'label', 'order'];
+const DESTINATION_PART_KEYS = ['id', 'part', 'entry', 'label', 'order', 'showWhenSetting'];
 function cleanDestinationParts(raw, files, scope) {
   const what = 'module.json: surfaces.destination';
   if (!Array.isArray(raw)) throw new ModuleError(`${what} must be a list of parts`);
@@ -836,7 +842,13 @@ function cleanDestinationParts(raw, files, scope) {
     seen.add(`${p.id}:${p.part}`);
     if (p.label !== undefined && typeof p.label !== 'string') throw new ModuleError(`${what}: a part's label must be words`);
     if (p.order !== undefined && !Number.isFinite(p.order)) throw new ModuleError(`${what}: a part's order must be a number`);
+    // `showWhenSetting`: a panel shown only while one of this module's own boolean settings is not off. The setting is checked
+    // against the manifest's settings in cleanManifest (this runs before they are read). A main part cannot carry it.
+    if (p.showWhenSetting !== undefined && (p.part !== DESTINATION_PARTS[1] || typeof p.showWhenSetting !== 'string' || !/^[a-z][a-zA-Z0-9]{0,23}$/.test(p.showWhenSetting))) {
+      throw new ModuleError(`${what}: showWhenSetting belongs on a panel and must name one of its own settings`);
+    }
     const part = { id: p.id, part: p.part, entry: cleanEntry(p.entry, files, `surfaces.destination (${p.id} ${p.part})`) };
+    if (p.showWhenSetting !== undefined) part.showWhenSetting = p.showWhenSetting;
     const label = text(p.label, 40);
     if (label) part.label = label;
     if (p.order !== undefined) part.order = clamp(Math.round(p.order), -1000, 1000, 100);
@@ -960,6 +972,14 @@ function cleanManifest(raw, files) {
   }
 
   const settings = cleanSettings(raw.settings);
+  for (const part of surfaces.destination || []) {
+    if (part.showWhenSetting === undefined) continue;
+    const named = settings.find((d) => d.key === part.showWhenSetting);
+    if (!named || named.type !== 'boolean' || named.scope !== 'environment') {
+      throw new ModuleError(`module.json: surfaces.destination: showWhenSetting "${part.showWhenSetting}" must name a boolean setting of this module with the "environment" scope`);
+    }
+  }
+  for (const d of settings) if (d.needsModule === id) throw new ModuleError(`module.json: setting "${d.key}" needsModule must be another module`);
   const geocoder = cleanGeocoder(raw.geocoder, settings);
   const regionSource = cleanRegionSource(raw.regionSource, settings);
   const pictureMap = cleanPictureMap(raw.pictureMap, settings);

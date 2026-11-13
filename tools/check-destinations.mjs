@@ -99,7 +99,7 @@ const base = fs.mkdtempSync(path.join(os.tmpdir(), 'check-destinations-'));
     refused([{ id: 'calendar', part: 'main', entry: 'page.html' }, { id: 'calendar', part: 'panel', entry: 'page.html' }, { id: 'map', part: 'panel', entry: 'page.html' }], 'module.json: surfaces.destination lists at most two parts');
     refused([{ id: 'calendar', part: 'side', entry: 'page.html' }], 'module.json: surfaces.destination: a part must be "main" or "panel"');
     refused({ id: 'calendar' }, 'module.json: surfaces.destination must be a list of parts');
-    refused([{ id: 'calendar', part: 'main', entry: 'page.html', size: 'wide' }], 'module.json: surfaces.destination: "size" is not a part\'s field; the fields are id, part, entry, label, order');
+    refused([{ id: 'calendar', part: 'main', entry: 'page.html', size: 'wide' }], 'module.json: surfaces.destination: "size" is not a part\'s field; the fields are id, part, entry, label, order, showWhenSetting');
     refused([{ id: 'calendar', part: 'panel', entry: 'page.html', order: 'first' }], 'module.json: surfaces.destination: a part\'s order must be a number');
     refused([{ id: 'calendar', part: 'main', entry: 'canvas.html' }], 'module.json: surfaces.destination needs the "environment" scope', ['space']);
   });

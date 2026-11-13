@@ -41,11 +41,26 @@ function mainOf(id, enabled) {
   return chosen ? { ...chosen, part: partOf(chosen.manifest, id, 'main') } : null;
 }
 
-// Every enabled module's panel for the destination, by `order`, then id.
-function panelsOf(id, enabled) {
+// Whether a panel's own switch leaves it shown. A part may carry `showWhenSetting`, the key of one boolean environment setting
+// of its own module (checked when the module is installed): the panel is hidden while that setting is false, and only
+// false hides it. A part without the flag is always shown. A setting that `needsModule` a module that is not enabled is
+// not offered, so its value is ignored and its default counts. `values(manifest)` reads the module's environment settings;
+// without it the defaults count.
+function flagAllows(manifest, part, enabled, values) {
+  const key = part.showWhenSetting;
+  if (key === undefined) return true;
+  const def = (manifest.settings || []).find((d) => d.key === key && d.type === 'boolean' && d.scope === 'environment');
+  if (!def) return true;
+  const met = !def.needsModule || enabled.some((m) => m.manifest.id === def.needsModule);
+  const value = met && typeof values === 'function' ? values(manifest)?.[key] : undefined;
+  return (typeof value === 'boolean' ? value : def.default) !== false;
+}
+
+// Every enabled module's panel for the destination, by `order`, then id. `values`: see flagAllows.
+function panelsOf(id, enabled, values) {
   return enabled
     .map((m) => ({ ...m, part: partOf(m.manifest, id, 'panel') }))
-    .filter((m) => m.part)
+    .filter((m) => m.part && flagAllows(m.manifest, m.part, enabled, values))
     .sort((a, b) => (a.part.order ?? DEFAULT_PART_ORDER) - (b.part.order ?? DEFAULT_PART_ORDER) || a.manifest.id.localeCompare(b.manifest.id));
 }
 
@@ -53,15 +68,16 @@ function panelsOf(id, enabled) {
 //   settings: the environment's settings (store.settings);
 //   enabled:  the enabled modules, [{ manifest, entry }] (modules.enabledAll());
 //   canRead:  (manifest) => whether the viewer may read that module at environment level;
-//   hasFile:  (manifest) => whether that module has a file to draw from (asked only for a destination that needsFile).
+//   hasFile:  (manifest) => whether that module has a file to draw from (asked only for a destination that needsFile);
+//   values:   (manifest) => the module's environment setting values, for a panel's `showWhenSetting` (flagAllows).
 // Answers { dest, main, panels }, each part { manifest, entry, part }; panels only the readable ones.
-function resolveDestination(id, { settings, enabled, canRead, hasFile = () => false }) {
+function resolveDestination(id, { settings, enabled, canRead, hasFile = () => false, values }) {
   const dest = destinationById(id);
   if (!dest || !optionOn(dest, settings)) return null;
   const main = mainOf(id, enabled);
   if (!main || !canRead(main.manifest)) return null;
   if (dest.needsFile && !hasFile(main.manifest)) return null;
-  return { dest, main, panels: panelsOf(id, enabled).filter(({ manifest }) => canRead(manifest)) };
+  return { dest, main, panels: panelsOf(id, enabled, values).filter(({ manifest }) => canRead(manifest)) };
 }
 
 // The destination `id` as a view of one space (plan-calendar-todo.md and plan-map-places.md, step 1): the same parts,
@@ -69,13 +85,13 @@ function resolveDestination(id, { settings, enabled, canRead, hasFile = () => fa
 // that space (the module on in that space, the viewer in it and holding its read permission there), and `hasFile` as
 // above (a map file is the environment's, or the host's; a space has none of its own). Answers { dest, main, panels }
 // as resolveDestination does, or null.
-function resolveDestinationInSpace(id, { enabled, canRead, hasFile = () => false }) {
+function resolveDestinationInSpace(id, { enabled, canRead, hasFile = () => false, values }) {
   const dest = destinationById(id);
   if (!dest) return null;
   const main = mainOf(id, enabled);
   if (!main || !canRead(main.manifest)) return null;
   if (dest.needsFile && !hasFile(main.manifest)) return null;
-  return { dest, main, panels: panelsOf(id, enabled).filter(({ manifest }) => canRead(manifest)) };
+  return { dest, main, panels: panelsOf(id, enabled, values).filter(({ manifest }) => canRead(manifest)) };
 }
 
 // Every destination shown for the viewer, in the bar's order.

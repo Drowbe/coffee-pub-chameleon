@@ -1,7 +1,7 @@
 {
   "id": "todo",
   "name": "To-do",
-  "version": "1.15.29",
+  "version": "1.15.30",
   "icon": "list-check",
   "color": "green",
   "description": "A shared to-do list for the whole {environment} and for each {space}, with due dates and reminders.",
@@ -12,7 +12,7 @@
   ],
   "surfaces": {
     "destination": [
-      { "id": "calendar", "part": "panel", "entry": "page.html", "label": "To-do", "order": 20 }
+      { "id": "calendar", "part": "panel", "entry": "page.html", "label": "To-do", "order": 20, "showWhenSetting": "inCalendar" }
     ],
     "page": {
       "entry": "page.html"
@@ -33,6 +33,17 @@
       "order": 20
     }
   },
+  "settings": [
+    {
+      "key": "inCalendar",
+      "label": "Show in the Calendar",
+      "type": "boolean",
+      "scope": "environment",
+      "default": true,
+      "needsModule": "calendar",
+      "help": "The list also appears in the Calendar's side panel. Dated tasks stay on the Calendar's days either way."
+    }
+  ],
   "permissions": [
     {
       "key": "view",
