@@ -22,7 +22,16 @@
 // public/module-live.js (cleanIncoming) copies it from the stream event's own field, never from `data`, cleans it, and hands it to the SDK
 // (public/sdk/host.js), which passes it as the handler's second argument. The data this file reads has fixed keys (dlSyncClean) and no key names a person.
 //
-// NOT HERE (4b/4c): snapshots and storage, the writer, mend reporting, the lock switch, the editors list, cursors.
+// THE WRITER (4b, slice 1). One page saves the text: the lowest key among the synced editors (dlSyncElect). Every page computes it the same way from the
+// roster it already keeps, with no election message. A change of writer (the writer left, or a lower key arrived) is taken only after the answer has
+// stayed the same for writerQuietMs (dlSyncWriterHold): two pages that flap together never settle on a quick answer, a quiet second does. The page asks
+// session.isWriter() and saves (documents-lib-v-coedit-save.js); a page that leaves saves too.
+//
+// THE SEED MARKER (4b, slice 1). A page that is about to seed first writes `ydoc:<id>:seed` with version 0 (create if absent, dlSeedClaim). The page
+// that gets the write seeds; a page that gets a 409 reads the marker and waits for the winner's state. A marker never blocks for long: a marker whose
+// writer is not here (or is this person), or that is older than seedCapMs, is taken over with a compare-and-set and the taker seeds with the marker's id.
+//
+// NOT HERE (4b slice 2 on): snapshots in storage, mend reporting, the lock switch, the editors list, cursors.
 
 const DL_SYNC = Object.freeze({
   messageBytes: 2048, // the most a message's data may be: the manifest's live.bytes (the test checks they agree). The server's maximum may be lower: a 413 halves it.
@@ -48,6 +57,11 @@ const DL_SYNC = Object.freeze({
   retryMs: 1000,
   publishMs: 5000, // a publish not answered after this long is let go (the next message goes)
   queueMax: 200, // messages waiting for one person or for everyone; past this, more answers are not queued
+  electTickMs: 500, // how often the page looks at who the writer is (the roster also ages with the clock)
+  writerQuietMs: 1000, // a new answer to "who writes" is taken after it has stayed the same this long
+  seedGraceMs: 3000, // a seed marker younger than this is its writer seeding right now: never taken over
+  seedCapMs: 30000, // a seed marker older than this is taken over whoever wrote it; a page also takes over a marker it has watched this long
+  claimRetryMs: 2000, // a page that lost the marker looks again at most this often
 });
 
 const DL_SYNC_TOPIC = /^[a-z0-9._-]{1,40}$/;
@@ -86,10 +100,76 @@ function dlSyncSeedId(id, text) {
   for (let i = 0; i < s.length; i += 1) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
   return h || 1;
 }
-function dlSyncSeed(PM, ydoc, pmDoc, id, text) {
+// `seedId`: the id of a seed marker that was already written for this document (the lineage of the first seed); without it the id is the hash.
+function dlSyncSeed(PM, ydoc, pmDoc, id, text, seedId) {
   const keep = ydoc.clientID;
-  ydoc.clientID = dlSyncSeedId(id, text);
+  ydoc.clientID = Number.isInteger(seedId) && seedId > 0 ? seedId : dlSyncSeedId(id, text);
   try { ydoc.transact(() => { PM.prosemirrorToYXmlFragment(pmDoc, ydoc.getXmlFragment(dlCoeditGate(PM).limits.root)); }, 'dl-sync-seed'); } finally { ydoc.clientID = keep; }
+}
+
+// The writer of a shared document: the lowest key among the synced editors (the people who joined this document and are ready, this page included).
+// Pure. -> the key, or '' when there are none.
+function dlSyncElect(keys) {
+  let best = '';
+  for (const k of keys || []) if (typeof k === 'string' && k && (best === '' || k < best)) best = k;
+  return best;
+}
+// Who the writer is, as one page holds it. update(keys, now) -> the writer ('' while there is none). The first answer is taken at once. After that a new
+// answer (the writer left, or a lower key arrived) is taken only when it has been the same for `quietMs`; a writer who left is not kept meanwhile.
+function dlSyncWriterHold(quietMs) {
+  let writer = ''; let ever = false; let raw = ''; let rawSince = -Infinity;
+  return {
+    update(keys, now) {
+      const next = dlSyncElect(keys);
+      if (next !== raw) { raw = next; rawSince = now; }
+      if (writer !== '' && !(keys || []).includes(writer)) writer = '';
+      if (raw === writer) return writer;
+      if (raw !== '' && (!ever || now - rawSince >= quietMs)) { writer = raw; ever = true; }
+      return writer;
+    },
+    writer: () => writer,
+  };
+}
+
+// ---- the seed marker -------------------------------------------------------------------------------------------------------------------------
+const dlSeedMarkerKey = (id) => `ydoc:${id}:seed`;
+// { id: <the seed's writer id>, by: <person key>, at: <time> } or null. Anything else in the key is no marker (a marker is never a block).
+function dlCleanSeedMarker(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const id = v.id; const by = v.by; const at = v.at;
+  if (!Number.isInteger(id) || id < 1 || id > 0xffffffff) return null;
+  if (typeof by !== 'string' || !/^[A-Za-z0-9._:-]{1,64}$/.test(by)) return null;
+  if (typeof at !== 'string' || at.length > 40 || !Number.isFinite(Date.parse(at))) return null;
+  return { id, by, at };
+}
+// May a marker written by someone else be taken over? `seenAt`: when this page first saw it (0 if just now); `here(key)`: is that person editing this document.
+function dlSeedMarkerStale(m, o) {
+  if (!m) return true;
+  const age = o.now - Date.parse(m.at);
+  if (age >= o.capMs) return true;
+  if (o.seenAt && o.now - o.seenAt >= o.capMs) return true; // watched this long (also covers a marker dated in the future)
+  if (age < o.graceMs) return false;
+  return m.by === o.me || !o.here(m.by);
+}
+// Claims the right to seed. store: { get(key), set(key, value, { version }) } (host.storage). -> { won: true, id, took } (seed with `id`), or
+// { won: false, marker, version } (someone else seeds: wait for their state), or { error } (the marker could not be used: the page seeds as 4a did).
+async function dlSeedClaim(store, o) {
+  const key = dlSeedMarkerKey(o.doc);
+  const mine = (id) => ({ id, by: o.me, at: new Date(o.now()).toISOString() });
+  try {
+    for (let round = 0; round < 3; round += 1) {
+      try { await store.set(key, mine(o.seedId), { version: 0 }); return { won: true, id: o.seedId, took: false }; } catch (err) { if (!err || err.status !== 409) throw err; }
+      const cur = await store.get(key);
+      if (!cur) continue; // gone in between: ask again
+      const m = dlCleanSeedMarker(cur.value);
+      if (m && !dlSeedMarkerStale(m, { ...o, now: o.now() })) return { won: false, marker: m, version: cur.version };
+      const id = m ? m.id : o.seedId;
+      try { await store.set(key, mine(id), { version: cur.version }); return { won: true, id, took: true }; } catch (err) { if (!err || err.status !== 409) throw err; }
+    }
+    const cur = await store.get(key);
+    const m = cur && dlCleanSeedMarker(cur.value);
+    return m ? { won: false, marker: m, version: cur.version } : { error: new Error('seed marker busy') };
+  } catch (err) { return { error: err }; }
 }
 
 // Bytes <-> base64, in slices (a long array would overflow the argument list). dlSyncUnb64 -> a Uint8Array, or null for anything that is not base64.
@@ -211,6 +291,10 @@ function dlSyncRoster(o) {
 //   clock                            { now(), set(fn, ms), clear(id) } (tests hand in a manual clock)
 //   config                           overrides of DL_SYNC (tests)
 //   onRebuild(newDoc)                the page must draw the new document (the old one was poisoned)
+//   marker                           { store, doc, seedId }: the seed marker (store is host.storage, doc the document's id, seedId the hash of its id and
+//                                    text); without it, or with editor false, a page seeds as 4a did, with no marker. The session never reads or writes
+//                                    anything else in storage.
+//   seed(doc, seedId)                puts the saved text into the empty document; seedId is the marker's id when one decided it, else undefined
 //   onRoster() / onState()           something the page shows changed (editors, the channel, the counters)
 // -> { start, stop, stats, status, rebuild, hearPeople, ... }
 function dlSyncSession(PM, o) {
@@ -225,7 +309,10 @@ function dlSyncSession(PM, o) {
   const stats = {
     sent: 0, sentBytes: 0, maxSentBytes: 0, edits: 0, editBytes: 0, maxEditBytes: 0, got: 0, applied: 0, refused: 0, quiet: 0, bad: 0, gaps: 0,
     vectorsOut: 0, vectorsIn: 0, answers: 0, pieces: 0, piecesIn: 0, assembled: 0, assemblyLost: 0, big: 0, rebuilt: 0, resized: 0, failed: 0, slow: 0, lastError: '', lastRefusal: '', details: {}, reasons: {},
+    elections: 0, marker: '', markerFailed: 0, markerCalls: 0,
   };
+  const hold = dlSyncWriterHold(cfg.writerQuietMs);
+  let writerKey = ''; // who writes the text, as this page holds it ('' while there is none)
   let doc = o.doc;
   let guard = null;
   let good = null; // the last state taken from a document the gate had accepted everything for
@@ -259,6 +346,15 @@ function dlSyncSession(PM, o) {
   const clearTimer = (t) => { timers = timers.filter((x) => x !== t); clock.clear(t); };
   const changed = () => { if (o.onState) o.onState(); };
   const reason = (r) => { stats.reasons[r] = (stats.reasons[r] || 0) + 1; };
+  // The synced editors: the others heard lately (editors, here), and this page once the join said it may type.
+  function elect() {
+    if (stopped) return;
+    const keys = roster.others().map((p) => p.key);
+    if (editor && announced) keys.push(o.me);
+    const w = hold.update(keys, clock.now());
+    if (w !== writerKey) { writerKey = w; stats.elections += 1; changed(); }
+  }
+  function electTick() { elect(); setTimer(electTick, cfg.electTickMs); }
 
   function makeGuard() {
     if (guard) guard.destroy();
@@ -445,9 +541,10 @@ function dlSyncSession(PM, o) {
     }
     const m = dlSyncClean(data, cfg);
     if (!m) { stats.bad += 1; reason('not_a_message'); changed(); return; }
-    if (m.t === 'x') { roster.forget(key); changed(); return; }
+    if (m.t === 'x') { roster.forget(key); elect(); changed(); return; }
     const known = roster.has(key);
     roster.hear(key, m.t === 'v' ? { editor: m.editor, admitted: m.admitted } : undefined);
+    if (m.t === 'v') elect();
     if (joining && key !== o.me) {
       peerAt = clock.now();
       if (m.t === 'u' || m.t === 'k') { peerSeen = true; pieceAt = peerAt; }
@@ -508,18 +605,21 @@ function dlSyncSession(PM, o) {
         live.on('people', (e) => {
           atModule = (e.people || []).map((p) => p.key);
           roster.people(atModule);
+          elect();
           if (joinCheck) joinCheck('people');
           changed();
         }),
       ];
       if (typeof live.on === 'function' && o.onChannel) o.off.push(live.on('state', (s) => o.onChannel(s)));
       setTimer(beat, cfg.repairMs);
+      setTimer(electTick, cfg.electTickMs);
       sendVector(null);
     },
     stop() {
       if (stopped) return;
       if (started) { try { live.publish(topic, { x: 1 }).catch(() => {}); } catch (e) { /* closing */ } }
       stopped = true;
+      writerKey = '';
       for (const t of timers) clock.clear(t);
       timers = [];
       for (const off of o.off || []) { try { off(); } catch (e) { /* gone */ } }
@@ -535,22 +635,42 @@ function dlSyncSession(PM, o) {
     // mayType is false when eight others are editing already (the page then reads along). Until then this page says it is not an editor.
     join(done) {
       let finished = false; let wait = null; let settle = null; let tick = null;
+      let claiming = false; let held = null; let heldAt = 0; let nextClaim = 0; // the seed marker: while one is being asked for / the one another page holds
       const t0 = clock.now(); let askedAt = t0;
       joining = true; peerSeen = false; peerAt = 0; pieceAt = 0;
       const content = () => doc.getXmlFragment(gateApi.limits.root).length > 0;
-      const finish = (how) => {
+      const finish = (how, seedId) => {
         if (finished) return;
         finished = true; joinCheck = null; joining = false;
         if (wait !== null) clearTimer(wait);
         if (settle !== null) clearTimer(settle);
         if (tick !== null) clearTimer(tick);
-        if (!content()) { o.seed(doc); if (guard) guard.reseed(); goodDirty = true; take(); }
+        if (!content()) { o.seed(doc, seedId); if (guard) guard.reseed(); goodDirty = true; take(); }
         admitted = roster.others().length;
         if (!roster.admit()) editor = false; // the cap: this page reads along
         announced = true;
         stats.joinedBy = how;
         sendVector(null);
+        elect();
         done(how, editor);
+      };
+      const markerStale = (m) => dlSeedMarkerStale(m, { me: o.me, now: clock.now(), seenAt: heldAt, here: (k) => roster.has(k), graceMs: cfg.seedGraceMs, capMs: cfg.seedCapMs });
+      // The page wants to seed. With a marker: it asks for the right first (dlSeedClaim); the page that gets it seeds, any other waits for the state of
+      // the one that has it. Without one (no store, or a page that may not write): the 4a rule, seed now.
+      const trySeed = (how) => {
+        if (finished || stopped) return;
+        if (content() || !o.marker || !editor) { finish(how); return; }
+        if (claiming || clock.now() < nextClaim) return;
+        if (held && !markerStale(held)) return;
+        claiming = true; nextClaim = clock.now() + cfg.claimRetryMs; stats.markerCalls += 1;
+        dlSeedClaim(o.marker.store, { doc: o.marker.doc, seedId: o.marker.seedId, me: o.me, now: () => clock.now(), seenAt: heldAt, here: (k) => roster.has(k), graceMs: cfg.seedGraceMs, capMs: cfg.seedCapMs }).then((r) => {
+          claiming = false;
+          if (finished || stopped) return;
+          if (content()) return; // the state came while the marker was asked for: the tick settles
+          if (r.won) { stats.marker = r.took ? 'took' : 'won'; finish(how, r.id); return; }
+          if (r.error) { stats.markerFailed += 1; stats.marker = 'failed'; stats.lastError = String(r.error && r.error.message).slice(0, 80); finish(how); return; }
+          held = r.marker; if (!heldAt) heldAt = clock.now(); stats.marker = 'waiting'; changed();
+        });
       };
       const look = () => {
         tick = null;
@@ -558,16 +678,16 @@ function dlSyncSession(PM, o) {
         const t = clock.now();
         if (content()) { if (settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); }
         else if (peerSeen && t - t0 >= cfg.joinWaitMs) {
-          if (t - peerAt >= cfg.joinQuietMs && t - t0 >= cfg.joinMaxMs && !roster.anyone()) { finish('timeout'); return; }
+          if (t - peerAt >= cfg.joinQuietMs && t - t0 >= cfg.joinMaxMs && !roster.anyone()) { trySeed('timeout'); if (finished) return; }
           if (t - askedAt >= cfg.joinAskMs && t - pieceAt >= cfg.joinBusyMs) { askedAt = t; sendVector(null); }
-        }
+        } else if (held && t - t0 >= cfg.joinWaitMs) { trySeed('timeout'); if (finished) return; } // another page holds the marker and no state is coming: it is taken over when stale
         tick = setTimer(look, cfg.joinTickMs);
       };
       joinCheck = (why) => {
         if (why === 'applied') { if (content() && settle === null) settle = setTimer(() => finish('state'), cfg.settleMs); return; }
-        if (!peerSeen && !roster.others().length && !roster.anyone() && !othersAtModule()) finish('alone');
+        if (!peerSeen && !roster.others().length && !roster.anyone() && !othersAtModule()) trySeed('alone');
       };
-      wait = setTimer(() => { wait = null; if (!peerSeen) finish('timeout'); }, cfg.joinWaitMs);
+      wait = setTimer(() => { wait = null; if (!peerSeen) trySeed('timeout'); }, cfg.joinWaitMs);
       tick = setTimer(look, cfg.joinTickMs);
     },
     // After the channel came back: both sides say what they have.
@@ -576,9 +696,20 @@ function dlSyncSession(PM, o) {
     reseed() { if (guard) guard.reseed(); goodDirty = true; },
     setEditor(on) { const was = editor; editor = Boolean(on); if (started && announced && was !== editor) sendVector(null); },
     admitted: () => admitted,
+    // Who writes the text now: the key, '' for none; and whether that is this page.
+    writer: () => writerKey,
+    isWriter: () => writerKey !== '' && writerKey === o.me && !stopped,
+    // Waits (at most `ms`) until this page's own changes have gone out, so a page that leaves does not lose its last typing on the way.
+    drain(ms) {
+      return new Promise((resolve) => {
+        const t0 = clock.now();
+        const look = () => { if (stopped || (!sending && !local.length) || clock.now() - t0 >= ms) { resolve(); return; } setTimer(look, 20); };
+        pump(); look();
+      });
+    },
     hearPeople(keys) { atModule = keys; roster.people(keys); },
     roster,
-    stats: () => ({ ...stats, reasons: { ...stats.reasons }, details: { ...stats.details }, guard: guard ? guard.stats() : null, bytesMax, sending, hold: Math.max(0, holdUntil - clock.now()), sinceSend: sentAt ? clock.now() - sentAt : -1, pending: local.length + direct.length, assembling: assemblies.size }),
+    stats: () => ({ ...stats, writer: writerKey, isWriter: writerKey !== '' && writerKey === o.me, reasons: { ...stats.reasons }, details: { ...stats.details }, guard: guard ? guard.stats() : null, bytesMax, sending, hold: Math.max(0, holdUntil - clock.now()), sinceSend: sentAt ? clock.now() - sentAt : -1, pending: local.length + direct.length, assembling: assemblies.size }),
     doc: () => doc,
     rebuild,
     sendVector,

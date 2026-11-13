@@ -1,7 +1,7 @@
 {
   "id": "documents",
   "name": "Documents",
-  "version": "0.11.22",
+  "version": "0.11.23",
   "icon": "file-lines",
   "color": "orange",
   "description": "Shared notes for the {space}: session notes, handouts and plans. One person edits at a time and everyone reads along.",
@@ -57,7 +57,7 @@
       "type": "boolean",
       "scope": "environment",
       "default": false,
-      "help": "Off: one person edits a document at a time, with Edit and Done. On: a document is simply editable by everyone who may edit, up to eight people at once. This is an early version: with it on, the text is saved only while one person is editing."
+      "help": "Off: one person edits a document at a time, with Edit and Done. On: a document is simply editable by everyone who may edit, up to eight people at once. This is an early version: while several people edit, one of them saves the text, and anyone who leaves saves it too."
     }
   ]
 }
