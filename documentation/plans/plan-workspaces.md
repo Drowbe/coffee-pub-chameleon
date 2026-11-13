@@ -2,7 +2,7 @@
 
 **Audience:** Thomas decides. If he approves, server-development builds the space record, the routes, the stored last-layout record and the checks, and experience-design builds the Conference view, the owner controls and the menu entry. The stored last-layout record (decision 20) is a core change (`server/`, the stored data format): it is held for an independent read and covered by the full `npm run check`. content-manager documents after.
 
-**Status:** Draft for Thomas, 2026-11-12, by product-planner; updated 2026-11-12 with Thomas's answers to questions 2, 4 and 5 (decisions 12 to 14), to question 1 (decisions 15 to 18, the last about the collapsed call area) on 2026-11-12, to questions 3 and 6 to 12 (decisions 19 to 26) and, on 2026-11-12, to the four open points on the guest fallback, Start call, phones and In the workspace (decisions 27 to 30). Nothing here is decided except the lines marked "Thomas" and the decisions below. Nothing is built. From the feedback and from Thomas, in his words:
+**Status:** Draft for Thomas, 2026-11-12, by product-planner; updated 2026-11-12 with Thomas's answers to questions 2, 4 and 5 (decisions 12 to 14), to question 1 (decisions 15 to 18, the last about the collapsed call area) on 2026-11-12, to questions 3 and 6 to 12 (decisions 19 to 26) and, on 2026-11-12, to the four open points on the guest fallback, Start call, phones and In the workspace (decisions 27 to 30) and, on 2026-11-13, to the open points on the collapsed rail (decision 31). Nothing here is decided except the lines marked "Thomas" and the decisions below. Nothing is built. From the feedback and from Thomas, in his words:
 
 > "we've made conference (video) so secondary, there is no way to have a dedicated call without popping it out."
 
@@ -72,7 +72,7 @@ Thomas, 2026-11-12, answer to question 1 (DECIDED), after showing two screenshot
 16. **The call's menu items live on the call's own title bar menu,** not on the chat's three-dot menu: **Pop out the call**, **Call position** and the other call options. The chat's menu keeps only chat items: **Save the chat** and **Delete the chat**.
 17. **Call position gains two positions** to the existing five (Top of the column, Bottom of the column, Left of the chat, Floating window, Its own window): **Right of the chat** and **In the workspace** (the call becomes a tile in the workspace area instead of a column). What it means is set by decision 30: the same call area, sitting in the canvas area, with no new chrome.
 
-18. **The conference icon stays visible when the call area is collapsed** (Thomas: "we should also show the conf icon when the area is collapsed"). When the column is collapsed, the call's icon stays in the collapsed rail so the person can see the call area exists and reopen it with one click. While a call is active it shows the live state (a dot or the elapsed time as a badge; which one is open). This goes with decision 15.
+18. **The conference icon stays visible when the call area is collapsed** (Thomas: "we should also show the conf icon when the area is collapsed"). When the column is collapsed, the call's icon stays in the collapsed rail so the person can see the call area exists and reopen it with one click. While a call is active it shows the live state. This goes with decision 15; decision 31 settles the details.
 
 Thomas, 2026-11-12, answers to questions 3 and 6 to 12 (DECIDED). Two of them differ from the planner's suggestion (decisions 20 and 21).
 
@@ -91,6 +91,15 @@ Thomas, 2026-11-12, answers to the open points (DECIDED).
 28. **Start call with no call active** sits in two places: on the always-shown call title bar (decision 15) and as a large button in the call's own area. The call area shows a large **Start call** button when it is empty, as the Conference layout does.
 29. **Phones.** **Right of the chat** and **In the workspace** are not offered on phones. The call stays a full-screen tab with its menu.
 30. **"In the workspace" adds no new chrome.** Thomas: "We discussed this in the planning. The functionality above the chat says exactly like it is." Read as: the call keeps exactly the title bar, menu and controls it has above the chat (decisions 15 and 16). **In the workspace** only changes where that same call area sits: in the canvas area instead of a column. How it is saved and restored with an arrangement is an implementation detail for the build, not a question for Thomas. The builder reports back only if it would need new chrome or a new stored shape.
+
+Thomas, 2026-11-13, answers to the open points on the collapsed rail (DECIDED).
+
+31. **The collapsed rail (decision 18's open points).**
+    - **Where.** The conference icon sits beside the chat button in the collapsed rail.
+    - **The live state** is a small dot while a call is active. It is not the elapsed time.
+    - **What pressing it does.** It reopens the call area. It does not start a call. **Start call** is on the call title bar and in the call's own area (decisions 15 and 28), not in the rail.
+    - **Keyboard and screen reader.** It is a button in the tab order with an accessible name such as "Show the call". It says the call is active to a screen reader, as the unread badge does.
+    - **Phones are unchanged.** There is no column and no rail on a phone, so nothing is added there.
 
 ## Names
 
@@ -297,7 +306,7 @@ A call in its own window stays supported and stays the second-monitor answer: **
 
 ## Left to build, in order
 
-Each step is one try build, leaves the app working and can be checked alone. Size by job: S about a short sitting, M about half a day, L a day or more. Steps 8 to 10 come from Thomas's answer to question 1; steps 8 and 10 are small and can be built before step 1. Step 11 comes from decision 20 (the last layout on the server); it is a core change, so it is held for an independent read, and step 6 waits for it.
+Each step is one try build, leaves the app working and can be checked alone. Size by job: S about a short sitting, M about half a day, L a day or more. Steps 8 to 10 come from Thomas's answer to question 1 (step 10 is settled by decision 31); steps 8 and 10 are small and can be built before step 1. Step 11 comes from decision 20 (the last layout on the server); it is a core change, so it is held for an independent read, and step 6 waits for it.
 
 | Step | Job | Agent | Files | Size | Risk |
 |---|---|---|---|---|---|
@@ -311,7 +320,7 @@ Each step is one try build, leaves the app working and can be checked alone. Siz
 | 8 | **The call title bar, always shown, with its menu.** Draw the call title bar with no call active (title "Call", **Start call**, the call's menu) and the large **Start call** button in the call's empty area (decision 28), and the conference icon stays in the collapsed rail (decision 18); move **Pop out the call** and **Call position** from the chat's menu to the call's menu; the chat's menu keeps **Save the chat** and **Delete the chat** | experience-design | `public/space.js`, `public/style.css`, `tools/check-canvas.mjs` | S | Low |
 | 9 | **Two new positions.** **Right of the chat** and **In the workspace** in Call position, the two new remembered values, the Conference variants; not offered on phones (decision 29); **In the workspace** moves the same call area into the canvas area with no new chrome (decision 30), saved and restored with the arrangement in a way the builder chooses, reporting back only if it needs new chrome or a new stored shape | experience-design | `public/space.js`, `public/canvas.js`, `public/style.css`, `tools/check-canvas.mjs` | M | Medium (layout and canvas work); no longer waits on Thomas |
 | 11 | **The last layout on the server.** `last` in `layouts.json` (cleaned layout id and `at`, one entry per person per space), `PUT /api/spaces/:id/last-layout`, `last` in `GET .../layouts`, the clean-up in `forgetPerson`, `forgetSpace` and `remove()`, `403` for a guest, `404` for an Aside. Build it before step 6 | server-development | `server/layouts.js`, `server/index.js`, `tools/check-layouts.mjs` | M | Medium: **core change** (`server/`, stored data format); independent read, full `npm run check` |
-| 10 | **The conference icon in the collapsed rail.** The call's icon stays visible when the column is collapsed, with a live badge while a call is active; one click reopens the area (decision 18) | experience-design | `public/space.js` (the rail beside `#side-column-rail-chat`), `public/style.css`, `tools/check-canvas.mjs` | S | Low |
+| 10 | **The conference icon in the collapsed rail.** The call's icon sits beside the chat button when the column is collapsed. A small dot shows while a call is active (not the elapsed time). Pressing it reopens the call area and does not start a call. It is a button in the tab order named "Show the call" (or similar) and says the call is active to a screen reader, as the unread badge does. Phones unchanged (decisions 18 and 31) | experience-design | `public/space.js` (the rail beside `#side-column-rail-chat`), `public/style.css`, `tools/check-canvas.mjs` | S | Low |
 
 Documentation after each step is content-manager's: [architecture-navigation](../architecture/architecture-navigation.md) (the layout tabs), [architecture-canvas](../architecture/architecture-canvas.md) (the column, remembered layouts), the API document for `tabs` and `defaultLayout`, [userguide-call](../userguides/userguide-call.md), [userguide-spaces](../userguides/userguide-spaces.md), and the CHANGELOG. The Names section of `CLAUDE.md` is Thomas's.
 
@@ -325,7 +334,7 @@ Documentation after each step is content-manager's: [architecture-navigation](..
 - **Step 11.** `tools/check-layouts.mjs`: round trip of `last` for one person; a second person's `GET` never shows it and their `PUT` cannot reach it; an unknown id, a missing id and a long id refused (`400`); a guest refused (`403`); an Aside `404`; the entry removed with the person, the space and the layout it names; the file stays small after many writes (one entry). Full `npm run check`, then an independent read. A real browser round trip across two browsers is checked live in Chromium if the build allows.
 - **Step 6.** `tools/check-canvas.mjs` for the new order (pure `firstVisitLayout()` and `whatOpens()` cases: the person's `last` wins, no `last` gives today's answer, the owner's default on a first visit and for a guest, a layout that is gone, off, or hidden by the owner falls through). The guest fallback cases: a default a guest cannot use (Calendar, Map, Whiteboards, Documents, a saved layout) gives the Workspace.
 - **Step 8.** Live in Chromium: the title bar shows with no call, **Start call** is there and the large **Start call** button shows in the call's empty area, the call's menu holds the call items, the chat's menu holds only the two chat items; light and dark; the touch-target checks. Starting a call needs LiveKit: cannot be checked here.
-- **Step 10.** Live in Chromium: collapse the column, the conference icon shows in the rail with no call and with the badge in a call, one click reopens, Tab reaches it and it has an accessible name. The live badge in a real call cannot be checked here (no LiveKit).
+- **Step 10.** Live in Chromium: collapse the column, the conference icon shows beside the chat button with no call and without the dot; one press reopens the call area and does not start a call; Tab reaches it, it has an accessible name, and the active state is in its label or a live region as the unread badge does (checked in the page's accessibility tree); a phone width shows no rail and no change. The dot while a call is really active cannot be checked here (no LiveKit); a test can only set the state the page reads.
 - **Step 9.** `tools/check-canvas.mjs` for the pure placement rules (the two new values, the fallback when the column is too narrow). Live in Chromium at 1280, 900 and 641px: Right of the chat and In the workspace place the call (In the workspace with the same title bar, menu and controls), neither is offered at 390px, persist across a reload, and return cleanly to the other positions. **Cannot be checked without a real LiveKit call:** the call tile in the workspace at real size, a screen share, audio and video.
 - **Step 7.** Live at 390px (headless Chromium): the call tab is full screen, the tab bar is one tap to the work; `tools/check-narrow.mjs`, `tools/check-phone-targets.mjs`.
 - **Always:** `npm run check` and `npm run check:docs`. Not checked by any step: a real phone, a real screen reader, Firefox, Safari, a real call.
@@ -366,13 +375,10 @@ These are the facts the documents will carry, so content-manager does not guess:
 
 ## What is not decided
 
-Every numbered question is answered (decisions 12 to 26), and so are the guest fallback, Start call, phones and In the workspace (decisions 27 to 30). "Open questions for Thomas" below is empty. What is left are the points below.
+Every numbered question is answered (decisions 12 to 26), and so are the guest fallback, Start call, phones and In the workspace (decisions 27 to 30) and the collapsed rail (decision 31). "Open questions for Thomas" below is empty. What is left is one point for the builder, and it blocks nothing.
 
-Open points from decision 18 (they block step 10 only; steps 1 to 9 and 11 do not wait):
-
-- **The collapsed rail (decision 18).** Today the collapsed column is a rail with the chat button (`#side-column-rail-chat`), an unread badge (`#side-column-rail-unread`) and the faces of people (`#side-column-rail-faces`), in `public/space.js` around lines 1711 to 2000; the planner read only a search of it, not the whole collapse code. Open: whether the conference icon sits beside the chat's icon in the rail or on its own; what the live state is (a dot, or the elapsed time as a badge) and how it fits with the faces; whether **Start call** can be pressed from the rail with no call active, or the icon only reopens the area; the keyboard and aria rules (a button in the tab order, an accessible name such as "Show the call", the state said to a screen reader, as the unread badge does); phones, which have no column or rail, so the call tab is the only place, and whether the always-shown title bar needs anything there.
 - **Right of the chat** when the column is narrow: suggested to follow the Left rule (`CALL_LEFT_MIN`, falls back to Top). A suggestion for the builder of step 9; it does not block it.
 
 ## Open questions for Thomas
 
-None. All twelve questions are answered and recorded as decisions 12 to 26, and the four follow-up points as decisions 27 to 30. What is still undecided is under "What is not decided".
+None. All twelve questions are answered and recorded as decisions 12 to 26, the four follow-up points as decisions 27 to 30, and the collapsed rail as decision 31. What is still undecided is under "What is not decided".
