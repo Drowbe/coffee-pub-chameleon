@@ -14,7 +14,7 @@ export { Clock, Bus, run, FakeStore };
 export const NAMES = ['dlRichRead', 'dlRichText', 'dlRichSchema', 'dlCoeditGate', 'dlSyncSession', 'dlSyncTopic', 'dlSyncSeed', 'dlSyncSeedId', 'dlSyncElect', 'dlSyncWriterHold', 'dlSyncRoster', 'dlSyncVector', 'dlSyncB64', 'DL_SYNC',
   'dlSeedClaim', 'dlCleanSeedMarker', 'dlSeedMarkerStale', 'dlSeedMarkerKey', 'dlCoeditSave', 'dlCoSaver', 'dlCoReadStored', 'dlCoSaveDelay', 'dlCoBackoff', 'dlCoErr', 'DL_COSAVE',
   'dlSnapJoin', 'dlSnapSaver', 'dlSnapPrepare', 'dlSnapSplit', 'dlSnapHash', 'dlSnapCleanHeader', 'dlSnapCleanChunk', 'dlSnapCompaction', 'dlSnapReseed', 'DL_SNAP', 'dlSnapHeaderKey', 'dlSnapChunkKey', 'dlSyncUnb64',
-  'dlMetaOf', 'dlMetaRead', 'dlMetaSet', 'dlMetaFill', 'dlMetaSame', 'dlMetaProblem', 'DL_META', 'dlLeaseAcquire', 'dlLeaseHold', 'dlLeaseKey', 'dlCleanLease', 'DL_LEASE', 'dlSyncHashBytes', 'dlSyncClean', 'dlSeedMarkerKey', 'dlCleanPaper', 'DL', 'dlCleanDoc', 'dlCleanPage', 'dlSplit', 'dlPlanChunks', 'dlNewId', 'dlExcerpt', 'dlPreview', 'DL_PAPER_DEFAULT', 'dlDocKey', 'dlTextKey', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
+  'dlCoLockClean', 'dlCoRenamePlan', 'dlCoLockSame', 'dlCoLockRules', 'dlCoTintOf', 'dlCoInitials', 'dlCoEditorsList', 'DL_TINTS', 'dlPlanSave', 'dlMetaOf', 'dlMetaRead', 'dlMetaSet', 'dlMetaFill', 'dlMetaSame', 'dlMetaProblem', 'DL_META', 'dlLeaseAcquire', 'dlLeaseHold', 'dlLeaseKey', 'dlCleanLease', 'DL_LEASE', 'dlSyncHashBytes', 'dlSyncClean', 'dlSeedMarkerKey', 'dlCleanPaper', 'DL', 'dlCleanDoc', 'dlCleanPage', 'dlSplit', 'dlPlanChunks', 'dlNewId', 'dlExcerpt', 'dlPreview', 'DL_PAPER_DEFAULT', 'dlDocKey', 'dlTextKey', 'DL_MARKED_MATH', 'DL_MARKED_HOOKS'];
 
 export const TEXT = 'Alpha one.\n\nBeta two.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nOmega.\n';
 export const ID = 'doc12345';
@@ -60,7 +60,7 @@ export function world(src, o = {}) {
     const handle = store.as(key, { role: po.role || 'editor' });
     const read = await L.dlCoReadStored(handle, ID); // what readForEdit hands the page
     const p = { key, m, handle, ydoc: new PM.Doc(), rev: 0, savedRev: NaN, notes: [], refused: [], title: read.rec.title, how: null, lineage: [], mends: [], mended: [], queue: Promise.resolve(), left: false };
-    p.st = { id: ID, rec: read.rec, docVersion: read.version, old: read.parts, saved: { text: read.text, title: read.rec.title, paper: read.rec.paper, page: L.dlCleanPage(read.rec) }, log: [], stray: [] };
+    p.st = { id: ID, rec: read.rec, docVersion: read.version, old: read.parts, saved: { text: read.text, title: read.rec.title, paper: read.rec.paper, page: L.dlCleanPage(read.rec), lock: L.dlCoLockClean(read.rec.lock) }, log: [], stray: [] };
     p.table = L.dlRichRead(PM, read.text, lex).stored;
     p.session = L.dlSyncSession(PM, {
       doc: p.ydoc, lex, topic: L.dlSyncTopic(ID), me: key, live: m.live, editor: po.editor !== false, clock: clock.api(), config: po.config,
@@ -75,7 +75,7 @@ export function world(src, o = {}) {
     p.text = () => W.textOf(p.doc(), p.table);
     p.saver = L.dlCoSaver({
       store: handle, st: p.st,
-      io: { current: () => { if (useMeta) { const m = L.dlMetaRead(p.doc(), p.st.saved); return { text: p.text(), title: m.title, paper: m.paper, page: m.page, rev: p.rev }; } return { text: p.text(), title: p.title, paper: p.st.saved.paper, page: p.st.saved.page, rev: p.rev }; }, onStored: (t) => { p.table = L.dlRichRead(PM, t, lex).stored; }, me: key, name: key, now: () => new Date(clock.now()).toISOString(), nowMs: () => clock.now(), fresh: () => L.dlNewId(Math.random), lex, sleep: (ms) => new Promise((r) => clock.set(r, ms)) },
+      io: { current: () => { if (useMeta) { const m = L.dlMetaRead(p.doc(), p.st.saved); return { text: p.text(), title: m.title, paper: m.paper, page: m.page, lock: m.lock, rev: p.rev }; } return { text: p.text(), title: p.title, paper: p.st.saved.paper, page: p.st.saved.page, rev: p.rev }; }, onStored: (t) => { p.table = L.dlRichRead(PM, t, lex).stored; }, me: key, name: key, now: () => new Date(clock.now()).toISOString(), nowMs: () => clock.now(), fresh: () => L.dlNewId(Math.random), lex, sleep: (ms) => new Promise((r) => clock.set(r, ms)) },
       isWriter: () => p.ready && p.session.isWriter(),
       dirty: () => p.ready && p.rev !== p.savedRev,
       alone: () => p.session.roster.others().length === 0,

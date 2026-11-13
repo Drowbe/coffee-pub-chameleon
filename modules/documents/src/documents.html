@@ -39,6 +39,12 @@
     </div>
   </section>
   <section id="editor" class="view" aria-label="Editing" hidden>
+    <div id="co-bar" class="co-bar col" hidden><ul id="co-editors" class="co-editors" aria-label="People editing this document"></ul></div>
+    <div id="co-lock" class="lost col" role="status" hidden>
+      <p id="co-lock-text"></p>
+      <p id="co-lock-why" class="meta" hidden></p>
+      <div class="bar"><button type="button" class="btn btn-small" id="co-unlock" hidden>Unlock</button></div>
+    </div>
     <div id="lost" class="lost col" role="alert" hidden>
       <p id="lost-text"></p>
       <div class="bar">

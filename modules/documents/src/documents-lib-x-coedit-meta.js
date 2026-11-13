@@ -20,12 +20,36 @@
 const DL_META = Object.freeze({
   root: 'meta',
   keys: Object.freeze(['title', 'paper', 'layout', 'pageSize', 'pageNumbers']),
+  // THE LOCK (step 4c): a sixth key that may be there or not. { by: <person key>, name: <display name>, at: <time, ms> }. A locked document is read-only for
+  // everyone. The gate checks the shape only: it cannot know a role, so the lock is a courtesy guard that an honest page keeps and a hostile editor can bypass.
+  optional: Object.freeze(['lock']),
 });
+const DL_LOCK_NAME_MAX = 60;
+
+// The lock as stored (in the map and in the record): { by, name, at } or null. Exactly these three keys, a plain object, nothing inherited.
+function dlCoLockClean(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v) || Object.getPrototypeOf(v) !== Object.prototype) return null;
+  const keys = Object.keys(v);
+  if (keys.length !== 3 || !keys.includes('by') || !keys.includes('name') || !keys.includes('at')) return null;
+  if (typeof v.by !== 'string' || !/^[A-Za-z0-9._:-]{1,64}$/.test(v.by)) return null;
+  if (typeof v.name !== 'string' || v.name.length > DL_LOCK_NAME_MAX || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(v.name)) return null;
+  if (typeof v.at !== 'number' || !Number.isFinite(v.at)) return null;
+  return { by: v.by, name: v.name, at: v.at };
+}
+const dlCoLockSame = (a, b) => (!a && !b) || Boolean(a && b && a.by === b.by && a.at === b.at && a.name === b.name);
+// May this person lock or unlock? `me`: their key; `role`: the host's word for their role ('owner' and 'admin' always may unlock); `canType`: they are an editor
+// of this document. -> { lock, unlock, reason } (reason: why unlock is not offered, in plain words; `ownerWord` is the environment's word for an owner, with "an").
+function dlCoLockRules({ me, role, canType, lock, ownerWord }) {
+  if (!canType) return { lock: false, unlock: false, reason: '' };
+  if (!lock) return { lock: true, unlock: false, reason: '' };
+  const may = role === 'owner' || role === 'admin' || lock.by === me;
+  return { lock: false, unlock: may, reason: may ? '' : `Only ${lock.name} or ${ownerWord || 'someone in charge'} can unlock.` };
+}
 
 // The meta of a record: -> { title, paper, layout, pageSize, pageNumbers }, cleaned.
 function dlMetaOf(rec) {
   const page = dlCleanPage(rec);
-  return { title: rec && typeof rec.title === 'string' ? rec.title : '', paper: dlCleanPaper(rec && rec.paper), layout: page.layout, pageSize: page.pageSize, pageNumbers: page.pageNumbers };
+  return { title: rec && typeof rec.title === 'string' ? rec.title : '', paper: dlCleanPaper(rec && rec.paper), layout: page.layout, pageSize: page.pageSize, pageNumbers: page.pageNumbers, lock: (rec && dlCoLockClean(rec.lock)) || null };
 }
 // Why this value may not be a key of the map ('' when it may).
 function dlMetaValueProblem(key, v) {
@@ -39,16 +63,17 @@ function dlMetaValueProblem(key, v) {
   if (key === 'layout') return v === 'fluid' || v === 'paper' ? '' : 'layout is not fluid or paper';
   if (key === 'pageSize') return v === 'letter' || v === 'a4' ? '' : 'pageSize is not letter or a4';
   if (key === 'pageNumbers') return typeof v === 'boolean' ? '' : 'pageNumbers is not true or false';
+  if (key === 'lock') return dlCoLockClean(v) ? '' : 'lock is not who and when';
   return 'a key the map does not have';
 }
-// Is the map (a Y.Map) only what it may be? -> '' or the first problem. The map holds at most five keys; a type inside it, or an entry outside it, is refused.
+// Is the map (a Y.Map) only what it may be? -> '' or the first problem. The map holds at most six keys (the lock is the optional one); a type inside it, or an entry outside it, is refused.
 function dlMetaProblem(map) {
   if (map._start !== null && map._start !== undefined) return 'something outside the keys';
   let n = 0;
   for (const key of map.keys()) {
     n += 1;
-    if (n > DL_META.keys.length) return 'too many keys';
-    if (!DL_META.keys.includes(key)) return 'a key the map does not have';
+    if (n > DL_META.keys.length + DL_META.optional.length) return 'too many keys';
+    if (!DL_META.keys.includes(key) && !DL_META.optional.includes(key)) return 'a key the map does not have';
     const why = dlMetaValueProblem(key, map.get(key));
     if (why) return why;
   }
@@ -65,15 +90,20 @@ function dlMetaRead(ydoc, fallback) {
     title: pick('title', typeof fb.title === 'string' ? fb.title : ''),
     paper: pick('paper', dlCleanPaper(fb.paper)),
     page: { layout: pick('layout', fp.layout), pageSize: pick('pageSize', fp.pageSize), pageNumbers: pick('pageNumbers', fp.pageNumbers) },
+    lock: dlCoLockClean(map.get('lock')),
     missing,
   };
 }
-// Sets keys of the map in ONE transaction (origin 'dl-meta'); a key already holding the value is left alone. `fields`: { key: value }. -> how many keys changed.
+// Sets keys of the map in ONE transaction (origin 'dl-meta'); a key already holding the value is left alone. `fields`: { key: value }; `lock: null` removes the lock.
+// -> how many keys changed.
 function dlMetaSet(ydoc, fields, origin) {
   const map = ydoc.getMap(DL_META.root);
-  const todo = Object.keys(fields).filter((k) => DL_META.keys.includes(k) && dlMetaValueProblem(k, fields[k]) === '' && map.get(k) !== fields[k]);
+  const todo = Object.keys(fields).filter((k) => {
+    if (k === 'lock') return fields.lock === null ? map.has('lock') : dlMetaValueProblem('lock', fields.lock) === '' && !dlCoLockSame(dlCoLockClean(map.get('lock')), fields.lock);
+    return DL_META.keys.includes(k) && dlMetaValueProblem(k, fields[k]) === '' && map.get(k) !== fields[k];
+  });
   if (!todo.length) return 0;
-  ydoc.transact(() => { for (const k of todo) map.set(k, fields[k]); }, origin || 'dl-meta');
+  ydoc.transact(() => { for (const k of todo) { if (k === 'lock' && fields.lock === null) map.delete('lock'); else map.set(k, k === 'lock' ? { by: fields.lock.by, name: fields.lock.name, at: fields.lock.at } : fields[k]); } }, origin || 'dl-meta');
   return todo.length;
 }
 // The record's values for the keys the document lacks (a document seeded without them, or opened from an older copy).
@@ -83,6 +113,7 @@ function dlMetaFill(ydoc, rec) {
   const all = dlMetaOf(rec);
   const fields = {};
   for (const k of miss) fields[k] = all[k];
+  if (all.lock && !ydoc.getMap(DL_META.root).has('lock')) fields.lock = all.lock; // a document made from the record takes the record's lock; one that has the keys already is not given it back
   return dlMetaSet(ydoc, fields, 'dl-meta');
 }
 // Do the document's keys all hold what the record holds? (A copy of the state is only trusted as the document when they do: documents-lib-w-coedit-snapshot.js.)
@@ -90,7 +121,49 @@ function dlMetaSame(ydoc, rec) {
   const m = dlMetaRead(ydoc, null);
   if (m.missing.length) return false;
   const all = dlMetaOf(rec);
-  return m.title === all.title && m.paper === all.paper && m.page.layout === all.layout && m.page.pageSize === all.pageSize && m.page.pageNumbers === all.pageNumbers;
+  return m.title === all.title && m.paper === all.paper && m.page.layout === all.layout && m.page.pageSize === all.pageSize && m.page.pageNumbers === all.pageNumbers && dlCoLockSame(m.lock, all.lock);
+}
+
+// A document renamed from the list while it is open here: the title the writer puts into the shared settings, or '' for none. `recTitle`: the record's title now;
+// `savedTitle`: what this page last read or wrote; `metaTitle`: the shared title; `applied`: the record title this page already applied. Only the writer acts;
+// a title the page already saved, already shows or already applied is not a rename (so a page's own save never starts it again).
+function dlCoRenamePlan({ recTitle, savedTitle, metaTitle, applied, writer, editor }) {
+  if (!writer || !editor || typeof recTitle !== 'string' || !recTitle) return '';
+  if (recTitle === savedTitle || recTitle === metaTitle || recTitle === applied) return '';
+  return dlMetaValueProblem('title', recTitle) === '' ? recTitle : '';
+}
+
+// ---- the editors list (presence, step 4c) -----------------------------------------------------------------------------------------------------
+// A person's colour: the host's rule (public/sdk/host.js personTint: 32-bit FNV-1a of the key, modulo 8 into this list), so a person has the same colour here as
+// in every module. The page uses host.live.tint when the host offers it; this is the same rule for the tests and for a host that does not.
+const DL_TINTS = Object.freeze(['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red']);
+function dlCoTintOf(key) {
+  const s = String(key == null ? '' : key);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return DL_TINTS[h % DL_TINTS.length];
+}
+// Up to two capital letters: the first letters of the first two words of the name; with no name, the first two characters of the key.
+function dlCoInitials(name, key) {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const from = words.length ? words.slice(0, 2).map((w) => Array.from(w)[0]).join('') : Array.from(String(key || '?')).slice(0, 2).join('');
+  return from.toLocaleUpperCase('en');
+}
+// Who is editing this document now, in the order they are shown: this person first (when they are an editor), then the others by key (the same on every page).
+// `others`: the roster's keys (editors only, never a reader); `names`: { key: name } from the host's list of people (a key with no name shows its initials);
+// `lockBy`: the key of the person who locked it or '' (`lockNote`: the words for the tooltip); `tint(key)`: the colour name. -> [{ key, name, initials, tint, me, locker, label }], at most `max`.
+function dlCoEditorsList({ me, myName, meEditor, others, names, lockBy, lockNote, tint, max }) {
+  const pick = tint || dlCoTintOf;
+  const limit = Number.isInteger(max) && max > 0 ? max : 8;
+  const keys = [...new Set((others || []).filter((k) => typeof k === 'string' && k && k !== me))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const all = (meEditor ? [me] : []).concat(keys);
+  const nameOf = (k) => (k === me ? myName : names && Object.prototype.hasOwnProperty.call(names, k) ? names[k] : '') || '';
+  return all.slice(0, limit).map((key) => {
+    const name = String(nameOf(key)).slice(0, 60);
+    const locker = Boolean(lockBy) && key === lockBy;
+    const shown = name || 'Someone';
+    return { key, name: shown, initials: dlCoInitials(name, key), tint: pick(key), me: key === me, locker, label: `${shown}${key === me ? ' (you)' : ''}${locker && lockNote ? `, ${lockNote}` : ''}` };
+  });
 }
 
 // ---- the edit window -----------------------------------------------------------------------------------------------------------------------
