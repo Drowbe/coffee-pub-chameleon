@@ -184,6 +184,8 @@
   async function removeForGood(id, quiet) {
     for (const it of await host.storage.list(`text:${id}:`)) await host.storage.delete(it.key);
     await host.storage.delete(dlTagsKey(id)).catch(() => {});
+    // What co-editing keeps beside the document (the seed marker, and later the snapshot) goes with it; a failure here never stops the delete.
+    try { for (const it of await host.storage.list(`ydoc:${id}:`)) await host.storage.delete(it.key).catch(() => {}); await host.storage.delete(`ydoc:${id}`).catch(() => {}); } catch (err) { /* left behind, harmless */ }
     tagsOf.delete(id);
     await host.storage.delete(dlTrashKey(id));
     trash.delete(id);
@@ -907,7 +909,8 @@
 
   // ---- co-editing (only with the `coediting` switch on; the channel is documents-lib-u-coedit-sync.js) ----------------------------------
   // A document is simply editable for anyone with `edit`: no Edit, no Done, no lock. The text is a Y.Doc per open document; the editor draws it (ySync),
-  // every remote update goes through the gate (dlSyncSession), and the text is saved by the old save path while one person is editing (4b brings the writer).
+  // every remote update goes through the gate (dlSyncSession). The text is saved by the writer (the lowest key among the synced editors) a quiet beat after
+  // the last change, and by every page that leaves (documents-lib-v-coedit-save.js); a page that is alone is the writer.
   const joining = () => Boolean(ed && ed.co && !ed.co.ready); // no editor is mounted yet: nothing that edits may run
   const coAlone = () => !ed || !ed.co || ed.co.session.roster.others().length === 0;
   function coStatus() {
@@ -915,15 +918,17 @@
     if (!c.ready) return 'Joining…';
     if (!c.editor) return dlSyncFullNote(DL_SYNC.editorsMax);
     if (c.channel === 'closed') return 'Offline. Your changes are kept here.';
+    if (c.saver.state.failed) return 'Could not save. Your changes are kept here.';
     const bad = c.session.status();
     if (bad) return bad.slice(0, 60);
-    return coAlone() ? dlSaveWord({ dirty: dirtyNow(), saving: ed.saving, failed: ed.failed }) : 'Shared';
+    if (c.saver.state.saving) return 'Saving';
+    return coAlone() ? dlSaveWord({ dirty: dirtyNow(), saving: false, failed: false }) : 'Shared';
   }
   // The channel's counters, readable on the page (data-co-stats) for the tests; painted on every change and twice a second.
   function coStatsPaint() {
     try {
       const st = ed.co.session.stats();
-      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel });
+      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel, save: { ...ed.co.saver.counts, textRev: ed.rec.textRev || 0, heard: ed.textHeard || 0, version: ed.docVersion, failed: ed.co.saver.state.failed, saving: ed.co.saver.state.saving, hold: ed.co.saver.hold(), ops: ed.co.ops, writes: ed.co.writeLog.filter((t) => Date.now() - t < 60000).length } });
     } catch (err) { /* only for the tests */ }
   }
   async function openCoEditor(id) {
@@ -938,12 +943,18 @@
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
       timer: 0, beat: 0, queue: Promise.resolve(), co: null,
     };
-    const c = { ydoc, text: got.text, ready: false, editor: true, box: false, channel: host.live.state, richWas: rich, wasAlone: true, session: null };
+    const c = {
+      ydoc, text: got.text, ready: false, editor: true, box: false, channel: host.live.state, richWas: rich, wasWriter: false, session: null,
+      ops: { get: 0, set: 0, list: 0, delete: 0 }, writeLog: [], saver: null,
+    };
+    c.store = coStore(c);
     ed.co = c;
+    c.saver = coSaver(c);
     rich = true;
     c.session = dlSyncSession(DlPM, {
       doc: ydoc, lex, topic: dlSyncTopic(id), me, live: host.live, editor: true,
-      seed: (d) => dlSyncSeed(DlPM, d, dlRichRead(DlPM, got.text, lex).doc, id, got.text),
+      seed: (d, sid) => dlSyncSeed(DlPM, d, dlRichRead(DlPM, got.text, lex).doc, id, got.text, sid),
+      marker: { store: c.store, doc: id, seedId: dlSyncSeedId(id, got.text) },
       onRebuild: (nd) => coRebuilt(nd),
       onState: () => coChanged(),
       onChannel: (s) => { c.channel = s; if (s === 'open') c.session.reconnected(); coChanged(); },
@@ -980,10 +991,21 @@
     if (c.editor && r.past(me, c.session.admitted())) coEditorSet(false);
     else if (!c.editor && r.admit()) coEditorSet(true);
     if (c.box && r.others().length) { note('Others are editing. The Markdown box is off. Your text is in the document.'); coSetRich(true); }
-    const alone = coAlone();
-    if (alone && !c.wasAlone) schedule(true);
-    c.wasAlone = alone;
+    const writer = c.session.isWriter();
+    if (writer && !c.wasWriter) schedule(false); // this page writes the text now: whatever is not saved yet goes after the quiet beat
+    c.wasWriter = writer;
     renderStatus();
+  }
+  // host.storage as the co-editing code sees it, counting what it does (data-co-stats): reads, and writes with their times (the module may write 240 a minute).
+  function coStore(c) {
+    const s = host.storage;
+    const write = (k) => { c.ops[k] += 1; c.writeLog.push(Date.now()); if (c.writeLog.length > 400) c.writeLog.splice(0, 200); };
+    return {
+      get: (key, o) => { c.ops.get += 1; return s.get(key, o); },
+      list: (prefix, o) => { c.ops.list += 1; return s.list(prefix, o); },
+      set: (key, value, o) => { write('set'); return s.set(key, value, o); },
+      delete: (key, o) => { write('delete'); return s.delete(key, o); },
+    };
   }
   function coEditorSet(on) {
     const c = ed.co;
@@ -1047,15 +1069,31 @@
     }
     coChanged();
   }
-  // The save lost the race for the small record: look at the record as it is now and save against it (the lock is not in play here).
-  async function coRebase() {
+  // The saver of a shared document (dlCoSaver): the writer's save a quiet beat after the last change, and every page's save on the way out.
+  function coSaver(c) {
     const mine = ed;
-    try {
-      const r = await readForEdit(mine.id);
-      if (ed !== mine) return;
-      mine.rec = r.rec; mine.docVersion = r.version; mine.old = r.got.parts;
-      schedule(true);
-    } catch (err) { /* the next save tries again */ }
+    return dlCoSaver({
+      store: c.store, st: mine,
+      io: {
+        current: () => { const cur = snapshot(); sayInexact(false); return cur; },
+        onStored: (text) => { if (ed === mine && !c.box) ed.editor.setText(text); }, // the editor writes untouched blocks as they are stored
+        me, name: myName, now: () => new Date().toISOString(), nowMs: () => Date.now(), fresh: () => dlNewId(Math.random), lex, sleep,
+      },
+      isWriter: () => c.ready && c.session.isWriter(),
+      dirty: () => Boolean(ed === mine && !joining() && dirtyNow()),
+      alone: () => coAlone(),
+      serial: (fn) => (ed === mine ? serial(fn) : Promise.resolve('lost')),
+      drain: (ms) => c.session.drain(ms),
+      onSaved: (rev) => {
+        if (ed !== mine) return;
+        mine.savedRev = rev;
+        remember({ key: dlDocKey(mine.id), value: mine.rec });
+        if (!c.box) mine.editor.setText(mine.saved.text); // the next write matches blocks against what is stored now
+      },
+      onChange: () => { if (ed === mine) setStatus(); },
+      note,
+      refused: (why) => note(why === 'title' ? 'Give the document a title.' : why === 'long' ? 'This document is too long. Split it into two.' : 'This document was deleted. Your changes are kept here.'),
+    });
   }
   async function leaveCo() {
     const mine = ed;
@@ -1064,7 +1102,8 @@
     let done = false;
     try {
       clearTimeout(mine.timer);
-      try { if (mine.co.ready && coAlone()) await saveNow(); } catch (err) { /* the text stays in the other pages, or is lost with this one */ }
+      // Every page that leaves saves once (and stays, with its text on the screen, if that cannot be done and no one else holds the text).
+      if (mine.co.ready && (await mine.co.saver.leave()) === 'stay') return;
       if (ed !== mine) { done = true; return; }
       stopEditing(); // while joining there is no editor and nothing to save: the session just stops
       closeDoc();
@@ -1073,6 +1112,7 @@
   }
   function coClose(c) {
     clearInterval(c.statsTimer);
+    c.saver.stop();
     c.session.stop();
     try { c.session.doc().destroy(); } catch (err) { /* already gone */ }
     rich = c.richWas;
@@ -1124,11 +1164,11 @@
 
   // The commit: the changed chunks, then the small record with rev + 1 under the version read. -> 'saved' | 'conflict' | 'failed' |
   // 'title' | 'long' | 'lost'.
-  function saveNow() {
+  function saveNow(leave) {
+    if (ed && ed.co) return ed.co.saver.save(leave);
     return serial(async () => {
       if (!ed || ed.lost) return 'lost';
       if (joining()) return 'saved'; // nothing is shown yet, so nothing to save
-      if (ed.co && !coAlone()) return 'saved'; // 4a: the text is saved while one person is editing (the writer comes in 4b)
       const cur = snapshot();
       sayInexact(false);
       if (!cur.changed) { ed.savedRev = cur.rev; return 'saved'; }
@@ -1152,7 +1192,7 @@
       } catch (err) {
         ed.saving = false;
         ed.stray.push(...wrote);
-        if (dlCommitResult(err) === 'conflict') { if (ed.co) { await coRebase(); return 'conflict'; } loseLock(); return 'conflict'; }
+        if (dlCommitResult(err) === 'conflict') { loseLock(); return 'conflict'; }
         ed.failed = true; setStatus();
         return 'failed';
       }
@@ -1173,7 +1213,7 @@
     if (!ed || ed.lost || joining()) return;
     clearTimeout(ed.timer);
     if (ed.refused) return;
-    if (ed.co && !coAlone()) return;
+    if (ed.co) { ed.co.saver.plan(force); return; }
     const d = dlAutosaveDelay({ now: Date.now(), lastKey: ed.lastKey, lastSave: ed.lastSave, dirty: dirtyNow(), force: Boolean(force) });
     if (d === null) return;
     const mine = ed;
@@ -1182,6 +1222,7 @@
   function typed() {
     if (!ed || ed.lost) return;
     ed.lastKey = Date.now(); ed.refused = '';
+    if (ed.co) { ed.co.saver.changed(); setStatus(); return; }
     setStatus(); schedule(false);
   }
 
@@ -1547,7 +1588,8 @@
     if (doc.visibilityState === 'hidden') schedule(true);
     else if (ed.co) schedule(true); else serial(refreshLock).then(() => schedule(true)).catch(() => {});
   });
-  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow().catch(() => {}); if (ed.co) ed.co.session.stop(); } });
+  // Closing the page: a save is started and may not finish (the SDK's storage calls have no keepalive); the other pages and the next save are the repair.
+  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow(true).catch(() => {}); if (ed.co) ed.co.session.stop(); } });
 
   // The page side of Print, Save as Markdown file and Open Markdown file (the rules are in documents-lib-u-output.js).
   // env: { current, create, open, afterOpen }
