@@ -12,8 +12,9 @@
 // adopted. Different: this page's state is the merged one (it holds everything this page has seen), so it is written under the new version. A 409 on the
 // record means a third page committed first: read again and go round (DL_COSAVE.tries times); a page that is still losing reports 'busy' and the page
 // asks again a moment later. Two pages that hold the same state make the same text, so one of them finds the stored text equal and writes nothing.
-// The title, the paper and the page layout are not in the shared document yet: a page writes its own only if it changed it since it last read the
-// record; otherwise the stored one stays (a save never puts an old title back).
+// The title, the paper and the page layout come from the shared document's meta map (documents-lib-x-coedit-meta.js; the page hands them in as io.current()).
+// A page writes a field only if it differs from what this page last read or wrote; otherwise the stored one stays (a save never puts an old title back).
+// A save that finds nothing to write ('same') still takes the fields it just compared as read, so a page that heard a rename is not dirty for ever.
 //
 // textREV. The record carries `textRev`: a counter that every co-editing save bumps (the old saves leave it as it is). It lives in the record, not in a key of
 // its own, because the record is the commit: the counter and the text change together or not at all, it costs no extra write (a module may write 240
@@ -106,6 +107,14 @@ async function dlCoeditSave(store, st, io) {
     paper: cur.paper !== st.saved.paper ? cur.paper : st.rec.paper,
     page: dlSamePage(cur.page, st.saved.page) ? dlCleanPage(st.rec) : cur.page,
   });
+  const adopt = (cur) => { // the page's own fields count as read from here on, whether they were written or found equal to the stored ones
+    st.saved = {
+      text: cur.text,
+      title: cur.title !== st.saved.title ? cur.title : st.saved.title,
+      paper: cur.paper !== st.saved.paper ? cur.paper : st.saved.paper,
+      page: dlSamePage(cur.page, st.saved.page) ? st.saved.page : cur.page,
+    };
+  };
   const key = dlDocKey(st.id);
   for (let round = 0; round < DL_COSAVE.tries; round += 1) {
     let cur = io.current();
@@ -123,11 +132,11 @@ async function dlCoeditSave(store, st, io) {
       const mine = fieldsOf(cur);
       st.saved = { ...st.saved, text: read.text };
       if (cur.text === read.text && mine.title === read.rec.title && mine.paper === read.rec.paper && dlSamePage(mine.page, read.rec)) {
-        sweep(); out.status = 'same'; out.rev = cur.rev; out.adopted = true; return out; // the stored text is this text: nothing to write
+        adopt(cur); sweep(); out.status = 'same'; out.rev = cur.rev; out.adopted = true; return out; // the stored text is this text: nothing to write
       }
     }
     const mine = fieldsOf(cur);
-    if (cur.text === st.saved.text && mine.title === st.rec.title && mine.paper === st.rec.paper && dlSamePage(mine.page, st.rec)) { sweep(); out.status = 'same'; out.rev = cur.rev; return out; }
+    if (cur.text === st.saved.text && mine.title === st.rec.title && mine.paper === st.rec.paper && dlSamePage(mine.page, st.rec)) { adopt(cur); sweep(); out.status = 'same'; out.rev = cur.rev; return out; }
     const plan = dlPlanSave({ old: st.old, text: cur.text, title: mine.title, paper: mine.paper, page: mine.page, rec: st.rec, me: io.me, name: io.name, now: io.now(), fresh: io.fresh, lex: io.lex });
     if (!plan.ok) { out.status = plan.reason; return out; }
     plan.record.textRev = Math.min(1e9, (Number(st.rec.textRev) || 0) + 1);

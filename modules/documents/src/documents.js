@@ -58,6 +58,10 @@
   let noteTimer = 0;
   const locks = new Map(); // id -> { rec, version, seenAt }: the locks heard, with when this page saw them change
   let ed = null; // the editing session, or null
+  // Shared documents only (the `coediting` switch): this window's token for the person's one edit window, and the read-only view of a document edited elsewhere.
+  const OTHER_WINDOW = 'You are editing this document in another window.';
+  const pageTab = dlNewId(Math.random, 12);
+  let otherWindow = null; let otherWhy = OTHER_WINDOW; let otherTimer = 0; let coOpening = false;
   const tagsOf = new Map(); // id -> the tag ids of that document (cleaned; a dead id is dropped when shown)
   const knownTags = new Map(); // the space's tags now: id -> { id, name, color }
   let filterTags = []; // the tags chosen in the list's filter (not stored)
@@ -369,9 +373,10 @@
     sheet.dataset.ink = inks.get(p.id);
   }
   function choosePaper(id) {
-    if (!ed || ed.lost || ed.paper === dlCleanPaper(id)) return;
+    if (!ed || ed.lost || coReadOnly() || ed.paper === dlCleanPaper(id)) return;
     ed.paper = dlCleanPaper(id);
     paintPaper($('editor').querySelector('.sheet'), ed.paper);
+    coMetaPush({ paper: ed.paper });
     typed();
   }
   function paperMenu(e) {
@@ -478,7 +483,7 @@
     if (r.bottom > v.bottom - 24) $('editor').scrollTop += r.bottom - v.bottom + 24;
   }
   function chooseLayout(v) {
-    if (!ed || ed.lost || joining()) return;
+    if (!ed || ed.lost || joining() || coReadOnly()) return;
     const layout = dlCleanLayout(v);
     if (ed.page.layout === layout) return;
     ed.page = { ...ed.page, layout };
@@ -486,17 +491,18 @@
   }
   function pageChanged() {
     paintPage($('editor').querySelector('.sheet'), ed.page);
+    coMetaPush({ layout: ed.page.layout, pageSize: ed.page.pageSize, pageNumbers: ed.page.pageNumbers });
     typed();
     renderChrome();
     ed.editor.focus();
   }
   function choosePageSize(id) {
-    if (!ed || ed.lost || ed.page.pageSize === dlCleanPageSize(id)) return;
+    if (!ed || ed.lost || coReadOnly() || ed.page.pageSize === dlCleanPageSize(id)) return;
     ed.page = { ...ed.page, pageSize: dlCleanPageSize(id) };
     pageChanged();
   }
   function togglePageNumbers() {
-    if (!ed || ed.lost) return;
+    if (!ed || ed.lost || coReadOnly()) return;
     ed.page = { ...ed.page, pageNumbers: !ed.page.pageNumbers };
     pageChanged();
   }
@@ -644,10 +650,11 @@
     paginateRead();
     $('read').scrollTop = top;
   }
-  function openDoc(id) {
+  function openDoc(id, other) {
     if (!docs.has(id)) return;
-    if (coediting && canEdit && host.live) { openCoEditor(id).catch((err) => { note(cleanMsg(err)); }); return; }
+    if (coediting && canEdit && host.live && !other) { openCoDoc(id).catch((err) => { note(cleanMsg(err)); }); return; }
     openId = id; shownRev = 0;
+    otherWindow = other ? id : null;
     $('list').hidden = true; $('read').hidden = false;
     $('renamer').hidden = true;
     updateEditButton();
@@ -660,7 +667,7 @@
     renderChrome();
     $('page').focus();
   }
-  function closeDoc() { closeTagPicker(); openId = null; $('read').hidden = true; $('list').hidden = false; render(); }
+  function closeDoc() { closeTagPicker(); openId = null; otherWindow = null; clearTimeout(otherTimer); $('read').hidden = true; $('list').hidden = false; render(); }
 
   // ---- wiring --------------------------------------------------------------------------------------------------------------
   $('make-cancel').addEventListener('click', () => { $('make').hidden = true; });
@@ -699,7 +706,7 @@
   }
   function afterChange() {
     if (tagPicker && (openId || ed)) tagPicker.set(shownTags(ed ? ed.id : openId));
-    if (ed) { hearLock(); return; }
+    if (ed) { if (ed.co) coRecord(); else hearLock(); return; }
     if (openId) {
       updateEditButton();
       paintTags();
@@ -752,6 +759,7 @@
         for (const p of ['doc:', 'tags:', '_lock:', '_trash:']) for (const item of read[p]) { remember(item); if (p === '_lock:') seen.add(idOf(item.key, p)); }
         for (const id of [...locks.keys()]) if (!seen.has(id) && !(ed && id === ed.id)) locks.delete(id);
         if (ed && mine && !seen.has(ed.id)) locks.set(ed.id, mine);
+        if (ed && ed.co) coRecord();
         if (plan.checkLock) { if (ed && ed.co) schedule(true); else { hearLock(); serial(refreshLock).then(() => schedule(true)).catch(() => {}); } } // a lost lock is noticed now
         else if (plan.closeReading) { note('This document was deleted.'); closeDoc(); } else if (plan.redrawReading) { updateEditButton(); paintTags(); draw(openId).catch(() => {}); } else if (plan.redrawList) { render(); $('list').scrollTop = top; } else if (openId) { updateEditButton(); paintTags(); }
       } while (resyncAgain);
@@ -774,6 +782,7 @@
   let why = '';
   function updateEditButton() {
     if (!canEdit || !openId || ed) return;
+    if (otherWindow === openId) { editOff = true; why = otherWhy; renderChrome(); return; } // read only here: this person edits in another window
     const l = liveLock(openId);
     const st = dlLockEditState({ canEdit, me, rec: l && l.rec, fresh: Boolean(l), mine: false });
     editOff = !st.enabled;
@@ -915,6 +924,9 @@
   const coAlone = () => !ed || !ed.co || ed.co.session.roster.others().length === 0;
   function coStatus() {
     const c = ed.co;
+    if (c.dead === 'gone') return 'This document was deleted.';
+    if (c.dead === 'window') return OTHER_WINDOW;
+    if (c.dead === 'lineage') return 'This document was updated. Reopening…';
     if (!c.ready) return 'Joining…';
     if (!c.editor) return dlSyncFullNote(DL_SYNC.editorsMax);
     if (c.channel === 'closed') return 'Offline. Your changes are kept here.';
@@ -928,10 +940,44 @@
   function coStatsPaint() {
     try {
       const st = ed.co.session.stats();
-      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel, save: { ...ed.co.saver.counts, textRev: ed.rec.textRev || 0, heard: ed.textHeard || 0, version: ed.docVersion, failed: ed.co.saver.state.failed, saving: ed.co.saver.state.saving, hold: ed.co.saver.hold(), snap: { ...ed.co.snap.counts, have: ed.co.snap.state.have, running: ed.co.snap.state.running }, ops: ed.co.ops, writes: ed.co.writeLog.filter((t) => Date.now() - t < 60000).length } });
+      $('app').dataset.coStats = JSON.stringify({ ...st, guard: undefined, editors: ed.co.session.roster.others().length, editor: ed.co.editor, box: ed.co.box, shared: ed.co.session.doc().getXmlFragment('prosemirror').length, shown: ed.editor ? ed.editor.state().doc.childCount : -1, textLen: ed.co.text.length, channel: ed.co.channel, dead: ed.co.dead, lease: ed.co.lease ? ed.co.lease.held() : null, save: { ...ed.co.saver.counts, textRev: ed.rec.textRev || 0, heard: ed.textHeard || 0, version: ed.docVersion, failed: ed.co.saver.state.failed, saving: ed.co.saver.state.saving, hold: ed.co.saver.hold(), snap: { ...ed.co.snap.counts, have: ed.co.snap.state.have, running: ed.co.snap.state.running }, ops: ed.co.ops, writes: ed.co.writeLog.filter((t) => Date.now() - t < 60000).length } });
     } catch (err) { /* only for the tests */ }
   }
-  async function openCoEditor(id) {
+  // ---- one person, one window (documents-lib-x-coedit-meta.js: the edit window) ----------------------------------------------------------
+  // The server does not send a person's live messages to the person's other sessions, so a second window of the same person could not hear the first: it
+  // opens the document to read only, says so, and asks again for the key every few seconds (the other window closed: this one edits).
+  async function openCoDoc(id) {
+    if (ed || coOpening) return;
+    coOpening = true;
+    try {
+      const r = await dlLeaseAcquire(host.storage, { doc: id, me, tab: pageTab, now: () => Date.now(), sleep });
+      if (ed) { if (r.won) host.storage.delete(dlLeaseKey(id, me), { version: r.version }).catch(() => {}); return; }
+      if (!r.won) {
+        otherWhy = r.error ? 'Could not start editing. Trying again.' : OTHER_WINDOW;
+        openDoc(id, true);
+        note(otherWhy);
+        coWatchWindow(id);
+        return;
+      }
+      try { await openCoEditor(id, r); } catch (err) { host.storage.delete(dlLeaseKey(id, me), { version: r.version }).catch(() => {}); throw err; }
+    } finally { coOpening = false; }
+  }
+  // The read-only view of a document edited in another window: ask for the key again, and open the editor when it is free.
+  function coWatchWindow(id) {
+    clearTimeout(otherTimer);
+    otherTimer = setTimeout(async () => {
+      if (!$('app') || openId !== id || otherWindow !== id || ed) return;
+      const r = await dlLeaseAcquire(host.storage, { doc: id, me, tab: pageTab, now: () => Date.now(), sleep });
+      if (!$('app') || openId !== id || otherWindow !== id || ed) { if (r.won) host.storage.delete(dlLeaseKey(id, me), { version: r.version }).catch(() => {}); return; }
+      if (!r.won) { coWatchWindow(id); return; }
+      otherWindow = null; openId = null; closeTagPicker();
+      $('read').hidden = true;
+      coOpening = true;
+      try { await openCoEditor(id, r); note('You can edit this document here now.'); } catch (err) { host.storage.delete(dlLeaseKey(id, me), { version: r.version }).catch(() => {}); note(cleanMsg(err)); closeDoc(); } finally { coOpening = false; }
+    }, 1000);
+  }
+
+  async function openCoEditor(id, leased) {
     if (ed) return;
     const { rec, version, got } = await readForEdit(id);
     if (ed) return;
@@ -949,9 +995,14 @@
     };
     c.store = coStore(c);
     ed.co = c;
+    c.dead = ''; // '' while alive; 'gone' (the document was deleted), 'window' (another window took the key), 'lineage' (the document was re-seeded under this page)
+    if (leased) {
+      c.writeLog.push(Date.now()); // the write that took the key
+      c.lease = dlLeaseHold(c.store, { doc: id, me, tab: pageTab, version: leased.version, now: () => Date.now(), set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t), onLost: () => coDead(c, 'window') });
+    }
     c.saver = coSaver(c);
     c.snap = coSnapSaver(c);
-    const snapJoin = dlSnapJoin(DlPM, { store: c.store, id, lex, storedText: got.text, storedRev: rec.textRev || 0, me, now: () => Date.now() });
+    const snapJoin = dlSnapJoin(DlPM, { store: c.store, id, lex, storedText: got.text, storedRev: rec.textRev || 0, storedRec: rec, me, now: () => Date.now() });
     rich = true;
     c.session = dlSyncSession(DlPM, {
       doc: ydoc, lex, topic: dlSyncTopic(id), me, live: host.live, editor: true,
@@ -960,6 +1011,8 @@
       snapshot: { ...snapJoin, adopted: (h) => c.snap.adopted(h, h.hashes) },
       onRebuild: (nd) => coRebuilt(nd),
       onState: () => coChanged(),
+      onLineage: () => coLineage(c),
+      onMend: () => note(MEND_NOTE),
       onChannel: (s) => { c.channel = s; if (s === 'open') c.session.reconnected(); coChanged(); },
     });
     $('read').hidden = true; $('list').hidden = true; $('editor').hidden = false;
@@ -983,6 +1036,7 @@
     mountEditor(c.text, { frag: c.session.doc().getXmlFragment('prosemirror') });
     ed.savedRev = NaN; // the text may differ from the saved text already (a peer's state): decided by the first save check
     ed.editor.setReadOnly(!c.editor); $('edit-title').readOnly = !c.editor;
+    coMetaStart(c);
     renderChrome();
     if (c.editor) ed.editor.focus();
     $('app').dataset.coedit = 'ready';
@@ -992,7 +1046,7 @@
   function coChanged() {
     const c = ed && ed.co;
     if (!c) return;
-    if (!c.ready) { renderStatus(); return; }
+    if (!c.ready || c.dead) { renderStatus(); return; }
     const r = c.session.roster;
     if (c.editor && r.past(me, c.session.admitted())) coEditorSet(false);
     else if (!c.editor && r.admit()) coEditorSet(true);
@@ -1072,8 +1126,80 @@
       mountEditor(c.text, { frag: nd.getXmlFragment('prosemirror') });
       ed.savedRev = NaN;
       ed.editor.setReadOnly(!c.editor);
+      coMetaStart(c);
     }
     coChanged();
+  }
+  // ---- the settings that travel with the document: the title, the page colour and the page layout (documents-lib-x-coedit-meta.js) ----------------------------
+  // The controls set keys of the shared map; every page draws what the map says; the writer's save reads the map. A remote title is not put into the title
+  // field while the caret is in it: it is drawn when the field is left.
+  const MEND_NOTE = 'A block that could not be saved was removed.';
+  const coReadOnly = () => Boolean(ed && ed.co && (!ed.co.editor || ed.co.dead));
+  function coMetaStart(c) {
+    coMetaBind(c);
+    if (c.editor && !c.dead) dlMetaFill(c.session.doc(), ed.rec); // a document without the keys (a state from before them, or a rebuild from nothing) gets the record's
+    coMetaPaint(true);
+  }
+  function coMetaBind(c) {
+    if (c.metaOff) { try { c.metaOff(); } catch (err) { /* the document is gone */ } c.metaOff = null; }
+    const map = c.session.doc().getMap(DL_META.root);
+    const fn = (ev, tr) => {
+      if (tr.origin === 'dl-meta' || !ed || ed.co !== c) return; // this page's own change is drawn already
+      coMetaPaint(false);
+      if (c.saver) c.saver.changed(); // the writer saves what the others set
+      setStatus();
+    };
+    map.observe(fn);
+    c.metaOff = () => map.unobserve(fn);
+  }
+  function coMetaPaint(force) {
+    const c = ed && ed.co;
+    if (!c || !c.ready) return;
+    const m = dlMetaRead(c.session.doc(), ed.saved);
+    const sheet = $('editor').querySelector('.sheet');
+    if (m.paper !== ed.paper) { ed.paper = m.paper; paintPaper(sheet, ed.paper); }
+    if (!dlSamePage(m.page, ed.page)) { ed.page = m.page; paintPage(sheet, ed.page); renderChrome(); }
+    const t = $('edit-title');
+    if (m.title !== t.value && (force || (root.activeElement || doc.activeElement) !== t)) t.value = m.title;
+  }
+  function coMetaPush(fields) {
+    const c = ed && ed.co;
+    if (!c || !c.ready || c.dead || !c.editor) return;
+    dlMetaSet(c.session.doc(), fields, 'dl-meta');
+  }
+  // What the shared settings say now (null where there is no shared document yet or any more): the save and the unsaved test read this, not the controls.
+  const metaNow = () => (ed && ed.co && ed.co.ready && !ed.co.dead ? dlMetaRead(ed.co.session.doc(), ed.saved) : null);
+  // The document was deleted, another window took the key, or the document was re-seeded under this page: the editor stops taking keys, the text stays on
+  // the screen, nothing more is written for it (a deleted document is never saved back).
+  function coDead(c, kind) {
+    if (!ed || ed.co !== c || c.dead) return;
+    c.dead = kind; ed.lost = true; c.editor = false;
+    clearTimeout(ed.timer);
+    if (c.ready && ed.editor) ed.editor.setReadOnly(true);
+    $('edit-title').readOnly = true;
+    if (kind === 'gone') {
+      c.saver.stop(); // no save for a document that is gone
+      try { c.session.stop(); } catch (err) { /* already stopped */ }
+      $('lost-text').textContent = 'This document was deleted. Your text is kept here.';
+      $('lost').hidden = false;
+      note('This document was deleted.');
+    } else {
+      note(kind === 'window' ? OTHER_WINDOW : 'This document was updated. Reopening…');
+      c.saver.save(true).catch(() => {}); // what this window holds goes out once more; nothing else is written for the lost window
+    }
+    renderChrome();
+  }
+  // The seed marker says this page's lineage is not the document's any more: the text is saved, the page stops, and the document opens again from the stored text.
+  async function coLineage(c) {
+    if (!ed || ed.co !== c || c.dead) return;
+    const mine = ed; const id = mine.id;
+    coDead(c, 'lineage');
+    try { await c.saver.save(true); } catch (err) { /* the text stays on the screen */ }
+    try { c.session.stop(); } catch (err) { /* already stopped */ }
+    await sleep(600);
+    if (ed !== mine) return;
+    stopEditing();
+    openDoc(id);
   }
   // The saver of a shared document (dlCoSaver): the writer's save a quiet beat after the last change, and every page's save on the way out.
   function coSaver(c) {
@@ -1107,13 +1233,20 @@
     const stat = () => c.session.stats();
     return dlSnapSaver({
       store: c.store, id: mine.id, me, now: () => Date.now(), iso: () => new Date().toISOString(),
-      isWriter: () => c.session.isWriter(), ready: () => ed === mine && c.ready && !c.box,
+      isWriter: () => c.session.isWriter(), ready: () => ed === mine && c.ready && !c.box && !c.dead,
       dirty: () => ed !== mine || dirtyNow() || c.saver.state.saving,
       savedText: () => mine.saved.text, rev: () => mine.rec.textRev || 0,
       stateKey: () => { const s = stat(); return s.changes + s.rebuilt; },
       largeKey: () => { const s = stat(); return s.big + s.assembled; },
       prepare: () => dlSnapPrepare(DlPM, lex, c.session.doc(), mine.saved.text),
       writes: () => c.writeLog.filter((t) => Date.now() - t < 60000).length,
+      lineage: () => c.session.lineage(), alone: () => coAlone(),
+      // the mend removed a block that could not be saved: it left every page as an edit; this page says so, the others are told, the text is in the console
+      mended: (dropped) => {
+        try { console.warn('Documents: a block that could not be saved was removed. Its text, for recovery:', dropped.map((d) => ({ type: d.type, why: d.reason, text: d.text }))); } catch (err) { /* no console */ }
+        note(MEND_NOTE);
+        c.session.announceMend(dropped.length);
+      },
       note, onChange: () => {},
     });
   }
@@ -1134,6 +1267,8 @@
   }
   function coClose(c) {
     clearInterval(c.statsTimer); clearInterval(c.snapTimer);
+    if (c.metaOff) { try { c.metaOff(); } catch (err) { /* gone */ } c.metaOff = null; }
+    if (c.lease) c.lease.release();
     c.saver.stop();
     c.session.stop();
     try { c.session.doc().destroy(); } catch (err) { /* already gone */ }
@@ -1148,8 +1283,16 @@
     return run;
   };
   // Never reads the text: the editor's change counter and the title and paper decide (the text is read only by snapshot()).
-  const dirtyNow = () => ed && !joining() && dlEditorDirty(ed.editor, ed.savedRev, ed.saved, $('edit-title').value, ed.paper, ed.page);
-  const snapshot = () => dlEditorSnapshot(ed.editor, ed.saved, $('edit-title').value, ed.paper, ed.page);
+  // In a shared document the title, colour and layout are the shared map's (metaNow), not what the controls last drew.
+  const dirtyNow = () => {
+    if (!ed || joining()) return false;
+    const m = metaNow();
+    return dlEditorDirty(ed.editor, ed.savedRev, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page);
+  };
+  const snapshot = () => {
+    const m = metaNow();
+    return dlEditorSnapshot(ed.editor, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page);
+  };
   function setStatus() {
     if (!ed) return;
     renderStatus();
@@ -1168,6 +1311,11 @@
     }
   }
   // Another person holds the lock now: the editor stops taking keys and keeps the text on the screen.
+  // The record of the open shared document is gone (deleted by someone, or unreadable): this page stops saving it.
+  function coRecord() {
+    const c = ed && ed.co;
+    if (c && c.ready && !c.dead && !docs.has(ed.id)) coDead(c, 'gone');
+  }
   function hearLock() {
     if (!ed || ed.lost || ed.co) return;
     const l = locks.get(ed.id);
@@ -1579,7 +1727,8 @@
     if (id === 'zoom') { zoomMenu(e); return; }
   });
   host.on('add', (e) => { if (e.id === 'open') { if (!ed && !openId) output.pick(); return; } if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
-  $('edit-title').addEventListener('input', typed);
+  $('edit-title').addEventListener('input', () => { if (ed && ed.co) coMetaPush({ title: $('edit-title').value }); typed(); });
+  $('edit-title').addEventListener('blur', () => { if (ed && ed.co) coMetaPaint(true); }); // a remote title that waited for the caret to leave
 
   $('lost-copy').addEventListener('click', async () => {
     const text = ed.editor.getText();
@@ -1611,7 +1760,7 @@
     else if (ed.co) schedule(true); else serial(refreshLock).then(() => schedule(true)).catch(() => {});
   });
   // Closing the page: a save is started and may not finish (the SDK's storage calls have no keepalive); the other pages and the next save are the repair.
-  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow(true).catch(() => {}); if (ed.co) ed.co.session.stop(); } });
+  window.addEventListener('pagehide', () => { if (ed && !ed.lost) { clearTimeout(ed.timer); saveNow(true).catch(() => {}); if (ed.co) ed.co.session.stop(); } if (ed && ed.co && ed.co.lease) ed.co.lease.release(); });
 
   // The page side of Print, Save as Markdown file and Open Markdown file (the rules are in documents-lib-u-output.js).
   // env: { current, create, open, afterOpen }

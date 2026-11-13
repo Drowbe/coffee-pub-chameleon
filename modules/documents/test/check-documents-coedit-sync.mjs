@@ -227,13 +227,13 @@ await test('module.json: the live limits agree with the code and the setting is 
   const page = fs.readFileSync(path.join(src, 'documents.js'), 'utf8');
   const uses = [...page.matchAll(/host\.live|dlSyncSession\(|dlSyncSeed\(|DlPM\.Doc\(\)/g)].map((x) => page.slice(0, x.index).split('\n').length);
   assert.ok(uses.length > 0 && uses.length < 12, `uses: ${uses.join(',')}`);
-  const entry = page.indexOf('if (coediting && canEdit && host.live) { openCoEditor(id)');
+  const entry = page.indexOf('if (coediting && canEdit && host.live && !other) { openCoDoc(id)');
   assert.ok(entry > 0, 'the one door into the shared editor is behind the switch');
   const code = page.split('\n').map((l) => l.replace(/\/\/.*$/, '').replace('coediting && canEdit && host.live', '')).join('\n');
   const firstUse = code.search(/host\.live|dlSyncSession\(|dlSyncSeed\(/);
   const fn = code.indexOf('async function openCoEditor');
   assert.ok(firstUse > fn, 'no use of the channel before the shared editor opens');
-  assert.equal([...page.matchAll(/openCoEditor\(/g)].length, 2, 'openCoEditor is called once (and defined once)');
+  assert.equal([...page.matchAll(/openCoEditor\(/g)].length, 3, 'openCoEditor is defined once and called from the two places that hold the person\'s edit window key (slice 3)');
 });
 
 // ---- 3. sessions on the bus ------------------------------------------------------------------------------------------------------------
@@ -455,14 +455,16 @@ await test('a poisoned live document is rebuilt from the last good state, and th
   const clock = new Clock(); const bus = new Bus(clock);
   const a = page(bus, clock, 'aaaa1111'); await run(clock, bus, 50); const b = page(bus, clock, 'bbbb2222'); await run(clock, bus, 800);
   typeAt(b.doc(), 0, 'kept'); await run(clock, bus, 100);
-  await run(clock, bus, 16000); // a beat: the good state is taken
+  await run(clock, bus, 16000); // a beat
   typeAt(b.doc(), 0, 'later'); await run(clock, bus, 100);
   assert.ok(same(a, b));
   const oldDoc = a.session.doc();
   a.session.rebuild('test');
   assert.notEqual(a.session.doc(), oldDoc, 'a new document');
   assert.equal(a.rebuilt, 1);
-  assert.ok(!textOf(a.session.doc()).includes('later'), 'the rebuilt state is the last good one');
+  // 4b slice 3: the good state follows each accepted change (goodMs after it), not the 15 s beat: what was accepted 100 ms ago is in the rebuilt state
+  assert.ok(textOf(a.session.doc()).includes('later'), 'the rebuilt state holds the update accepted a moment before');
+  assert.ok(textOf(a.session.doc()).includes('kept'));
   await run(clock, bus, 2000);
   assert.ok(same(a, b), 'the exchange gave back what came after');
   typeAt(a.session.doc(), 0, 'again'); await run(clock, bus, 100); assert.ok(same(a, b));

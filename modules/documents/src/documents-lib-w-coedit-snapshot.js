@@ -144,13 +144,14 @@ async function dlSnapReseed(store, o) {
 }
 
 // ---- load ----------------------------------------------------------------------------------------------------------------------------
-// The join side. o: { store, id, lex, storedText (the text this page read), storedRev (its textRev), me, now() }.
+// The join side. o: { store, id, lex, storedText (the text this page read), storedRev (its textRev), storedRec (its record), me, now() }.
 // -> { load(), judge(bytes, header), reseed(), textLen() }
 function dlSnapJoin(PM, o) {
   const gateApi = dlCoeditGate(PM);
   const limits = { bytes: gateApi.limits.snapshotBytes, lex: o.lex };
   return {
     textLen: () => o.storedText.length,
+    storedRev: () => o.storedRev,
     // -> { none } | { reject: <reason> } | { ok, header, bytes }
     async load() {
       try {
@@ -182,6 +183,8 @@ function dlSnapJoin(PM, o) {
       try { v = gateApi.verifyBeforeSnapshot(o.lex, built.doc, same ? o.storedText : '', limits); } catch (err) { v = { ok: false, reason: 'throws' }; }
       if (!v.ok) { built.doc.destroy(); return { reject: `verify_${v.reason}` }; }
       if (same && v.text !== o.storedText) { built.doc.destroy(); return { reject: 'text_differs' }; }
+      // A copy made from the saved text also has the saved title, colour and layout (the writer copies only when they are saved too): one that does not is not the document.
+      if (same && o.storedRec && !dlMetaSame(built.doc, o.storedRec)) { built.doc.destroy(); return { reject: 'meta_differs' }; }
       return { ok: true, doc: built.doc, vectorBytes: PM.encodeStateVector(built.doc).length };
     },
     reseed: () => dlSnapReseed(o.store, { doc: o.id, text: o.storedText, me: o.me, now: o.now }),
@@ -197,7 +200,7 @@ function dlSnapPrepare(PM, lex, doc, savedText) {
     if (gateApi.repairGrids(doc) > 0) return { ok: false, reason: 'unsaved' }; // the repair changed the text: the next save, then the copy
     const m = gateApi.mendForSnapshot(lex, doc, savedText);
     if (!m.ok) return { ok: false, reason: `verify_${m.verify && m.verify.reason}` };
-    if (m.dropped.length || m.verify.text !== savedText) return { ok: false, reason: 'unsaved' };
+    if (m.dropped.length || m.verify.text !== savedText) return { ok: false, reason: 'unsaved', dropped: m.dropped };
     return { ok: true, bytes: PM.encodeStateAsUpdate(doc) };
   } catch (err) { return { ok: false, reason: 'throws' }; }
 }
@@ -209,10 +212,13 @@ function dlSnapPrepare(PM, lex, doc, savedText) {
 //   stateKey(), largeKey()            counters that change when the state changes / when a large update (over the live limit) came or went
 //   prepare()                         -> { ok, bytes } | { ok: false, reason } (dlSnapPrepare)
 //   writes()                          the writes this page made in the last minute
+//   lineage()                         { seed, epoch } of this page's document as the session knows it, or null (where not known, the marker is taken as it stands)
+//   alone()                           no other editor is in the room
+//   mended(dropped)                   the mend removed blocks: the page says so
 //   note(text), onChange()            a plain line for the person; something to redraw
 // -> { tick, adopted, counts, state }
 function dlSnapSaver(o) {
-  const counts = { written: 0, chunks: 0, skipped: 0, full: 0, limited: 0, failed: 0, conflicts: 0, deleted: 0, lastBytes: 0, lastChunks: 0, lastWrote: 0, lastAt: '', skips: {} };
+  const counts = { written: 0, chunks: 0, skipped: 0, full: 0, limited: 0, failed: 0, conflicts: 0, deleted: 0, healed: 0, lastBytes: 0, lastChunks: 0, lastWrote: 0, lastAt: '', skips: {} };
   const state = { running: false, have: false, said: false };
   const known = new Map(); // n -> hash: chunks this page wrote or loaded and checked
   let lineage = null; // { seed, epoch } as the marker had it when this page first wrote or loaded
@@ -234,11 +240,20 @@ function dlSnapSaver(o) {
     try {
       const keyNow = o.stateKey(); const revNow = o.rev(); const large = o.largeKey();
       const p = o.prepare();
-      if (!p.ok) { skip(p.reason); return; }
+      if (!p.ok) { if (p.dropped && p.dropped.length && o.mended) o.mended(p.dropped); skip(p.reason); return; }
       if (p.bytes.length > DL_SNAP.maxBytes) { skip('too_big'); hold = t + DL_SNAP.holdFullMs; return; }
       const mk = await o.store.get(dlSeedMarkerKey(o.id));
-      const marker = mk && dlCleanSeedMarker(mk.value);
-      if (!marker) { skip('no_marker'); hold = t + DL_SNAP.holdFailMs; return; }
+      let marker = mk && dlCleanSeedMarker(mk.value);
+      const own = o.lineage ? o.lineage() : null; // the lineage this page's state is in, when known
+      const mine = lineage || (own && own.seed ? { seed: own.seed, epoch: own.epoch || 0 } : null);
+      if (!marker || (mine && (mine.seed !== marker.id || mine.epoch !== (marker.epoch || 0)))) {
+        // The marker is not this page's lineage (someone wrote it, or it is gone or garbage). With others in the room the copy waits; a page that is alone puts
+        // the marker back under its own lineage, so the copy is written and a page that opens next can load it. The text is not touched either way.
+        if (!mine || !o.alone || !o.alone()) { skip(marker ? 'lineage_changed' : 'no_marker'); hold = t + DL_SNAP.holdFailMs; return; }
+        const next = { id: mine.seed, by: o.me, at: o.iso(), ...(mine.epoch ? { epoch: mine.epoch } : {}) };
+        try { await o.store.set(dlSeedMarkerKey(o.id), next, { version: mk ? mk.version : 0 }); } catch (err) { if (err && err.status === 409) { skip('marker_busy'); hold = t + DL_SNAP.holdConflictMs; return; } throw err; }
+        marker = next; counts.healed += 1;
+      }
       const lin = { seed: marker.id, epoch: marker.epoch || 0 };
       if (lineage && (lineage.seed !== lin.seed || lineage.epoch !== lin.epoch)) { skip('lineage_changed'); hold = t + DL_SNAP.holdFailMs; return; }
       const hv = await o.store.get(dlSnapHeaderKey(o.id));
