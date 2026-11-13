@@ -2364,7 +2364,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.equal(tabOfField('opensWith'), 'modules', 'First visit is a section of the Settings tab');
   assert.equal(tabOfField('defaultLayout'), 'modules');
   assert.equal(tabOfField('phases'), 'phases');
-  assert.deepEqual([...MODERATOR_FIELDS], ['phases', 'opensWith', 'defaultLayout', 'budget', 'closed'], 'the server\'s MODERATOR_SPACE_FIELDS');
+  assert.deepEqual([...MODERATOR_FIELDS], ['phases', 'opensWith', 'defaultLayout', 'tabs', 'budget', 'closed'], 'the server\'s MODERATOR_SPACE_FIELDS');
   const owner = setupTabs({ owner: true });
   assert.equal(pickTab(owner, '#members'), 'members', 'the fragment picks the tab');
   assert.equal(pickTab(owner, '#modules'), 'modules', 'the old page\'s #modules lands on the Settings tab');

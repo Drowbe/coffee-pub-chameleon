@@ -11,8 +11,8 @@
 // (Thomas, 2026-10-13, plan-layout-views.md decision 13: the limit of 3 was part of a legacy system). remove() and
 // forgetPerson() keep it clean; the key is left out of a space's entry while nobody there has a favorite.
 //
-// system (documentation/plans/plan-layout-views.md, step 1): the system layouts `workspace`, `calendar` and `map` are
-// never stored; server/index.js makes them per space from what is on. What is stored is each person's own choices for
+// system (documentation/plans/plan-layout-views.md, step 1): the system layouts `workspace`, `calendar`, `map`,
+// `conference`, `whiteboard` and `documents` are never stored; server/index.js makes them per space from what is on. What is stored is each person's own choices for
 // them, per space, like favorites: "system": { "<user key>": { "<system id>": { "name"?, "icon"?, "tab"?: false } } }.
 // A user layout may carry an `icon`; one stored without reads as kind `user` with the default icon.
 //
@@ -49,8 +49,10 @@ const stackable = (id) => !NEVER_STACKED.includes(id) && !id.startsWith('dest:')
 const STACK_ID = /^[a-z0-9]{1,32}$/;
 // The system layouts' stable ids (a user layout's is `l` and six characters, so they never collide) and their default
 // icons; a user layout's default icon is the Layout button's.
-const SYSTEM_IDS = Object.freeze(['workspace', 'calendar', 'map']);
-const SYSTEM_ICONS = Object.freeze({ workspace: 'columns', calendar: 'calendar-days', map: 'map-location-dot' });
+// The fixed set, in the default order (documentation/plans/plan-workspaces.md, "The fixed set"); Conference, Whiteboards and
+// Documents come after the three that were there. Icons: each module's own, a video glyph for Conference (decision 23).
+const SYSTEM_IDS = Object.freeze(['workspace', 'calendar', 'map', 'conference', 'whiteboard', 'documents']);
+const SYSTEM_ICONS = Object.freeze({ workspace: 'columns', calendar: 'calendar-days', map: 'map-location-dot', conference: 'video', whiteboard: 'chalkboard', documents: 'file-lines' });
 const USER_ICON = 'object-group';
 const ICON_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 // A module id: the same rule as a space's opensWith (server/store.js).
@@ -238,6 +240,63 @@ function cleanSystemPatch(input, { icons = null } = {}) {
   }
   if (!Object.keys(patch).length) return { error: 'Send a new name, an icon, or whether it is a tab.' };
   return { patch };
+}
+
+// The owner's tabs on a space record (plan-workspaces.md, "Data"): { order?: [ids], hide?: [ids] }, ids from SYSTEM_IDS.
+// `order` is the owner's order (every known id left out is added at the end in the default order; stored whole, and only
+// when it differs from the default); `hide` is the ids not in the bar for anyone (never `workspace`; kept in the default
+// order; left out while empty). Nothing set (or equal to the defaults) is null. Pure.
+//   strict (a PATCH): anything wrong is refused with { error } -- one sentence: not an object, a key other than order and
+//     hide, not a list, more ids than there are layouts, an unknown id, an id listed twice, `workspace` in hide.
+//   lenient (what is read from the file or an import): wrong keys, unknown ids, repeats and `workspace` in hide are dropped.
+// Answers { tabs } (an object or null) or { error }.
+const TABS_KEYS = ['order', 'hide'];
+function cleanTabs(input, { strict = false } = {}) {
+  if (input === null || input === undefined) return { tabs: null };
+  if (!isObject(input)) return strict ? { error: 'Send the tabs as { order, hide }, each a list of layout ids.' } : { tabs: null };
+  if (strict) {
+    const extra = Object.keys(input).find((k) => !TABS_KEYS.includes(k));
+    if (extra) return { error: `The tabs do not take "${extra}".` };
+  }
+  const lists = {};
+  for (const key of TABS_KEYS) {
+    const raw = input[key];
+    if (raw === undefined || raw === null) { lists[key] = []; continue; }
+    if (!Array.isArray(raw)) {
+      if (strict) return { error: `The ${key} must be a list of layout ids.` };
+      lists[key] = [];
+      continue;
+    }
+    if (strict && raw.length > SYSTEM_IDS.length) return { error: `The ${key} can name each layout once, at most ${SYSTEM_IDS.length}.` };
+    const kept = [];
+    for (const id of raw) {
+      if (typeof id !== 'string' || !SYSTEM_IDS.includes(id)) {
+        if (strict) return { error: 'There is no such layout here.' };
+        continue;
+      }
+      if (key === 'hide' && id === 'workspace') {
+        if (strict) return { error: 'The Workspace is always shown.' };
+        continue;
+      }
+      if (kept.includes(id)) {
+        if (strict) return { error: `"${id}" is listed twice.` };
+        continue;
+      }
+      kept.push(id);
+    }
+    lists[key] = kept;
+  }
+  const order = [...lists.order, ...SYSTEM_IDS.filter((id) => !lists.order.includes(id))];
+  const hide = SYSTEM_IDS.filter((id) => lists.hide.includes(id));
+  const out = {};
+  if (order.some((id, i) => id !== SYSTEM_IDS[i])) out.order = order;
+  if (hide.length) out.hide = hide;
+  return { tabs: Object.keys(out).length ? out : null };
+}
+// A space's tabs whole, for the owner's controls and for ordering: { order: [every id], hide: [ids] }; unset reads as the defaults.
+function tabsOf(stored) {
+  const { tabs } = cleanTabs(stored);
+  return { order: tabs?.order ? [...tabs.order] : [...SYSTEM_IDS], hide: tabs?.hide ? [...tabs.hide] : [] };
 }
 
 // One person's stored choices for the system layouts, as read from the file: only what this version knows, cleaned.
@@ -530,4 +589,4 @@ class Layouts {
   }
 }
 
-module.exports = { Layouts, LayoutError, cleanLayout, cleanSystemPatch, LAYOUT_LIMITS, SYSTEM_IDS, SYSTEM_ICONS, USER_ICON };
+module.exports = { Layouts, LayoutError, cleanLayout, cleanSystemPatch, cleanTabs, tabsOf, LAYOUT_LIMITS, SYSTEM_IDS, SYSTEM_ICONS, USER_ICON };

@@ -58,7 +58,7 @@ subnav.innerHTML = `
   <span class="nav-right subnav-tools"></span>`;
 topbarEl.appendChild(subnav);
 nav.attach('secondary', subnav); // its tools are registered further down, once the state their `visible` reads exists
-// The layout tab whose layout the canvas holds (plan-layout-views.md, steps 2 and 3): 'workspace', 'calendar', 'map'
+// The layout tab whose layout the canvas holds (plan-layout-views.md, steps 2 and 3): 'workspace', a fixed layout's id (calendar, map, conference, whiteboard, documents)
 // or a favorite saved layout's id. Every view is a layout: Calendar and Map are their composite on the canvas, loaded
 // as a saved layout is. The Workspace's tools (the Layout menu, Full screen, Pop out) show on every tab (workspaceShown,
 // below). For the visit only: entering a space resets it. (setView() further down is the

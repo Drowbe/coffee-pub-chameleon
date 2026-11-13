@@ -257,14 +257,14 @@ export function destinationTools(list, { path = '', present = false } = {}) {
 
 // The layout tabs in the top bar's left zone, right after the space switcher (plan-layout-views.md, decisions 1, 2, 5,
 // 13 and 17, step 2): every view is a layout. The Workspace first, always (it can be renamed, never left out); then
-// the system layouts Calendar and Map while the server lists them for this space and the person keeps their tab
+// the system layouts Calendar, Map, Conference, Whiteboards and Documents while the server lists them for this space and the person keeps their tab
 // (`tab` not false); then the person's favorite saved layouts in the order they were favorited, with no limit. `system`
 // is GET /api/spaces/:id/layouts's `system` list, `favorites` its favorite ids, `layouts` its shared and own layouts
 // (a favorite not among them is left out). A guest and an aside have none (decision: no tabs there); neither does a
 // page outside a space. `current` is the id of the layout shown. Returns [{ id: 'layout-tab-<layout id>', layout, kind,
 // icon, label, current, temp? }]; the ids are the tabs' element ids.
 const TAB_ICON = /^[a-z0-9-]{1,40}$/;
-const SYSTEM_TAB_DEFAULTS = { workspace: ['Workspace', 'columns'], calendar: ['Calendar', 'calendar-days'], map: ['Map', 'map-location-dot'] };
+const SYSTEM_TAB_DEFAULTS = { workspace: ['Workspace', 'columns'], calendar: ['Calendar', 'calendar-days'], map: ['Map', 'map-location-dot'], conference: ['Conference', 'video'], whiteboard: ['Whiteboards', 'chalkboard'], documents: ['Documents', 'file-lines'] };
 export function layoutTabs({ system = [], favorites = [], layouts = [], current = 'workspace', guest = false, aside = false, space = '' } = {}) {
   // A guest keeps no favorites: the Workspace, then every shared layout the list holds, to switch between, read-only.
   if (aside || !space) return [];
