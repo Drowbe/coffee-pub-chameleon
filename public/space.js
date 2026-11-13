@@ -1857,8 +1857,11 @@ function syncCallPlace() {
   // The call's titlebar: wherever the conference is open from this column (in it, floating or in its own window).
   const head = columnEl.querySelector('#call-head');
   if (head) head.hidden = !callArea || where === 'dock';
-  // The large Start call: in the call's own area while it is empty (not on the call, not out of the column), Join call while a call runs.
-  const empty = callArea && idle && where !== 'dock' && joinCallWanted();
+  // The large Start call belongs only where the call fills an area of its own: In the workspace or on the Conference layout
+  // (plan-workspaces.md, decision 28; steps 4 and 9, not built yet, so this is false today). In the side column
+  // (Top, Bottom, Left) the title bar's Start call is enough. Join call while a call runs.
+  const callFillsArea = place === 'workspace' || place === 'conference';
+  const empty = callFillsArea && callArea && idle && where !== 'dock' && joinCallWanted();
   const start = columnEl.querySelector('#call-empty');
   if (start) {
     start.hidden = !empty;
