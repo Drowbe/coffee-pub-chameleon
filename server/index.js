@@ -745,7 +745,7 @@ function environmentFor(slug) {
       const found = enabled.find((m) => m.manifest.id === manifest.id);
       return Boolean(found) && manifest.scope.includes('space') && !refusedInLobby(manifest, spaceId) && env.modules.isOnIn(found.entry.id, spaceId);
     };
-    return Boolean(destinations.resolveDestinationInSpace(dest, { enabled, canRead, hasFile: (m) => envContext.run(env, () => moduleHasFile(m)) }));
+    return Boolean(destinations.resolveDestinationInSpace(dest, { enabled, canRead, hasFile: (m) => envContext.run(env, () => moduleHasFile(m)), values: (m) => envContext.run(env, () => moduleSettings.values(m, 'environment', {})) }));
   };
   // An environment's own name (settings.environmentName). Still on the shipped sentinel default --
   // a brand new environment, or one never renamed since before this was configurable -- picks its real one up
@@ -7289,7 +7289,7 @@ function spaceFeedEvents(req, user, space) {
 // has no members of its own; asides hold no modules) where the module is on, except spaces left out
 // (space.publishCalendar === false). The link goes to the Calendar destination when it is shown.
 function publishedFeedEvents(req) {
-  const ctx = { settings: store.settings, enabled: modules.enabledAll(), canRead: (manifest) => manifest.scope.includes('environment'), hasFile: moduleHasFile };
+  const ctx = { settings: store.settings, enabled: modules.enabledAll(), canRead: (manifest) => manifest.scope.includes('environment'), hasFile: moduleHasFile, values: envSettingValues };
   const sources = modules.enabledAll()
     .map((found) => ({ ...found, kinds: feedKinds(found.manifest) }))
     .filter(({ kinds }) => kinds.length)
@@ -8851,11 +8851,13 @@ function moduleHasFile(manifest) {
     return (Array.isArray(v) ? v : v ? [v] : []).some((name) => typeof name === 'string' && isFile(name));
   });
 }
+// A module's environment setting values, for a destination panel's `showWhenSetting` (server/destinations.js).
+const envSettingValues = (manifest) => moduleSettings.values(manifest, 'environment', {});
 // What server/destinations.js needs to know about one viewer (null: a guest or nobody signed in, who sees none).
 function destinationContext(who) {
   if (!who?.user) return null;
   const perms = modulePerms(who, null);
-  return { settings: store.settings, enabled: modules.enabledAll(), canRead: (manifest) => manifest.scope.includes('environment') && moduleCan(manifest, perms, 'read'), hasFile: moduleHasFile };
+  return { settings: store.settings, enabled: modules.enabledAll(), canRead: (manifest) => manifest.scope.includes('environment') && moduleCan(manifest, perms, 'read'), hasFile: moduleHasFile, values: envSettingValues };
 }
 // For Manage's Top bar switches (GET /api/settings, `topBarReasons`): why each destination cannot show for anyone
 // whatever its option, in one sentence, or null when nothing stands in its way. The module named is the one whose
@@ -8920,7 +8922,7 @@ function destinationInSpace(id, who, spaceId) {
     const found = enabled.find((m) => m.manifest.id === manifest.id);
     return Boolean(found) && manifest.scope.includes('space') && !refusedInLobby(manifest, space.id) && modules.isOnIn(found.entry.id, space.id) && moduleCan(manifest, perms, 'read');
   };
-  const shown = destinations.resolveDestinationInSpace(id, { enabled, canRead, hasFile: moduleHasFile });
+  const shown = destinations.resolveDestinationInSpace(id, { enabled, canRead, hasFile: moduleHasFile, values: envSettingValues });
   return shown ? { shown, space } : null;
 }
 const destinationSpaceRefusal = () => `That page is not available in that ${word('space')} for you.`;
@@ -10535,6 +10537,7 @@ app.get('/api/modules/:id/settings/values', (req, res) => {
   if (!ctx) return;
   const values = moduleSettings.effective(ctx.manifest, { spaceId: ctx.spaceId, userKey: ctx.who.user?.key || null });
   for (const d of ctx.manifest.settings || []) if (settingIsShared(ctx.manifest, d)) values[d.key] = sharedValue(ctx.manifest, d);
+  for (const d of ctx.manifest.settings || []) if (!settingOffered(d, d.scope === 'space' ? ctx.spaceId : null)) values[d.key] = d.default; // not offered: its value is ignored
   res.json({ values });
 });
 
@@ -10556,9 +10559,16 @@ function settingsPlace(req, res, scope) {
   }
   return void res.status(404).json({ error: 'no such kind of setting' });
 }
+// Whether a setting is offered: one with `needsModule` only while that module is installed and on (in the environment, and for
+// a space setting also in that space). Otherwise it is not drawn, not saved and its value is ignored (the default counts).
+function settingOffered(def, spaceId) {
+  if (!def.needsModule) return true;
+  const other = modules.enabled(def.needsModule);
+  return Boolean(other) && (!spaceId || modules.isOnIn(other.entry.id, spaceId));
+}
 const withValues = (manifest, scope, ctx) => {
   const values = moduleSettings.values(manifest, scope, ctx);
-  return manifest.settings.filter((d) => d.scope === scope).map((d) => {
+  return manifest.settings.filter((d) => d.scope === scope && settingOffered(d, ctx.spaceId)).map((d) => {
     const shared = settingIsShared(manifest, d);
     const { shared: _manifestFlag, ...own } = d; // the manifest's "host" string is not an answer: `shared` below is true or absent
     return {
@@ -10577,7 +10587,7 @@ app.get('/api/module-settings/:scope', (req, res) => {
   if (!place) return;
   const scope = req.params.scope;
   const out = modules.enabledAll()
-    .filter(({ manifest, entry }) => manifest.settings.some((d) => d.scope === scope) && (scope !== 'space' || modules.isOnIn(entry.id, place.space.id)))
+    .filter(({ manifest, entry }) => manifest.settings.some((d) => d.scope === scope && settingOffered(d, place.ctx.spaceId)) && (scope !== 'space' || modules.isOnIn(entry.id, place.space.id)))
     .map(({ manifest }) => ({ id: manifest.id, ...shownModule(manifest), settings: withValues(manifest, scope, place.ctx) }));
   res.json({ modules: out });
 });
@@ -10592,6 +10602,11 @@ app.put('/api/modules/:id/settings/:scope', (req, res) => {
     // saves the ones that are its own.
     const values = { ...(req.body?.values || {}) };
     for (const d of found.manifest.settings) if (settingIsShared(found.manifest, d)) delete values[d.key];
+    for (const d of found.manifest.settings) {
+      if (d.scope === req.params.scope && d.key in values && !settingOffered(d, place.ctx.spaceId)) {
+        return res.status(400).json({ error: `${d.label} needs the ${shownModule(modules.list().find((m) => m.id === d.needsModule) || { id: d.needsModule, name: d.needsModule }).name} ${word('module')} to be on` });
+      }
+    }
     for (const [key, v] of Object.entries(values)) {
       const def = found.manifest.settings.find((d) => d.key === key);
       if (def && def.type === 'files' && Array.isArray(v)) {

@@ -120,7 +120,16 @@ export async function drawModuleConfig(m, { live = () => true } = {}) {
   $('cfg-state').textContent = m.enabled ? 'Enabled' : 'Disabled';
   $('cfg-state').dataset.tone = m.enabled ? 'ok' : 'warn';
   $('cfg-desc').textContent = m.description || '';
-  const mine = (scope) => (m.settings || []).filter((d) => d.scope === scope).length; // the server's scope names (plan-names step 5a)
+  let mine = (scope) => (m.settings || []).filter((d) => d.scope === scope).length; // the server's scope names (plan-names step 5a)
+  // A setting with `needsModule` is offered only while that module is on: the server's list (what the form draws) is the
+  // judge, so a module whose only settings wait on another module reads as having none.
+  if (m.enabled && (m.settings || []).some((d) => d.scope === 'environment' && d.needsModule)) {
+    try {
+      const offered = (await api('GET', '/api/module-settings/environment')).modules.find((x) => x.id === m.id)?.settings.length || 0;
+      const all = mine;
+      mine = (scope) => (scope === 'environment' ? offered : all(scope));
+    } catch { /* the form below says what went wrong */ }
+  }
   const showSettings = () => renderModuleSettings($('settings'), { scope: 'environment', only: m.id, heading: false });
   const hostSections = await wireHostSections(m, name, live);
   if (!live()) return;
