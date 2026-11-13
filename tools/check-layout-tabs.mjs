@@ -39,6 +39,8 @@ const IDS = ['workspace', 'calendar', 'map', 'conference', 'whiteboard', 'docume
   same([...SYSTEM_IDS], IDS, 'server/layouts.js SYSTEM_IDS');
   same(Object.keys(SYSTEM_ICONS), IDS, 'SYSTEM_ICONS names the same ids, in the same order');
   same([SYSTEM_ICONS.conference, SYSTEM_ICONS.whiteboard, SYSTEM_ICONS.documents], ['video', 'chalkboard', 'file-lines'], 'a video glyph for Conference, the modules\' own icons');
+  const setupSrc = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
+  same(/export const LAYOUT_IDS = Object\.freeze\(\[([^\]]*)\]\)/.exec(setupSrc)?.[1].split(',').map((x) => x.trim().replace(/'/g, '')), IDS, 'public/space-setup.js LAYOUT_IDS (the owner\'s Layouts section) names the same ids');
   const nav = fs.readFileSync(path.join(ROOT, 'public/primary-nav.js'), 'utf8');
   const body = /const SYSTEM_TAB_DEFAULTS = \{([^}]*)\};/.exec(nav)?.[1] || '';
   const tabs = [...body.matchAll(/(\w+): \['([^']+)', '([^']+)'\]/g)];
