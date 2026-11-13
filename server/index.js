@@ -1029,7 +1029,7 @@ async function autoInstallBundled(env) {
         const manifest = env.modules.manifestOf(bundled.id, installed.version);
         const values = {};
         for (const def of manifest.settings || []) {
-          if (def.scope === 'environment' && env.store.settings[def.key] !== undefined) values[def.key] = env.store.settings[def.key];
+          if (def.scope === 'environment' && def.type !== 'secret' && env.store.settings[def.key] !== undefined) values[def.key] = env.store.settings[def.key];
         }
         if (Object.keys(values).length) env.moduleSettings.set(manifest, 'environment', {}, values, null);
       } catch (err) {

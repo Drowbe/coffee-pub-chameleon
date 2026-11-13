@@ -134,6 +134,7 @@ const half = (name) => name.split('/').some((part) => part.startsWith('.')) || /
 // What the server may keep in an environment's folder that is deliberately left out (the guard check's other list).
 const FILE_LEFT_OUT = [
   /^secrets\.key$/,
+  /^modules\/secrets\.json$/, // the sealed values of modules' `secret` settings (server/module-secrets.js): never in an owner's copy
   new RegExp(`^${ENVIRONMENT_COPY_DIR}/`),
   /^chat-private\.json$/,
   /^agreements(\.unreadable-\d+)?\.json$/, // guests' agreements (server/agreements.js): the host's backup only

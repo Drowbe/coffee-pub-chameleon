@@ -611,7 +611,7 @@ function cleanCommands(raw, actions) {
 }
 
 // The settings a module declares: up to 40, each with a scope (who chooses it), a type and a default.
-const SETTING_TYPES = ['boolean', 'choice', 'number', 'text', 'url', 'file', 'files', 'list', 'color', 'note'];
+const SETTING_TYPES = ['boolean', 'choice', 'number', 'text', 'url', 'file', 'files', 'list', 'color', 'note', 'secret'];
 const SETTING_SCOPES = ['environment', 'space', 'person'];
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 // A path a keyed surface (surfaces.keyed.path) may not claim: the host's own top-level routes, kept here so a
@@ -802,6 +802,12 @@ function cleanSettings(raw) {
       // validate or store. Always environment-level display, whatever scope the manifest asks for or none at all.
       if (r.scope !== undefined && r.scope !== 'environment') throw new ModuleError(`module.json: setting "${key}" is a note, so its scope must be "environment"`);
       def.scope = 'environment';
+    } else if (type === 'secret') {
+      // A key or token the owner sets and can only replace or clear, never read back (server/module-secrets.js). It is the
+      // environment's alone: a space's or a person's value would have no one allowed to set it. No default, no showWhen of its own value.
+      if (r.scope !== undefined && r.scope !== 'environment') throw new ModuleError(`module.json: setting "${key}" is a secret, so its scope must be "environment"`);
+      def.scope = 'environment';
+      def.maxLength = clamp(r.maxLength, 8, 500, 200);
     } else if (type === 'text') {
       def.maxLength = clamp(r.maxLength, 1, 200, 100);
       def.default = typeof r.default === 'string' ? r.default.slice(0, def.maxLength) : '';

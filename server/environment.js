@@ -192,7 +192,7 @@ function buildEnvironment(dataDir, { slug = null, admin = null, log = console.lo
   const tags = new Tags(dataDir); // the shared tags, one list per space (server/tags.js)
   const moduleLinks = new ModuleLinks(modules.dir);
   const moduleBus = new ModuleBus(modules.dir);
-  const moduleSettings = new ModuleSettings(modules.dir);
+  const moduleSettings = new ModuleSettings(modules.dir, secretsKey);
 
   const ai = new Ai(dataDir, process.env, undefined, managed, secretsKey);
   modules.aiReady = () => ai.ready(); // a module declaring hooks.ai depends on the AI service the way one module depends on another

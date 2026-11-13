@@ -261,7 +261,7 @@ const FILES = {
     'modules/vault/library/space-trip01.json', 'modules/places/geocode.json', 'modules/maps/image-map/castle.png',
   ],
   leftOut: [
-    'secrets.key', 'pre-names/a-part/app.json', 'chat-private.json', 'ai-threads.moved.json', 'ai-threads.json', LEGACY_ENVIRONMENT_RECORD, 'tmp/region-cut/x.pmtiles',
+    'secrets.key', 'modules/secrets.json', 'pre-names/a-part/app.json', 'chat-private.json', 'ai-threads.moved.json', 'ai-threads.json', LEGACY_ENVIRONMENT_RECORD, 'tmp/region-cut/x.pmtiles',
     'modules/todo/data/person-ownerkey.json', 'modules/todo/trash/person-ownerkey.json', 'modules/research/uploads/person-ownerkey/abc123.png', 'modules/research/uploads/person-ownerkey/abc123.json',
     'modules/vault/library/space-trip01.shares.json', 'app.json.tmp', 'modules/maps/image-map/.upload-1a2b.part', 'modules/.staging-1-2/todo/module.json', 'modules/maps/map-tiles/x.pmtiles.part',
   ],

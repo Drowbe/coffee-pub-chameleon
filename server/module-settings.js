@@ -1,8 +1,9 @@
 // The settings a module declares (module.json `settings`) and the values people choose for them. A setting has a
 // scope that says who chooses it and where it is kept: the whole `environment` (an owner), one `space` (an owner or
 // that space's moderators), or each `person` (themselves). The host draws the forms and keeps the values; a module only
-// reads them. Values are plain data (a yes/no, a choice, a number or a short text), never secrets. Persists to
-// DATA_DIR/modules/settings.json.
+// reads them. Values are plain data (a yes/no, a choice, a number or a short text). The one exception is the `secret` type,
+// whose value is write-only and kept elsewhere (server/module-secrets.js): it never enters this class's own data, `values`,
+// `effective` or a change event; they say only { set: true|false }. Persists to DATA_DIR/modules/settings.json.
 
 'use strict';
 
@@ -12,7 +13,8 @@ const { EventEmitter } = require('events');
 
 const SCOPES = ['environment', 'space', 'person'];
 const { cleanRows } = require('./setting-list');
-const TYPES = ['boolean', 'choice', 'number', 'text', 'url', 'file', 'files', 'list', 'color', 'note'];
+const { ModuleSecrets } = require('./module-secrets');
+const TYPES = ['boolean', 'choice', 'number', 'text', 'url', 'file', 'files', 'list', 'color', 'note', 'secret'];
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 
 class SettingError extends Error {
@@ -24,6 +26,14 @@ class SettingError extends Error {
 
 // One value made to fit its definition, or a SettingError saying why not.
 function cleanValue(def, raw) {
+  if (def.type === 'secret') {
+    // '' clears it. Nothing here repeats the value: not in a sentence, not anywhere.
+    if (typeof raw !== 'string') throw new SettingError(`${def.label} must be text`);
+    const t = raw.trim();
+    if (t.length > def.maxLength) throw new SettingError(`${def.label} is too long`, 413);
+    if (/\p{Cc}/u.test(t)) throw new SettingError(`${def.label} must not have line breaks or control characters`);
+    return t;
+  }
   if (def.type === 'boolean') {
     if (typeof raw !== 'boolean') throw new SettingError(`${def.label} must be on or off`);
     return raw;
@@ -76,8 +86,10 @@ function cleanValue(def, raw) {
 }
 
 class ModuleSettings extends EventEmitter {
-  constructor(modulesDir) {
+  // `secretsKey`: a function giving the 32-byte key that seals `secret` settings (index.js's secretsKeyBuf); without it none can be kept.
+  constructor(modulesDir, secretsKey = null) {
     super();
+    this.secrets = new ModuleSecrets(modulesDir, secretsKey);
     this.setMaxListeners(0);
     this.file = path.join(modulesDir, 'settings.json');
     this.data = { environment: {}, spaces: {}, people: {} };
@@ -112,7 +124,9 @@ class ModuleSettings extends EventEmitter {
     const out = {};
     // A note carries no value at all -- left out of `out` entirely, so it answers with no `value` wherever
     // this feeds a page (the def itself still comes through separately, for the label and the hint).
-    for (const def of manifest.settings || []) if (def.scope === scope && def.type !== 'note') out[def.key] = def.key in stored ? stored[def.key] : def.default;
+    for (const def of manifest.settings || []) if (def.scope === scope && def.type !== 'note' && def.type !== 'secret') out[def.key] = def.key in stored ? stored[def.key] : def.default;
+    // A secret is only ever { set } (see server/module-secrets.js), for every viewer.
+    for (const def of manifest.settings || []) if (def.scope === scope && def.type === 'secret') out[def.key] = this.secrets.state(manifest.id, def.key);
     for (const def of manifest.settings || []) {
       // A choice that grew out of another setting starts as the option that keeps what was already set.
       const dif = def.scope === scope && def.type === 'choice' && def.defaultIfSet;
@@ -142,8 +156,17 @@ class ModuleSettings extends EventEmitter {
       if (def.type === 'note') continue; // carries no value -- nothing to validate or store
       clean[key] = cleanValue(def, raw);
     }
+    // A secret goes to its own sealed store, never into this class's data; only its name is reported as changed.
+    const secretKeys = Object.keys(clean).filter((k) => defs.find((d) => d.key === k).type === 'secret');
+    if (secretKeys.length && !this.secrets.canKeep()) throw new SettingError('A key cannot be kept on this server.', 503);
+    const sealedChanged = [];
+    for (const k of secretKeys) {
+      const value = clean[k];
+      delete clean[k];
+      if (this.secrets.put(manifest.id, k, value)) sealedChanged.push(k);
+    }
     const bucket = this.bucket(manifest.id, scope, ctx, true);
-    const changed = Object.keys(clean).filter((k) => JSON.stringify(bucket[k]) !== JSON.stringify(clean[k]));
+    const changed = Object.keys(clean).filter((k) => JSON.stringify(bucket[k]) !== JSON.stringify(clean[k])).concat(sealedChanged);
     Object.assign(bucket, clean);
     if (changed.length) {
       this.save();
@@ -152,7 +175,15 @@ class ModuleSettings extends EventEmitter {
     return { values: this.values(manifest, scope, ctx), changed };
   }
 
+  // For server code that USES a secret (never a route, never a page): the value of a `secret` setting this module declares, or null
+  // when none is kept, it cannot be opened, or the module does not declare that key as a secret.
+  secret(manifest, key) {
+    if (!(manifest.settings || []).some((d) => d.key === key && d.type === 'secret')) return null;
+    return this.secrets.get(manifest.id, key);
+  }
+
   forgetModule(moduleId) {
+    this.secrets.forgetModule(moduleId);
     delete this.data.environment[moduleId];
     for (const r of Object.values(this.data.spaces)) delete r[moduleId];
     for (const p of Object.values(this.data.people)) delete p[moduleId];

@@ -57,8 +57,32 @@ function wireList(el, def) {
   });
 }
 
+// A secret setting (a key): a write-only box. It is always empty when drawn; the server never sends the value, only whether one
+// is set. "Replace" opens the box, "Clear" takes the key away now. Only an owner is ever given this form (the settings route is
+// the owner's), so nobody else sees the control.
+function secretControl(def, id) {
+  const set = Boolean(def.value && def.value.set);
+  const state = set ? 'Set' : def.value && def.value.unreadable ? 'Not set: the saved key cannot be read, enter it again' : 'Not set';
+  return `<div class="secret-setting" data-key="${escapeHtml(def.key)}" data-secret-setting>
+    <div class="hint" id="${id}-label">${escapeHtml(def.label)} <span class="sdk-status" data-secret-state role="status">${escapeHtml(state)}</span></div>
+    <div class="row"><input id="${id}" type="password" data-secret-input autocomplete="new-password" autocapitalize="off" spellcheck="false" value="" maxlength="${Number(def.maxLength) || 200}" aria-labelledby="${id}-label" ${set ? 'hidden' : ''}>
+    <button type="button" class="btn btn-small" data-secret-replace ${set ? '' : 'hidden'}>Replace</button>
+    <button type="button" class="btn btn-small btn-danger" data-secret-clear ${set ? '' : 'hidden'}>Clear</button></div>
+  </div>`;
+}
+function showSecretState(box, value) {
+  const set = Boolean(value && value.set);
+  const input = box.querySelector('[data-secret-input]');
+  input.value = '';
+  input.hidden = set;
+  box.querySelector('[data-secret-replace]').hidden = !set;
+  box.querySelector('[data-secret-clear]').hidden = !set;
+  box.querySelector('[data-secret-state]').textContent = set ? 'Set' : value && value.unreadable ? 'Not set: the saved key cannot be read, enter it again' : 'Not set';
+}
+
 function control(def, draft = false) {
   if (def.type === 'list') return listControl(def);
+  if (def.type === 'secret') return secretControl(def, `ms-${def.key}`);
   const id = `ms-${def.key}`;
   if (def.type === 'boolean') return `<label class="sdk-choice-row"><input type="checkbox" data-key="${escapeHtml(def.key)}" ${def.value ? 'checked' : ''}><span class="sdk-choice-text">${escapeHtml(def.label)}</span></label>`;
   // A note has no control and no value: a label (its help under it), for a module to say where something is set up.
@@ -142,6 +166,11 @@ function readCard(card, module) {
   for (const el of card.querySelectorAll('[data-key]')) {
     const def = module.settings.find((d) => d.key === el.dataset.key);
     if (!def) continue;
+    if (def.type === 'secret') { // sent only when something was typed: an empty box leaves the saved key as it is
+      const typed = el.querySelector('[data-secret-input]').value;
+      if (typed) values[def.key] = typed;
+      continue;
+    }
     values[def.key] = def.type === 'list' ? readList(el) : def.type === 'files' ? [...el.querySelectorAll('input:checked')].map((i) => i.value) : def.type === 'boolean' ? el.checked : def.type === 'number' ? Number(el.value) : el.value;
   }
   return values;
@@ -254,6 +283,32 @@ export async function renderModuleSettings(container, { scope, space = null, onl
       }
       return;
     }
+    const replaceBtn = event.target.closest('[data-secret-replace]');
+    if (replaceBtn) {
+      const box = replaceBtn.closest('[data-secret-setting]');
+      const input = box.querySelector('[data-secret-input]');
+      input.hidden = false;
+      replaceBtn.hidden = true;
+      input.focus();
+      return;
+    }
+    const clearSecret = event.target.closest('[data-secret-clear]');
+    if (clearSecret) {
+      const box = clearSecret.closest('[data-secret-setting]');
+      const card = box.closest('.module-settings-card');
+      const module = modules.find((m) => m.id === card.dataset.module);
+      const def = module.settings.find((d) => d.key === box.dataset.key);
+      if (!await confirmDialog({ title: `Clear ${def.label}?`, message: 'The saved key is deleted now. This can\'t be undone.', action: 'Clear', kind: 'final' })) return;
+      clearSecret.disabled = true;
+      try {
+        const answer = await api('PUT', `/api/modules/${encodeURIComponent(module.id)}/settings/${scope}`, { values: { [def.key]: '' }, ...(space ? { space } : {}) });
+        showSecretState(box, (answer.settings.find((d) => d.key === def.key) || {}).value);
+      } catch (err) {
+        window.alert(err.message);
+      }
+      clearSecret.disabled = false;
+      return;
+    }
     if (draft) { if (event.target.closest('[data-list], [data-icon-choice]')) told(); return; }
     const button = event.target.closest('[data-save]');
     if (!button) return;
@@ -264,7 +319,8 @@ export async function renderModuleSettings(container, { scope, space = null, onl
     status.classList.remove('error');
     status.textContent = 'saving...';
     try {
-      await api('PUT', `/api/modules/${encodeURIComponent(module.id)}/settings/${scope}`, { values, ...(space ? { space } : {}) });
+      const answer = await api('PUT', `/api/modules/${encodeURIComponent(module.id)}/settings/${scope}`, { values, ...(space ? { space } : {}) });
+      for (const box of card.querySelectorAll('[data-secret-setting]')) showSecretState(box, ((answer.settings || []).find((d) => d.key === box.dataset.key) || {}).value); // the box empties; only Set or Not set shows
       status.textContent = 'saved';
     } catch (err) {
       status.textContent = err.message;
