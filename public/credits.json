@@ -1,5 +1,5 @@
 {
- "_about": "The open-source software and data the product ships or relies on, read by the About tab of the Manage page (public/admin.js) and checked by tools/check-credits.mjs. Fields: name, version, group (the heading it is listed under), use (plain words), licence (SPDX id), link, notice (the copyright or attribution text the licence asks us to show, else empty), licenceFile (the repository path of the licence text), covers (files or folders in the repository this entry accounts for).",
+ "_about": "The open-source software and data the product ships or relies on, read by the About tab of the Manage page (public/admin.js) and checked by tools/check-credits.mjs. Fields: name, version, group (the heading it is listed under), use (plain words), licence (SPDX id), link, notice (the copyright or attribution text the licence asks us to show, else empty), licenceFile (the repository path of the licence text), covers (files or folders in the repository this entry accounts for). An entry with kind \"own\" is our own work (artwork Coffee Pub made): it has name, kind, group, use, notice and covers only, and no licence, link or licence file.",
  "components": [
   {
    "name": "express",
@@ -248,9 +248,9 @@
    "name": "Noto Sans (map label glyphs)",
    "version": "",
    "group": "Maps",
-   "use": "The letters on a map: Regular and Medium, Latin and general punctuation.",
+   "use": "The letters on a map: Regular and Medium, Latin and general punctuation. Ready-made glyph files from the Protomaps basemaps-assets project (made with MapLibre font-maker from Noto Sans).",
    "licence": "OFL-1.1",
-   "link": "https://github.com/notofonts",
+   "link": "https://github.com/protomaps/basemaps-assets",
    "notice": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts)",
    "licenceFile": "public/maps-glyphs/OFL.txt",
    "covers": [
@@ -578,6 +578,16 @@
    "notice": "© OpenStreetMap contributors. Data available under the Open Database Licence.",
    "licenceFile": "modules/maps/THIRD-PARTY.md",
    "covers": []
+  },
+  {
+   "name": "Background images",
+   "kind": "own",
+   "group": "Our own artwork",
+   "use": "The eight patterned backgrounds people can choose for sign-in and for their profile.",
+   "notice": "Made by Coffee Pub.",
+   "covers": [
+    "public/assets/images/backgrounds"
+   ]
   }
  ]
 }

@@ -6,7 +6,9 @@
  *   - a runtime dependency in package.json has no entry (by name);
  *   - a row of any module's THIRD-PARTY.md table (a vendored library) has no entry (by name, or by the file it vendors);
  *   - a font, a model or a map-glyph file under public/, or the pdf.js folder, is not under any entry's "covers";
- *   - an entry has no name, use, group, licence (an SPDX id), link (https) or licence file, or its licence file is not in the repository;
+ *   - an image file in public/assets/images/backgrounds/ is not under any entry's "covers", or is missing from that folder's CREDITS.md;
+ *   - an entry has no name, use, group, licence (an SPDX id), link (https) or licence file, or its licence file is not in the repository
+ *     (an entry of kind "own", our own artwork, needs a name, use, group, covers and the notice "Made by Coffee Pub" instead, and no licence);
  *   - an entry's licence is GPL, AGPL or LGPL, or a licence that asks for a notice (MIT, BSD, ISC, OFL, CC BY, ODbL) has an empty notice;
  *   - an entry for an installed package says another version or licence than the package's own package.json;
  *   - the About tab does not draw the list (a cheap read of admin.html and admin.js).
@@ -42,6 +44,15 @@ export function checkCredits(root, credits) {
   // each entry
   for (const e of list) {
     const who = `credits.json "${e?.name || 'no name'}"`;
+    if (e?.kind === 'own') {
+      for (const k of ['name', 'use', 'group']) if (typeof e[k] !== 'string' || !e[k].trim()) out.push(`${who}: "${k}" is empty`);
+      if (e.notice !== 'Made by Coffee Pub.') out.push(`${who}: an entry of kind "own" must say "Made by Coffee Pub."`);
+      if (!Array.isArray(e.covers) || !e.covers.length) out.push(`${who}: an entry of kind "own" must say what it covers`);
+      for (const k of ['licence', 'link', 'licenceFile']) if (e[k]) out.push(`${who}: an entry of kind "own" must not have a "${k}"`);
+      for (const c of Array.isArray(e.covers) ? e.covers : []) if (!fs.existsSync(path.join(root, c))) out.push(`${who}: covers ${c}, which does not exist`);
+      continue;
+    }
+    if (e?.kind) out.push(`${who}: kind "${e.kind}" is not known (only "own")`);
     for (const k of ['name', 'use', 'group', 'licence', 'link', 'licenceFile']) if (typeof e[k] !== 'string' || !e[k].trim()) out.push(`${who}: "${k}" is empty`);
     if (typeof e.notice !== 'string') out.push(`${who}: "notice" must be text (empty when none is required)`);
     if (e.link && !/^https:\/\/\S+$/.test(e.link)) out.push(`${who}: the link is not an https address`);
@@ -88,6 +99,16 @@ export function checkCredits(root, credits) {
     if (FONT_FILES.test(f) || r.startsWith('public/sdk/pdfjs/')) if (!covered(r)) out.push(`${r} is a font, model, glyph or pdf.js file that no entry in public/credits.json covers`);
   }
 
+  // our own background images: each is covered by an entry and listed in the folder's CREDITS.md
+  const bgDir = path.join(pub, 'assets', 'images', 'backgrounds');
+  const bgCredits = fs.existsSync(path.join(bgDir, 'CREDITS.md')) ? fs.readFileSync(path.join(bgDir, 'CREDITS.md'), 'utf8') : '';
+  for (const f of walk(bgDir)) {
+    const r = rel(root, f);
+    if (!/\.(webp|png|jpe?g|gif|svg|avif)$/i.test(f)) continue;
+    if (!covered(r)) out.push(`${r} is a background image that no entry in public/credits.json covers`);
+    if (!bgCredits.includes(path.basename(f))) out.push(`${r} is not listed in public/assets/images/backgrounds/CREDITS.md`);
+  }
+
   // the About tab draws it
   const html = fs.existsSync(path.join(pub, 'admin.html')) ? fs.readFileSync(path.join(pub, 'admin.html'), 'utf8') : '';
   const js = fs.existsSync(path.join(pub, 'admin.js')) ? fs.readFileSync(path.join(pub, 'admin.js'), 'utf8') : '';
@@ -114,6 +135,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(im
   fails('a missing model', (c) => c.splice(c.findIndex((e) => /Selfie/.test(e.name)), 1), /selfie_segmenter\.tflite is a font/);
   fails('a missing icon set', (c) => c.splice(c.findIndex((e) => e.name === 'Font Awesome Free'), 1), /fontawesome-free has no entry/);
   fails('a missing pdf.js', (c) => c.splice(c.findIndex((e) => e.name === 'pdf.js'), 1), /pdfjs\/.* no entry/);
+  fails('a missing background-images entry', (c) => c.splice(c.findIndex((e) => e.kind === 'own'), 1), /background-fantasy-pattern-\S+ is a background image that no entry/);
+  fails('an own entry with a licence', (c) => { at(c, 'Background images').licence = 'MIT'; }, /must not have a "licence"/);
+  fails('an own entry that does not say who made it', (c) => { at(c, 'Background images').notice = ''; }, /must say "Made by Coffee Pub\."/);
   fails('no licence id', (c) => { at(c, 'qrcode').licence = ''; }, /"licence" is empty/);
   fails('no link', (c) => { at(c, 'qrcode').link = ''; }, /"link" is empty/);
   fails('an address that is not https', (c) => { at(c, 'qrcode').link = 'http://example.test'; }, /not an https address/);
