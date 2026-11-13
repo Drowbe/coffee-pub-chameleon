@@ -9,6 +9,7 @@
 // Start call on it and no large one in the column (it belongs to a call that fills an area of its own), Chat's menu with nothing of the call, and on the call the collapsed
 // rail's icon with its dot and its name. And at the Conference layout (step 4): the large Start call there and only there,
 // the call filling the page beside the chat at the width the chat had, and the call staying on across the Workspace and back.
+// And the call's controls through a pop-out (runPopout): before, in the popup, after the window is closed, after Bring the call back.
 // Usage: node tools/check-call-bars.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -201,7 +202,7 @@ async function runConference(browser, S) {
     if (!/not in a call/i.test(idle.note || '')) failures.push(`Conference, no call: no plain line says there is no call ("${idle.note}")`);
     if (idle.empty?.shown && !near(idle.empty.w, idle.win - idle.chat.w)) failures.push(`Conference, no call: the call's area is ${idle.empty.w}px wide, the page leaves ${idle.win - idle.chat.w}px`);
     if (idle.toggle?.shown) failures.push('Conference: the fold handle is still drawn (there is nothing to fold to)');
-    if (!idle.join?.shown || idle.joinParent !== 'call-head-tools') failures.push(`Conference, no call: the title bar's Start call is gone (${JSON.stringify([idle.join, idle.joinParent])})`);
+    if (idle.join?.shown || idle.joinParent !== 'call-head-tools') failures.push(`Conference, no call: the title bar's Start call must be hidden (the large one is shown) but stay in the title bar (${JSON.stringify([idle.join, idle.joinParent])})`);
     if (idle.wider > 0) failures.push(`Conference, no call: the page is ${idle.wider}px wider than the window`);
     await tab.click('#call-more'); await sleep(300);
     const menu = await tab.eval(items);
@@ -293,11 +294,82 @@ async function runConference(browser, S) {
     await press('workspace');
     const end = await tab.eval(M);
     if (end.empty?.shown || end.start?.shown || end.view || !end.canvas?.shown) failures.push(`Workspace, no call: the large Start call shows in the side column, or the canvas is not back (${JSON.stringify([end.empty, end.start, end.view])})`);
+    if (!end.join?.shown || end.joinParent !== 'call-head-tools') failures.push(`Workspace column, no call: the title bar's Start call must be shown (${JSON.stringify([end.join, end.joinParent])})`);
     // The Workspace is as it was: the same modules in the same modes (only the Workspace remembers).
     await sleep(800);
     const openAfter = await tab.eval(open);
     if (openAfter !== openBefore) failures.push(`Workspace after Conference: its modules are not as they were (${openAfter}; before ${openBefore})`);
     say(`hung up: large Start call ${off.start?.shown ? 'shown' : 'hidden'} on Conference, ${idle2.start?.shown ? 'shown' : 'hidden'} after 5 quick round trips, ${end.start?.shown ? 'SHOWN' : 'hidden'} in the Workspace; the Workspace's modules ${openAfter === openBefore ? 'as they were' : 'CHANGED'}`);
+  } finally { await tab.close(); }
+}
+
+// The call's controls keep responding through a pop-out (the bug fixed in #793: after the popped-out window was closed
+// the browser had removed the listeners of the shut-down popup page, and the buttons did nothing). Real mouse events
+// press deafen, react, layout and away (the stub microphone cannot toggle in any state, so it is not tried) before the
+// pop-out, in the popup, after the popup is closed from the opener, and after "Bring the call back"; on the Workspace
+// and on the Conference layout. Any control that does not respond fails. The call is the stub's: a real one is not tried.
+async function runPopout(browser, S, conference) {
+  const tab = new Tab(browser.cdp, S.ctx);
+  await tab.open(1280, 'light', true);
+  const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
+  const where = conference ? 'Conference' : 'Workspace';
+  const STATE = (D) => `(() => { const g = (id) => ${D}.getElementById(id); return { deafenOff: g('deafen')?.classList.contains('off'), away: g('away-overlay') ? !g('away-overlay').hidden : null, tray: g('react-tray') ? !g('react-tray').hidden : null, layout: g('layout-glyph')?.className }; })()`;
+  const RECT = (D, id) => `(() => { const e = ${D}.getElementById('${id}'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width }; })()`;
+  const controls = async (label, D, sid) => {
+    const input = (m, p) => tab.cdp.send(m, p, sid);
+    const click = async (id) => {
+      const r = await tab.eval(RECT(D, id)); if (!r || !r.w) return false;
+      await input('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y, button: 'none', clickCount: 0 }); await sleep(150);
+      await input('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', clickCount: 1 });
+      await input('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', clickCount: 1 });
+      await sleep(500); return true;
+    };
+    await input('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 60, y: 200, button: 'none', clickCount: 0 }); await sleep(300); // wake the bars
+    const s0 = await tab.eval(STATE(D)); const out = {};
+    await click('deafen'); let s = await tab.eval(STATE(D)); out.deafen = s.deafenOff !== s0.deafenOff; await click('deafen');
+    await click('react-toggle'); s = await tab.eval(STATE(D)); out.react = s.tray !== s0.tray; await click('react-toggle');
+    await click('layout'); s = await tab.eval(STATE(D)); out.layout = s.layout !== s0.layout;
+    await click('away-toggle'); s = await tab.eval(STATE(D)); out.away = s.away !== s0.away;
+    if (out.away) { await tab.eval(`${D}.getElementById('away-cancel').click()`); await sleep(300); }
+    const dead = Object.keys(out).filter((k) => !out[k]);
+    if (dead.length) failures.push(`${where}, ${label}: the call's controls did not respond: ${dead.join(', ')}`);
+    return dead.length ? `NOT responding: ${dead.join(', ')}` : 'respond';
+  };
+  const popOut = async () => {
+    await tab.cdp.send('Runtime.evaluate', { expression: `document.getElementById('call-head-popout').click()`, userGesture: true }, tab.sid);
+    const end = Date.now() + 10000;
+    while (Date.now() < end && !(await tab.eval(`(() => { try { const w = ${POPOUT}; return w.document.body.classList.contains('conference-window') && w.document.querySelectorAll('#grid .tile').length >= 1; } catch (e) { return false; } })()`))) await sleep(200);
+    await sleep(800);
+    const { targetInfos } = await tab.cdp.send('Target.getTargets');
+    const target = targetInfos.find((t) => t.type === 'page' && t.url.endsWith('/popout.html') && t.browserContextId === tab.contextId);
+    if (!target) throw new Error('the call\'s window was not found');
+    const { sessionId } = await tab.cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
+    await tab.cdp.send('Runtime.enable', {}, sessionId);
+    return sessionId;
+  };
+  const reopenColumn = async () => { if (await tab.eval(`document.getElementById('side-column').classList.contains('collapsed')`)) { await tab.eval(`document.getElementById('side-column-toggle').click()`); await sleep(800); } };
+  const seen = [];
+  try {
+    await driveScreen(tab, { id: 'popout', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
+    if (conference) { await tab.eval(`document.querySelector('[data-layout-tab=conference]').click()`); await sleep(1200); }
+    await tab.click(conference ? '#call-start' : '#join-call');
+    const end = Date.now() + 15000;
+    while (Date.now() < end && !(await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`))) await sleep(200);
+    await sleep(800);
+    if (!(await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`))) { failures.push(`${where}: the call did not start`); return; }
+    seen.push(`before the pop-out ${await controls('before the pop-out', 'document', tab.sid)}`);
+    // Round 1: popped out, tried in the popup, then the window closed from the opener.
+    let sid = await popOut();
+    seen.push(`in the popup ${await controls('in the popup', `${POPOUT}.document`, sid)}`);
+    await tab.eval(`${POPOUT}.close()`); await sleep(2500);
+    await reopenColumn();
+    seen.push(`after the window was closed ${await controls('after the popup window was closed', 'document', tab.sid)}`);
+    // Round 2: popped out again, then "Bring the call back".
+    sid = await popOut();
+    await tab.click('#call-back'); await sleep(1500);
+    await reopenColumn();
+    seen.push(`after Bring the call back ${await controls('after Bring the call back', 'document', tab.sid)}`);
+    say(`${where}, pop-out (deafen, react, layout, away): ${seen.join('; ')}`);
   } finally { await tab.close(); }
 }
 
@@ -314,6 +386,8 @@ async function main() {
     for (const people of [2, 4]) await run(browser, S, people);
     await runArea(browser, S);
     await runConference(browser, S);
+    await runPopout(browser, S, false);
+    await runPopout(browser, S, true);
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);

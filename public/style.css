@@ -8827,6 +8827,12 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
     padding-right: 8px;
   }
 
+  /* The large Start call is in the call's own area (#call-start presses this button), so the title bar's own is hidden
+     here; it stays in the DOM, and in every column placement it is shown. */
+  .side-column.call-page .side-column-call-head .join-call {
+    display: none;
+  }
+
   .side-column.call-page > .side-column-strip {
     grid-area: strip;
     min-width: 0;
