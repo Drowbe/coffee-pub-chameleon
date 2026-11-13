@@ -147,10 +147,12 @@
     const editedAt = dlTime(v.editedAt);
     if (!by || !editedBy || !at || !editedAt) return null;
     const preview = dlCleanPreview(v.preview);
+    const lock = dlCoLockClean(v.lock); // co-editing only (documents-lib-x-coedit-meta.js): who locked the document; a record without one is not locked
     const textRev = dlInt(v.textRev, 1, 1e9); // the count of co-editing saves (documents-lib-v-coedit-save.js); a record made by the old saves has none
     return {
       id, type: 'doc', title, rev, chunks, size,
       ...(textRev ? { textRev } : {}),
+      ...(lock ? { lock } : {}),
       excerpt: dlCut(dlCleanLine(v.excerpt, DL.excerptMax * 2), DL.excerptMax),
       ...(preview ? { preview } : {}),
       paper: dlCleanPaper(v.paper),

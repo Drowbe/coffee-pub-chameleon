@@ -6,7 +6,7 @@
 
   // -> { ok:false, reason:'title'|'long' } or { ok:true, chunks:[{ id, text, write }], writes:[...those with write], dropped:[ids], record }.
   // `old` = [{ id, text }] in order (what the small record lists); `rec` the cleaned small record read with the lock.
-  function dlPlanSave({ old, text, title, paper, page, rec, me, name, now, fresh, lex }) {
+  function dlPlanSave({ old, text, title, paper, page, rec, me, name, now, fresh, lex, lock }) {
     const t = dlCleanLine(title, DL.titleMax);
     if (!t) return { ok: false, reason: 'title' };
     const clean = dlCleanText(text);
@@ -18,6 +18,7 @@
       ...rec, title: t, rev: rec.rev + 1, paper: dlCleanPaper(paper === undefined ? rec.paper : paper), ...dlCleanPage(page === undefined ? rec : page), chunks: ids, size: clean.length, excerpt: dlExcerpt(clean, lex), preview: dlPreview(clean),
       editedBy: me, editedByName: dlCleanLine(name, DL.nameMax) || 'Someone', editedAt: now,
     };
+    if (lock !== undefined) { if (lock) record.lock = lock; else delete record.lock; } // co-editing: the shared document's lock (null: not locked); left as stored when not given
     return { ok: true, chunks, writes: chunks.filter((c) => c.write), dropped: dlDroppedChunks(old.map((o) => o.id), ids), record };
   }
   // Whether anything differs from what was last saved. `page` ({ layout, pageSize, pageNumbers }) is the layout's three fields; left

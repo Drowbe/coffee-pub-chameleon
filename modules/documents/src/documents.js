@@ -510,12 +510,18 @@
   function pageMenu(e) {
     if (!ed || ed.lost || joining()) return;
     const at = { x: e && Number.isFinite(e.x) ? e.x : 100000, y: 4 };
-    const items = [{ id: 'colour', label: 'Page colour...', icon: 'palette', onClick: () => paperMenu(e) }, ...dlPageMenuModel(ed.page).map((m) => {
+    const ro = coReadOnly(); // locked: the lock entry is all that works
+    const items = [{ id: 'colour', label: 'Page colour...', icon: 'palette', ...(ro ? { disabled: true } : {}), onClick: () => paperMenu(e) }, ...dlPageMenuModel(ed.page).map((m) => {
       if (m.kind === 'heading') return { heading: m.label };
-      if (m.kind === 'size') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', chosen' : ''}`, icon: 'ruler-combined', onClick: () => choosePageSize(m.id) };
-      if (m.kind === 'numbers') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', on' : ', off'}`, icon: 'arrow-down-1-9', onClick: togglePageNumbers };
+      if (m.kind === 'size') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', chosen' : ''}`, icon: 'ruler-combined', ...(ro ? { disabled: true } : {}), onClick: () => choosePageSize(m.id) };
+      if (m.kind === 'numbers') return { id: m.id, label: m.label, current: m.current, ariaLabel: `${m.label}${m.current ? ', on' : ', off'}`, icon: 'arrow-down-1-9', ...(ro ? { disabled: true } : {}), onClick: togglePageNumbers };
       return null;
     }).filter(Boolean)];
+    if (ed.co) { // the lock: any editor can lock; the person who locked and an owner or admin can unlock (a courtesy guard in this page, not a server rule)
+      const rules = coLockRules();
+      if (rules.lock) items.push({ heading: 'Document' }, { id: 'lock', label: 'Lock', icon: 'lock', tip: 'Nobody can type until it is unlocked.', onClick: () => coToggleLock(true) });
+      else if (coLocked()) items.push({ heading: 'Document' }, rules.unlock ? { id: 'unlock', label: 'Unlock', icon: 'lock-open', onClick: () => coToggleLock(false) } : { id: 'unlock', label: 'Unlock', icon: 'lock-open', disabled: true, hint: rules.reason, tip: rules.reason, ariaLabel: `Unlock, not available. ${rules.reason}` });
+    }
     host.menu.show({ id: 'page', at, items });
   }
 
@@ -894,7 +900,7 @@
   async function openEditor(id, lock) {
     const { rec, version, got } = await readForEdit(id);
     ed = {
-      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, page: dlCleanPage(rec), saved: { text: got.text, title: rec.title, paper: rec.paper, page: dlCleanPage(rec) }, savedRev: 0,
+      id, rec, docVersion: version, old: got.parts, lock, text: got.text, paper: rec.paper, page: dlCleanPage(rec), saved: { text: got.text, title: rec.title, paper: rec.paper, page: dlCleanPage(rec), lock: dlCoLockClean(rec.lock) }, savedRev: 0,
       lastKey: NaN, lastSave: -Infinity, saving: false, failed: false, refused: '', lost: false, log: [], stray: [],
       timer: 0, beat: 0, queue: Promise.resolve(),
     };
@@ -994,6 +1000,7 @@
       ops: { get: 0, set: 0, list: 0, delete: 0 }, writeLog: [], saver: null,
     };
     c.store = coStore(c);
+    c.names = {}; // person key -> name, from the host's list of people (the roster has keys only)
     ed.co = c;
     c.dead = ''; // '' while alive; 'gone' (the document was deleted), 'window' (another window took the key), 'lineage' (the document was re-seeded under this page)
     if (leased) {
@@ -1026,6 +1033,7 @@
     c.statsTimer = statsTimer;
     const snapTimer = setInterval(() => { if (!$('app') || !ed || ed.co !== c) return void clearInterval(snapTimer); Promise.resolve(c.snap.tick()).catch(() => {}); }, 1000);
     c.snapTimer = snapTimer;
+    try { c.peopleOff = host.live.on('people', (e) => { for (const p of (e && e.people) || []) if (p && typeof p.key === 'string' && typeof p.name === 'string') c.names[p.key] = p.name; coEditorsPaint(); }); } catch (err) { c.peopleOff = null; }
     c.session.start();
     c.session.join((how, mayType) => coReady(c, mayType));
   }
@@ -1035,10 +1043,10 @@
     c.editor = mayType;
     mountEditor(c.text, { frag: c.session.doc().getXmlFragment('prosemirror') });
     ed.savedRev = NaN; // the text may differ from the saved text already (a peer's state): decided by the first save check
-    ed.editor.setReadOnly(!c.editor); $('edit-title').readOnly = !c.editor;
     coMetaStart(c);
+    coApplyRO();
     renderChrome();
-    if (c.editor) ed.editor.focus();
+    if (!coReadOnly()) ed.editor.focus();
     $('app').dataset.coedit = 'ready';
     coChanged(); // the writer's first save check (and so the first copy) does not wait for a roster change
   }
@@ -1055,6 +1063,8 @@
     if (writer && !c.wasWriter) schedule(false); // this page writes the text now: whatever is not saved yet goes after the quiet beat
     c.wasWriter = writer;
     renderStatus();
+    coEditorsPaint();
+    coRenameHear();
   }
   // host.storage as the co-editing code sees it, counting what it does (data-co-stats): reads, and writes with their times (the module may write 240 a minute).
   function coStore(c) {
@@ -1071,8 +1081,8 @@
     const c = ed.co;
     c.editor = on;
     c.session.setEditor(on);
-    if (!c.box) ed.editor.setReadOnly(!on);
-    $('edit-title').readOnly = !on;
+    coApplyRO();
+    renderChrome(); // a reader has no formatting buttons; a person who may type again has them
   }
   // The Markdown box in a shared document: only while nobody else is editing; its text goes into the document as one replacement.
   function coSetRich(next) {
@@ -1101,8 +1111,8 @@
       c.session.setEditor(c.editor);
       mountEditor(text, { frag: frag() });
       ed.savedRev = NaN;
-      ed.editor.setReadOnly(!c.editor);
-      if (c.editor) ed.editor.focus();
+      coApplyRO();
+      if (!coReadOnly()) ed.editor.focus();
     }
     renderChrome();
     setStatus(); schedule(false);
@@ -1125,8 +1135,8 @@
       ed.editor.destroy();
       mountEditor(c.text, { frag: nd.getXmlFragment('prosemirror') });
       ed.savedRev = NaN;
-      ed.editor.setReadOnly(!c.editor);
       coMetaStart(c);
+      coApplyRO();
     }
     coChanged();
   }
@@ -1134,7 +1144,101 @@
   // The controls set keys of the shared map; every page draws what the map says; the writer's save reads the map. A remote title is not put into the title
   // field while the caret is in it: it is drawn when the field is left.
   const MEND_NOTE = 'A block that could not be saved was removed.';
-  const coReadOnly = () => Boolean(ed && ed.co && (!ed.co.editor || ed.co.dead));
+  // Read-only: not an editor (the ninth person), the document is dead, or it is locked (a lock is read-only for everyone, editors too).
+  const coLockNow = () => { const c = ed && ed.co; if (!c || !c.ready) return null; try { return dlMetaRead(c.session.doc(), null).lock; } catch (err) { return null; } };
+  const coLocked = () => Boolean(coLockNow());
+  const coReadOnly = () => Boolean(ed && ed.co && (!ed.co.editor || ed.co.dead || coLocked()));
+  // The editor and the title take keys only when nothing above says no. (In the Markdown box the box itself is the page's own text: it is off while locked.)
+  function coApplyRO() {
+    const c = ed && ed.co;
+    if (!c || !c.ready) return;
+    const ro = coReadOnly();
+    if (ed.editor && (!c.box || ro)) ed.editor.setReadOnly(ro);
+    $('edit-title').readOnly = ro;
+  }
+  // Who may lock or unlock now: the lock rules (documents-lib-x-coedit-meta.js) with this person's role from the host (owner and admin always may unlock).
+  function coLockRules() {
+    const c = ed && ed.co;
+    let ownerWord = '';
+    try { ownerWord = host.util.word('owner', { a: true }); } catch (err) { /* the default */ }
+    return dlCoLockRules({ me, role: info.user && info.user.role, canType: Boolean(c && c.ready && !c.dead && c.editor), lock: coLockNow(), ownerWord });
+  }
+  // The lock changed (this page's or a remote one): the editor, the title, the banner and the bar follow.
+  function coLockSync() {
+    const c = ed && ed.co;
+    if (!c || !c.ready) return;
+    const l = coLockNow();
+    const sig = l ? `${l.by}|${l.at}|${l.name}` : '';
+    if (sig === c.lockSig) return;
+    c.lockSig = sig;
+    if (l && c.box) coSetRich(true); // the Markdown box is off while the document is locked: its text goes into the document first
+    coApplyRO();
+    coLockBanner();
+    renderChrome();
+    coEditorsPaint();
+  }
+  function coLockBanner() {
+    const l = coLockNow();
+    const box = $('co-lock');
+    if (!l || (ed && ed.co && ed.co.dead)) { box.hidden = true; return; }
+    const rules = coLockRules();
+    $('co-lock-text').textContent = `Locked by ${l.name}.`;
+    $('co-lock-why').textContent = rules.unlock || !rules.reason ? '' : rules.reason;
+    $('co-lock-why').hidden = !$('co-lock-why').textContent;
+    $('co-unlock').hidden = !rules.unlock;
+    box.hidden = false;
+  }
+  function coToggleLock(on) {
+    const c = ed && ed.co;
+    if (!c || !c.ready || c.dead) return;
+    const rules = coLockRules();
+    if (on ? !rules.lock : !rules.unlock) { if (!on && rules.reason) note(rules.reason); return; }
+    if (on && c.box) coSetRich(true);
+    dlMetaSet(c.session.doc(), { lock: on ? { by: me, name: dlCleanLine(myName, DL_LOCK_NAME_MAX) || 'Someone', at: Date.now() } : null }, 'dl-meta');
+    coLockSync();
+    typed(); // the writer saves the lock with the record
+  }
+  // ---- the editors list (the people editing this document now) ----
+  function coEditorsPaint() {
+    const c = ed && ed.co;
+    const bar = $('co-bar');
+    if (!c || !c.ready || c.dead) { bar.hidden = true; return; }
+    const l = coLockNow();
+    let tint = dlCoTintOf;
+    try { if (host.live && typeof host.live.tint === 'function') tint = (k) => host.live.tint(k) || dlCoTintOf(k); } catch (err) { /* the page's own rule is the same */ }
+    const list = dlCoEditorsList({ me, myName, meEditor: c.editor, others: c.session.roster.others().map((p) => p.key), names: c.names, lockBy: l ? l.by : '', lockNote: 'locked this document', tint, max: DL_SYNC.editorsMax });
+    const sig = JSON.stringify(list.map((x) => [x.key, x.name, x.tint, x.locker]));
+    bar.hidden = list.length < 2; // alone, there is nothing to list
+    if (sig === c.editorsSig) return;
+    c.editorsSig = sig;
+    const ul = $('co-editors');
+    ul.replaceChildren(...list.map((x) => {
+      const li = el('li', 'co-chip'); li.title = x.label; li.setAttribute('aria-label', x.label);
+      li.dataset.tint = x.tint;
+      if (x.me) li.classList.add('is-me');
+      li.append(el('span', 'co-initials', x.initials));
+      if (x.locker) {
+        const badge = el('span', 'co-badge', '');
+        li.append(badge);
+        Promise.resolve(host.ui.icon('lock')).then((svg) => { if (svg && badge.isConnected) badge.innerHTML = svg; }).catch(() => {});
+      }
+      return li;
+    }));
+  }
+  // A document renamed from the list while it is open here: the writer puts the record's new title into the shared settings, so every page shows it. A title the
+  // page already saved or already shows is not a rename; one that was applied once is not applied again.
+  function coRenameHear() {
+    const c = ed && ed.co;
+    if (!c || !c.ready || c.dead || !c.editor || !c.session.isWriter()) return;
+    const rec = docs.get(ed.id);
+    const m = metaNow();
+    const title = rec && m ? dlCoRenamePlan({ recTitle: rec.title, savedTitle: ed.saved.title, metaTitle: m.title, applied: c.renamed, writer: true, editor: true }) : '';
+    if (!title) return;
+    c.renamed = title;
+    dlMetaSet(c.session.doc(), { title }, 'dl-meta');
+    coMetaPaint(true);
+    typed();
+  }
   function coMetaStart(c) {
     coMetaBind(c);
     if (c.editor && !c.dead) dlMetaFill(c.session.doc(), ed.rec); // a document without the keys (a state from before them, or a rebuild from nothing) gets the record's
@@ -1161,10 +1265,11 @@
     if (!dlSamePage(m.page, ed.page)) { ed.page = m.page; paintPage(sheet, ed.page); renderChrome(); }
     const t = $('edit-title');
     if (m.title !== t.value && (force || (root.activeElement || doc.activeElement) !== t)) t.value = m.title;
+    coLockSync();
   }
   function coMetaPush(fields) {
     const c = ed && ed.co;
-    if (!c || !c.ready || c.dead || !c.editor) return;
+    if (!c || !c.ready || c.dead || !c.editor || coLocked()) return;
     dlMetaSet(c.session.doc(), fields, 'dl-meta');
   }
   // What the shared settings say now (null where there is no shared document yet or any more): the save and the unsaved test read this, not the controls.
@@ -1177,12 +1282,12 @@
     clearTimeout(ed.timer);
     if (c.ready && ed.editor) ed.editor.setReadOnly(true);
     $('edit-title').readOnly = true;
+    $('co-lock').hidden = true; $('co-bar').hidden = true;
     if (kind === 'gone') {
       c.saver.stop(); // no save for a document that is gone
       try { c.session.stop(); } catch (err) { /* already stopped */ }
       $('lost-text').textContent = 'This document was deleted. Your text is kept here.';
-      $('lost').hidden = false;
-      note('This document was deleted.');
+      $('lost').hidden = false; // the banner says it once; the status bar says it once more; no note above
     } else {
       note(kind === 'window' ? OTHER_WINDOW : 'This document was updated. Reopening…');
       c.saver.save(true).catch(() => {}); // what this window holds goes out once more; nothing else is written for the lost window
@@ -1224,7 +1329,7 @@
       },
       onChange: () => { if (ed === mine) setStatus(); },
       note,
-      refused: (why) => note(why === 'title' ? 'Give the document a title.' : why === 'long' ? 'This document is too long. Split it into two.' : 'This document was deleted. Your changes are kept here.'),
+      refused: (why) => { if (why === 'title') note('Give the document a title.'); else if (why === 'long') note('This document is too long. Split it into two.'); else coDead(c, 'gone'); }, // the banner says a deleted document
     });
   }
   // The writer's copy of the shared state in storage (documents-lib-w-coedit-snapshot.js): a late joiner opens from it instead of waiting for the pieces.
@@ -1268,6 +1373,7 @@
   function coClose(c) {
     clearInterval(c.statsTimer); clearInterval(c.snapTimer);
     if (c.metaOff) { try { c.metaOff(); } catch (err) { /* gone */ } c.metaOff = null; }
+    if (c.peopleOff) { try { c.peopleOff(); } catch (err) { /* gone */ } c.peopleOff = null; }
     if (c.lease) c.lease.release();
     c.saver.stop();
     c.session.stop();
@@ -1287,11 +1393,12 @@
   const dirtyNow = () => {
     if (!ed || joining()) return false;
     const m = metaNow();
-    return dlEditorDirty(ed.editor, ed.savedRev, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page);
+    return dlEditorDirty(ed.editor, ed.savedRev, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page) || Boolean(m && !dlCoLockSame(m.lock, ed.saved.lock || null));
   };
   const snapshot = () => {
     const m = metaNow();
-    return dlEditorSnapshot(ed.editor, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page);
+    const snap = dlEditorSnapshot(ed.editor, ed.saved, m ? m.title : $('edit-title').value, m ? m.paper : ed.paper, m ? m.page : ed.page);
+    return m && ed.co ? { ...snap, lock: m.lock } : snap;
   };
   function setStatus() {
     if (!ed) return;
@@ -1315,6 +1422,7 @@
   function coRecord() {
     const c = ed && ed.co;
     if (c && c.ready && !c.dead && !docs.has(ed.id)) coDead(c, 'gone');
+    else coRenameHear();
   }
   function hearLock() {
     if (!ed || ed.lost || ed.co) return;
@@ -1648,7 +1756,10 @@
       if (canEdit) items.push({ type: 'button', id: 'trash', title: showTrash ? 'Back to the documents' : `Trash${trash.size ? ` (${trash.size})` : ''}`, icon: showTrash ? 'file-lines' : 'trash', on: showTrash });
     }
     // The formatting buttons are the shared icon-only toolbar buttons (host.ui.toolbarButton), made while a person is editing.
-    const wantFmt = Boolean(ed && !ed.lost);
+    // A shared document shows them only to a person who can type in it: not a reader (the ninth person), not while it is locked (step 4c).
+    const wantFmt = Boolean(ed && !ed.lost && (!ed.co || joining() || !coReadOnly()));
+    // The shared buttons draw in the order they were made: when the editing ones come back, Back and Tags are made again after them (as when the document opened).
+    if (wantFmt && !fmtButtons.length && ed.co) { if (backButton) { backButton.destroy(); backButton = null; } if (tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); } }
     if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
     else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
     if (wantFmt && !insertButton) insertButton = host.ui.toolbarButton({ id: 'insert', label: 'Insert', icon: 'circle-plus', iconOnly: true, onClick: (e) => insertMenu(e) });
@@ -1674,12 +1785,14 @@
     else if (!wantFmt && layoutSwitch) { layoutSwitch.destroy(); layoutSwitch = null; }
     else if (layoutSwitch) layoutSwitch.set(ed.page.layout);
     // The Page button's menu holds the colour, the size and the numbers.
-    if (wantFmt && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
-    else if (!wantFmt && paperButton) { paperButton.destroy(); paperButton = null; }
+    // (A locked shared document keeps the Page button for a person who can type: its menu holds Unlock.)
+    const wantPage = wantFmt || Boolean(ed && ed.co && ed.co.ready && !ed.lost && ed.co.editor && coLocked());
+    if (wantPage && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
+    else if (!wantPage && paperButton) { paperButton.destroy(); paperButton = null; }
     // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
     // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.
     const wantBack = Boolean((openId && !ed) || (ed && ed.co));
-    const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost)));
+    const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost && (!ed.co || joining() || !coReadOnly()))));
     if (wantBack && !backButton) {
       if (tagButton) { tagButton.destroy(); tagButton = null; }
       backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); else if (ed.co) leaveCo(); } });
@@ -1730,6 +1843,7 @@
   $('edit-title').addEventListener('input', () => { if (ed && ed.co) coMetaPush({ title: $('edit-title').value }); typed(); });
   $('edit-title').addEventListener('blur', () => { if (ed && ed.co) coMetaPaint(true); }); // a remote title that waited for the caret to leave
 
+  $('co-unlock').addEventListener('click', () => coToggleLock(false));
   $('lost-copy').addEventListener('click', async () => {
     const text = ed.editor.getText();
     try { await navigator.clipboard.writeText(text); note('Copied.'); } catch (err) {

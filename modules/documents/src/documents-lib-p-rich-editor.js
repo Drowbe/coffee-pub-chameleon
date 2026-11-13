@@ -521,6 +521,8 @@
     };
     // Every change goes through here. Only a change of the text counts: moving the caret does not (onSelect hears both).
     const dispatch = (tr) => {
+      // A shared document that may not be typed in (a lock, a ninth person, a deleted document): a change that is not the shared document's own (ySync's) is refused.
+      if (shared && readOnly && tr.docChanged && !(PM.ySyncPluginKey && tr.getMeta(PM.ySyncPluginKey))) return;
       const next = now().apply(tr);
       if (view) view.updateState(next); else state = next;
       if (tr.docChanged) { rev += 1; for (const fn of fns) fn(); }

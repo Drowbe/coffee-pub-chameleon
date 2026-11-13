@@ -106,13 +106,17 @@ async function dlCoeditSave(store, st, io) {
     title: cur.title !== st.saved.title ? cur.title : st.rec.title,
     paper: cur.paper !== st.saved.paper ? cur.paper : st.rec.paper,
     page: dlSamePage(cur.page, st.saved.page) ? dlCleanPage(st.rec) : cur.page,
+    // the lock (step 4c): undefined where the page does not hand one in
+    lock: cur.lock === undefined ? undefined : dlCoLockSame(cur.lock, st.saved.lock || null) ? (st.rec.lock || null) : cur.lock,
   });
+  const lockIs = (mine, rec) => mine.lock === undefined || dlCoLockSame(mine.lock, rec.lock || null);
   const adopt = (cur) => { // the page's own fields count as read from here on, whether they were written or found equal to the stored ones
     st.saved = {
       text: cur.text,
       title: cur.title !== st.saved.title ? cur.title : st.saved.title,
       paper: cur.paper !== st.saved.paper ? cur.paper : st.saved.paper,
       page: dlSamePage(cur.page, st.saved.page) ? st.saved.page : cur.page,
+      ...(cur.lock === undefined ? {} : { lock: dlCoLockSame(cur.lock, st.saved.lock || null) ? st.saved.lock || null : cur.lock }),
     };
   };
   const key = dlDocKey(st.id);
@@ -131,13 +135,13 @@ async function dlCoeditSave(store, st, io) {
       cur = io.current(); // the state may have moved while the stored text was read
       const mine = fieldsOf(cur);
       st.saved = { ...st.saved, text: read.text };
-      if (cur.text === read.text && mine.title === read.rec.title && mine.paper === read.rec.paper && dlSamePage(mine.page, read.rec)) {
+      if (cur.text === read.text && mine.title === read.rec.title && mine.paper === read.rec.paper && dlSamePage(mine.page, read.rec) && lockIs(mine, read.rec)) {
         adopt(cur); sweep(); out.status = 'same'; out.rev = cur.rev; out.adopted = true; return out; // the stored text is this text: nothing to write
       }
     }
     const mine = fieldsOf(cur);
-    if (cur.text === st.saved.text && mine.title === st.rec.title && mine.paper === st.rec.paper && dlSamePage(mine.page, st.rec)) { adopt(cur); sweep(); out.status = 'same'; out.rev = cur.rev; return out; }
-    const plan = dlPlanSave({ old: st.old, text: cur.text, title: mine.title, paper: mine.paper, page: mine.page, rec: st.rec, me: io.me, name: io.name, now: io.now(), fresh: io.fresh, lex: io.lex });
+    if (cur.text === st.saved.text && mine.title === st.rec.title && mine.paper === st.rec.paper && dlSamePage(mine.page, st.rec) && lockIs(mine, st.rec)) { adopt(cur); sweep(); out.status = 'same'; out.rev = cur.rev; return out; }
+    const plan = dlPlanSave({ old: st.old, text: cur.text, title: mine.title, paper: mine.paper, page: mine.page, rec: st.rec, me: io.me, name: io.name, now: io.now(), fresh: io.fresh, lex: io.lex, lock: mine.lock });
     if (!plan.ok) { out.status = plan.reason; return out; }
     plan.record.textRev = Math.min(1e9, (Number(st.rec.textRev) || 0) + 1);
     const wait = dlWriteWait(st.log, io.nowMs(), plan.writes.length + 1);
@@ -154,7 +158,7 @@ async function dlCoeditSave(store, st, io) {
       return fail(err);
     }
     const own = { title: cur.title !== st.saved.title, paper: cur.paper !== st.saved.paper, page: !dlSamePage(cur.page, st.saved.page) };
-    st.saved = { text: cur.text, title: own.title ? cur.title : st.saved.title, paper: own.paper ? cur.paper : st.saved.paper, page: own.page ? cur.page : st.saved.page };
+    st.saved = { text: cur.text, title: own.title ? cur.title : st.saved.title, paper: own.paper ? cur.paper : st.saved.paper, page: own.page ? cur.page : st.saved.page, ...(cur.lock === undefined ? {} : { lock: mine.lock }) };
     st.rec = plan.record; st.old = plan.chunks.map((c) => ({ id: c.id, text: c.text })); st.textHeard = plan.record.textRev;
     sweep(plan.dropped);
     out.status = 'saved'; out.rev = cur.rev;
