@@ -68,7 +68,8 @@ const DL_COEDIT = Object.freeze({
   depth: 64, // element levels below the document
   nodes: 20000, // elements and text runs in the whole document
   textChars: 1572864, // 1.5 MB of text in the whole document
-  root: 'prosemirror', // the one shared type that is the document
+  root: 'prosemirror', // the shared type that is the text
+  meta: 'meta', // the one other shared type: the small map of the title, colour and page layout (documents-lib-x-coedit-meta.js)
   refusalsMax: 5, // refusals from one sender within the window flag the sender
   refusalsWindowMs: 60000,
   sendersMax: 1000, // senders the counter remembers at most (the idle ones are forgotten first)
@@ -273,12 +274,19 @@ function dlCoeditGate(PM) {
     return out;
   }
   function checkRoots(doc, rules) {
-    for (const k of doc.share.keys()) if (k !== rules.root) throw dlCoeditStop('unknown_root', k);
+    for (const k of doc.share.keys()) if (k !== rules.root && k !== rules.meta) throw dlCoeditStop('unknown_root', k);
+  }
+  // The meta map (title, colour, page layout): only its five keys, each with a value the page can use. A wrong one is refused as `attrs`.
+  function checkMeta(doc, rules) {
+    if (!doc.share.has(rules.meta)) return;
+    const why = dlMetaProblem(doc.getMap(rules.meta));
+    if (why) throw dlCoeditStop('attrs', `meta: ${why}`);
   }
 
   // The whole fragment. -> { nodes, text, blocks, underfilled }
   function checkAll(doc, rules, sizes) {
     checkRoots(doc, rules);
+    checkMeta(doc, rules);
     const frag = doc.getXmlFragment(rules.root);
     const spent = { nodes: 0, text: 0 };
     let blocks = 0; let underfilled = 0;
@@ -341,6 +349,7 @@ function dlCoeditGate(PM) {
     const reseed = () => {
       if (st.shadow) { st.shadow.off('afterTransaction', onTx); st.shadow.destroy(); }
       st.shadow = new PM.Doc();
+      st.shadow.getMap(rules.meta); // a typed root before anything is applied, so a change of it is known by its type
       PM.applyUpdate(st.shadow, PM.encodeStateAsUpdate(doc), SELF.SEED);
       st.shadow.on('afterTransaction', onTx);
       const sizes = new Map();
@@ -358,8 +367,10 @@ function dlCoeditGate(PM) {
       const blocks = new Set(); let top = false;
       const changed = st.lastChanged;
       if (!changed) return { blocks, top: true };
+      const metaT = st.shadow.share.get(rules.meta);
       for (const t of changed.keys()) {
         if (t === frag) { top = true; continue; }
+        if (t === metaT) continue; // the meta map: checked as a whole by checkMeta
         if (t._item === null) throw dlCoeditStop('unknown_root', 'a change outside the shared text');
         if (t._item.deleted) continue;
         let x = t; let steps = 0;
@@ -416,6 +427,7 @@ function dlCoeditGate(PM) {
         try { PM.applyUpdate(shadow, update, SELF.SHADOW); } catch (e) { leave(); return fail('throws', String(e && e.message).slice(0, 160)); }
         if (shadow.store.pendingStructs || shadow.store.pendingDs) { leave(); return fail('pending', 'the update needs something this copy does not have yet'); }
         checkRoots(shadow, rules);
+        checkMeta(shadow, rules);
         const { blocks, top } = touched(frag);
         let underfilled = 0; let dn = 0; let dt = 0;
         const seen = new Set();
@@ -542,7 +554,7 @@ function dlCoeditGate(PM) {
           bad = hi - 1;
         }
         const node = top.child(bad);
-        dropped.push({ index: live[bad], type: node.type.name, reason: v.reason, text: node.textContent.slice(0, 80) });
+        dropped.push({ index: live[bad], type: node.type.name, reason: v.reason, text: node.textContent.slice(0, 2000) });
         frag.delete(bad, 1); live.splice(bad, 1);
         v = live.length ? verifyBeforeSnapshot(lex, copy, storedText, limits) : { ok: false, reason: 'empty', detail: 'every block was dropped' };
       }

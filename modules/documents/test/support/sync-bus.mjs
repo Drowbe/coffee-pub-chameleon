@@ -14,8 +14,8 @@ export class Clock {
 }
 export class Bus {
   constructor(clock, { bytes = 2048, paceMs = 0 } = {}) { this.paceMs = paceMs; this.clock = clock; this.members = new Map(); this.seq = 0; this.bytes = bytes; this.drop = () => false; this.dup = () => false; this.log = []; this.held = null; this.refuse = null; }
-  connect(key, name = key) {
-    const m = { key, name, subs: new Map(), people: [], state: 'open', ups: [] };
+  connect(key, name = key, opt = {}) {
+    const m = { key, name, subs: new Map(), people: [], state: 'open', ups: [], hidden: Boolean(opt.hidden) };
     this.members.set(key, m);
     const bus = this;
     const live = {
@@ -46,7 +46,7 @@ export class Bus {
     for (const o of this.members.values()) if (o.peopleFn) o.peopleFn({ joined: o === m ? null : { key, name, guest: false, tint: 'blue' }, left: null, people: this.people() });
     return m;
   }
-  people() { return [...this.members.values()].map((x) => ({ key: x.key, name: x.name, guest: false, tint: 'blue' })); }
+  people() { return [...this.members.values()].filter((x) => !x.hidden).map((x) => ({ key: x.key, name: x.name, guest: false, tint: 'blue' })); }
   disconnect(key) { const m = this.members.get(key); this.members.delete(key); for (const o of this.members.values()) if (o.peopleFn) o.peopleFn({ joined: null, left: { key, name: key, guest: false, tint: 'blue' }, people: this.people() }); return m; }
   flush() {
     const out = this.pending.splice(0);

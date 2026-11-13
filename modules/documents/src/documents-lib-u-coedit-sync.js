@@ -31,7 +31,18 @@
 // that gets the write seeds; a page that gets a 409 reads the marker and waits for the winner's state. A marker never blocks for long: a marker whose
 // writer is not here (or is this person), or that is older than seedCapMs, is taken over with a compare-and-set and the taker seeds with the marker's id.
 //
-// NOT HERE (4b slice 2 on): snapshots in storage, mend reporting, the lock switch, the editors list, cursors.
+// THE LINEAGE (4b, slice 3). A document's lineage is its seed marker's id and epoch. Every edit, vector and piece carries `l`, the epoch of the sender's
+// lineage (omitted while the sender does not know it yet). A message whose `l` differs from this page's own is NOT applied (two seeds of one text merge into a
+// doubled text). The page reads the marker (the truth, in storage): if the marker is not this page's lineage, this page is the stale one: it stops, and the
+// page saves its text and reopens the document (onLineage). If the marker is this page's lineage, the sender is the stale one, and the message is dropped.
+// A vector also carries `d`, a short hash of this page's delete set: a state vector does not show a deletion, so a page that holds everything the sender holds
+// still answers a vector whose `d` differs from its own, and stays silent when it is the same (the answer to a beat in a document with deletions was a
+// 24-byte message from every page, every 15 s).
+//
+// THE GOOD STATE (4b, slice 3). The state a rebuild starts from is taken a short moment after each change (goodMs, longer for a large document so the cost stays
+// under 5% of a second): measured on a 150,000-character document, encodeStateAsUpdate costs about 1.5 ms and mergeUpdates about 2.4 ms, so the page re-encodes.
+//
+// NOT HERE: the lock switch, the editors list, cursors.
 
 const DL_SYNC = Object.freeze({
   messageBytes: 2048, // the most a message's data may be: the manifest's live.bytes (the test checks they agree). The server's maximum may be lower: a 413 halves it.
@@ -63,6 +74,10 @@ const DL_SYNC = Object.freeze({
   seedCapMs: 30000, // a seed marker older than this is taken over whoever wrote it; a page also takes over a marker it has watched this long
   claimRetryMs: 2000, // a page that lost the marker looks again at most this often
   firstVectorMs: 800, // a page with a stored copy to load sends its first vector when the copy is in, or after this long
+  goodMs: 100, // the state a rebuild starts from is taken this soon after a change (more for a large document: see take)
+  goodLoad: 20, // ... and at most 1 / goodLoad of the time is spent taking it
+  lineageCheckMs: 5000, // a page reads the seed marker because of a message from another lineage at most this often
+  mendNoteMs: 30000, // a page says a block was removed at most this often
 });
 
 const DL_SYNC_TOPIC = /^[a-z0-9._-]{1,40}$/;
@@ -161,13 +176,13 @@ async function dlSeedClaim(store, o) {
   const mine = (id, epoch) => ({ id, by: o.me, at: new Date(o.now()).toISOString(), ...(epoch ? { epoch } : {}) });
   try {
     for (let round = 0; round < 3; round += 1) {
-      try { await store.set(key, mine(o.seedId), { version: 0 }); return { won: true, id: o.seedId, took: false }; } catch (err) { if (!err || err.status !== 409) throw err; }
+      try { await store.set(key, mine(o.seedId), { version: 0 }); return { won: true, id: o.seedId, took: false, epoch: 0 }; } catch (err) { if (!err || err.status !== 409) throw err; }
       const cur = await store.get(key);
       if (!cur) continue; // gone in between: ask again
       const m = dlCleanSeedMarker(cur.value);
       if (m && !dlSeedMarkerStale(m, { ...o, now: o.now() })) return { won: false, marker: m, version: cur.version };
       const id = m ? m.id : o.seedId;
-      try { await store.set(key, mine(id, m && m.epoch), { version: cur.version }); return { won: true, id, took: true }; } catch (err) { if (!err || err.status !== 409) throw err; }
+      try { await store.set(key, mine(id, m && m.epoch), { version: cur.version }); return { won: true, id, took: true, epoch: (m && m.epoch) || 0 }; } catch (err) { if (!err || err.status !== 409) throw err; }
     }
     const cur = await store.get(key);
     const m = cur && dlCleanSeedMarker(cur.value);
@@ -190,6 +205,17 @@ function dlSyncUnb64(text, maxBytes) {
     for (let i = 0; i < s.length; i += 1) out[i] = s.charCodeAt(i);
     return out;
   } catch (e) { return null; }
+}
+
+// A short hash of bytes (the delete set's digest in a vector message): 8 to 16 characters of base 36. Not a secret; it only tells "the same" from "not the same".
+function dlSyncHashBytes(bytes) {
+  let a = 0x811c9dc5; let b = 0x01000193 ^ bytes.length;
+  for (let i = 0; i < bytes.length; i += 1) {
+    a = Math.imul(a ^ bytes[i], 0x01000193) >>> 0;
+    b = Math.imul(b + bytes[i] + 0x9e3779b9, 0x85ebca6b) >>> 0;
+    b ^= b >>> 13;
+  }
+  return a.toString(36) + (b >>> 0).toString(36);
 }
 
 // A state vector read by hand (the library has no decoder in the bundle): a count, then writer and clock pairs, each a variable-length number.
@@ -224,7 +250,7 @@ function dlSyncHasMore(a, b) {
   return false;
 }
 
-// What a message's data may be. -> { t: 'u'|'v'|'k'|'x', ... } or null (counted by the session). Keys are fixed; a string is bounded before it is read.
+// What a message's data may be. -> { t: 'u'|'v'|'k'|'x'|'m', ... } or null (counted by the session). Keys are fixed; a string is bounded before it is read.
 function dlSyncClean(data, cfg) {
   const c = cfg || DL_SYNC;
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -232,19 +258,25 @@ function dlSyncClean(data, cfg) {
   const only = (list) => keys.length > 0 && keys.every((k) => list.includes(k));
   const cap = c.messageBytes * 2; // a string longer than this is no message of ours
   const str = (v) => typeof v === 'string' && v.length <= cap;
-  if (keys.length === 1 && keys[0] === 'u') return str(data.u) ? { t: 'u', b64: data.u } : null;
+  const lin = 'l' in data ? data.l : null; // the epoch of the sender's lineage
+  if ('l' in data && (!Number.isInteger(lin) || lin < 0 || lin > 1e6)) return null;
+  if ('u' in data && only(['u', 'l'])) return str(data.u) ? { t: 'u', b64: data.u, l: lin } : null;
   if (keys.length === 1 && keys[0] === 'x') return data.x === 1 ? { t: 'x' } : null;
-  if (only(['v', 'e', 'a']) && 'v' in data) {
+  if (keys.length === 2 && only(['m', 'n']) && 'm' in data) { // a block that could not be saved was removed: how many
+    return data.m === 1 && Number.isInteger(data.n) && data.n >= 1 && data.n <= 16 ? { t: 'm', n: data.n } : null;
+  }
+  if (only(['v', 'e', 'a', 'd', 'l']) && 'v' in data) {
     if (!str(data.v)) return null;
     const e = data.e === undefined ? 1 : data.e;
     const a = data.a === undefined ? 0 : data.a;
     if ((e !== 0 && e !== 1) || !Number.isInteger(a) || a < 0 || a > 64) return null;
-    return { t: 'v', b64: data.v, editor: e === 1, admitted: a };
+    if (data.d !== undefined && (typeof data.d !== 'string' || !/^[0-9a-z]{4,24}$/.test(data.d))) return null;
+    return { t: 'v', b64: data.v, editor: e === 1, admitted: a, ds: data.d === undefined ? null : data.d, l: lin };
   }
-  if (keys.length === 4 && only(['k', 'i', 'n', 'c'])) {
+  if ((keys.length === 4 || keys.length === 5) && only(['k', 'i', 'n', 'c', 'l']) && ['k', 'i', 'n', 'c'].every((x) => x in data)) {
     if (typeof data.k !== 'string' || !/^[a-z0-9]{4,12}$/.test(data.k) || !str(data.c)) return null;
     if (!Number.isInteger(data.i) || !Number.isInteger(data.n) || data.n < 1 || data.n > c.pieces || data.i < 0 || data.i >= data.n) return null;
-    return { t: 'k', id: data.k, i: data.i, n: data.n, b64: data.c };
+    return { t: 'k', id: data.k, i: data.i, n: data.n, b64: data.c, l: lin };
   }
   return null;
 }
@@ -313,6 +345,7 @@ function dlSyncSession(PM, o) {
     sent: 0, sentBytes: 0, maxSentBytes: 0, edits: 0, editBytes: 0, maxEditBytes: 0, got: 0, applied: 0, refused: 0, quiet: 0, bad: 0, gaps: 0,
     vectorsOut: 0, vectorsIn: 0, answers: 0, pieces: 0, piecesIn: 0, assembled: 0, assemblyLost: 0, big: 0, rebuilt: 0, resized: 0, failed: 0, slow: 0, lastError: '', lastRefusal: '', details: {}, reasons: {},
     elections: 0, marker: '', markerFailed: 0, markerCalls: 0,
+    lineageSeen: 0, lineageChanged: 0, mendsOut: 0, mendsIn: 0, takes: 0, takeMs: 0, dsSkipped: 0, dsAnswered: 0,
     changes: 0, snapshotLoaded: 0, snapshotRejected: 0, snapshotReason: '', snapshotMs: -1, rebuiltFromText: 0, compacted: 0, compactWhy: '', joinMs: -1, snapshotLoadMs: -1,
   };
   const hold = dlSyncWriterHold(cfg.writerQuietMs);
@@ -343,6 +376,14 @@ function dlSyncSession(PM, o) {
   let peerSeen = false; // during the join: someone else's state is, or may be, on its way (their vector had content, or a piece or an update came)
   let peerAt = 0; // during the join: when anything last came from anyone else
   let pieceAt = 0; // when a piece or an update last came from anyone else
+  let epoch = null; // the epoch of this page's lineage (the seed marker's), or null while this page does not know it
+  let seedId = null; // the seed id of this page's lineage, when this page knows it (it seeded, or loaded a copy)
+  let heardEpoch = null; // during the join: the epoch a peer's message carried
+  let frozen = false; // the lineage changed under this page: it applies and sends nothing more (the page saves and reopens)
+  let lastLineageCheck = -Infinity; let checking = false;
+  let goodTimer = null; let lastTake = -Infinity; let lastTakeCost = 0;
+  let dsKey = ''; let dsVal = '';
+  let lastMendNote = -Infinity;
   let atModule = null; // keys at the module now, from host.live's people
   const othersAtModule = () => (atModule || []).some((k) => k !== o.me);
 
@@ -364,6 +405,7 @@ function dlSyncSession(PM, o) {
     if (guard) guard.destroy();
     guard = gateApi.guard(doc, o.limits, { lex: o.lex, origin: ORIGIN, bytes: gateApi.limits.snapshotBytes, now: () => clock.now() });
     doc.on('update', onLocal);
+    doc.getMap(gateApi.limits.meta); // the settings map is a typed root from the start (a change of it is then known by its type)
     goodDirty = true;
   }
   function detach() { if (guard) { guard.destroy(); guard = null; } try { doc.off('update', onLocal); } catch (e) { /* gone */ } }
@@ -371,9 +413,9 @@ function dlSyncSession(PM, o) {
   function onLocal(u, origin) {
     if (stopped) return;
     stats.changes += 1; // every real change of the document, whoever made it (a duplicate update is no change): the stored copy's trigger
-    if (origin === ORIGIN || origin === SEED) return;
-    goodDirty = true;
-    if (!editor) return;
+    if (origin === ORIGIN || origin === SEED) { if (origin === ORIGIN) { goodDirty = true; takeSoon(); } return; }
+    goodDirty = true; takeSoon();
+    if (!editor || frozen) return;
     stats.edits += 1;
     local.push(u);
     pump();
@@ -393,18 +435,28 @@ function dlSyncSession(PM, o) {
     const step = pieceRaw();
     const n = Math.ceil(bytes.length / step);
     if (n > cfg.pieces) return false;
-    for (let i = 0; i < n; i += 1) direct.push({ data: { k: id, i, n, c: dlSyncB64(bytes.subarray(i * step, (i + 1) * step)) }, to });
+    for (let i = 0; i < n; i += 1) direct.push({ data: { k: id, i, n, c: dlSyncB64(bytes.subarray(i * step, (i + 1) * step)), ...(epoch !== null ? { l: epoch } : {}) }, to });
     stats.pieces += n;
     return true;
+  }
+  // A hash of this page's delete set (a state vector does not show a deletion). Kept for the state it was made from.
+  function dsDigest() {
+    const k = `${stats.changes}:${stats.rebuilt}:${stats.snapshotLoaded}`;
+    if (k !== dsKey) {
+      try { dsVal = dlSyncHashBytes(PM.encodeStateAsUpdate(doc, PM.encodeStateVector(doc))); } catch (e) { dsVal = '0000'; }
+      dsKey = k;
+    }
+    return dsVal;
   }
   function vectorMessage() {
     const v = PM.encodeStateVector(doc);
     if (v.length > cfg.vectorBytes) return null;
-    return { v: dlSyncB64(v), e: editor && announced ? 1 : 0, a: admitted }; // an editor only once the join decided it may type
+    return { v: dlSyncB64(v), e: editor && announced ? 1 : 0, a: admitted, d: dsDigest(), ...(epoch !== null ? { l: epoch } : {}) }; // an editor only once the join decided it may type
   }
   // `asking`: this vector asks for what is missing (a gap, a quiet period, a join, a return): the gate is told, so the honest updates that come back
   // with a missing predecessor meanwhile are not counted against their senders (guard.syncRequested; syncDone when an update is taken). The beat does not ask.
   function sendVector(to, asking = true) {
+    if (frozen) return;
     if (asking && guard) guard.syncRequested();
     if (direct.length >= cfg.queueMax) { stats.failed += 1; reason('busy'); return; }
     const data = vectorMessage();
@@ -422,7 +474,7 @@ function dlSyncSession(PM, o) {
     if (local.length) {
       const merged = local.length === 1 ? local[0] : PM.mergeUpdates(local);
       local.length = 0;
-      const data = { u: dlSyncB64(merged) };
+      const data = { u: dlSyncB64(merged), ...(epoch !== null ? { l: epoch } : {}) };
       if (size(data) <= bytesMax) item = { data, to: null, edit: merged };
       else { stats.big += 1; reason('edit_too_big_for_a_message'); sendVector(null); /* the others ask, and the difference goes in pieces */ }
     }
@@ -488,13 +540,17 @@ function dlSyncSession(PM, o) {
     const t = clock.now();
     if (t - (lastAnswer.get(from) || -Infinity) < cfg.answerMinMs) return;
     if (direct.length >= cfg.queueMax) { stats.failed += 1; reason('busy'); return; }
+    // Nothing to give: the sender holds every struct this page holds (its vector covers this page's) and its delete set is this page's. A delete set can
+    // differ with equal vectors (a deletion adds no struct), so the difference is still sent when the digests differ or the sender gave none.
+    const mine0 = dlSyncVector(PM.encodeStateVector(doc), 100000);
+    if (mine0 && !dlSyncHasMore(mine0, vec.map) && vec.ds && vec.ds === dsDigest()) { stats.dsSkipped += 1; return; }
     lastAnswer.set(from, t);
     if (lastAnswer.size > 200) { for (const [k, at] of lastAnswer) if (t - at > 60000) lastAnswer.delete(k); }
     let diff;
     try { diff = PM.encodeStateAsUpdate(doc, vec.bytes); } catch (e) { stats.bad += 1; reason('vector_unreadable'); return; }
-    if (diff.length <= 2 && !PM.encodeStateAsUpdate(doc).length) return;
     // an empty difference is two bytes (no structs, no deletes): nothing to say
     if (diff.length <= 2) return;
+    if (mine0 && !dlSyncHasMore(mine0, vec.map)) stats.dsAnswered += 1;
     stats.answers += 1;
     const data = { u: dlSyncB64(diff) };
     if (size(data) <= bytesMax) { direct.push({ data, to: [from] }); } else if (!pieces(diff, [from])) { stats.failed += 1; reason('difference_too_big'); }
@@ -537,7 +593,7 @@ function dlSyncSession(PM, o) {
     receiveUpdate(whole, from);
   }
   function onMessage(data, from, meta) {
-    if (stopped) return;
+    if (stopped || frozen) return;
     stats.got += 1;
     // The sender is the transport's `from.key`. A message with none is still checked, as one shared sender 'unknown' (never a free pass, never its own bucket).
     const key = from && typeof from.key === 'string' && from.key ? from.key : 'unknown';
@@ -548,6 +604,10 @@ function dlSyncSession(PM, o) {
     const m = dlSyncClean(data, cfg);
     if (!m) { stats.bad += 1; reason('not_a_message'); changed(); return; }
     if (m.t === 'x') { roster.forget(key); elect(); changed(); return; }
+    // Another lineage (a re-seeded document): never applied. The marker says which of the two is the stale one.
+    if (key !== o.me && m.l !== undefined && m.l !== null) {
+      if (epoch === null) { if (joining) heardEpoch = m.l; } else if (m.l !== epoch) { stats.lineageSeen += 1; reason('other_lineage'); checkLineage(); changed(); return; }
+    }
     const known = roster.has(key);
     roster.hear(key, m.t === 'v' ? { editor: m.editor, admitted: m.admitted } : undefined);
     if (m.t === 'v') elect();
@@ -555,7 +615,9 @@ function dlSyncSession(PM, o) {
       peerAt = clock.now();
       if (m.t === 'u' || m.t === 'k') { peerSeen = true; pieceAt = peerAt; }
     }
-    if (m.t === 'u') {
+    if (m.t === 'm') { // the writer removed a block that could not be saved: this page says so, once in a while
+      if (key === writerKey && key !== o.me) { stats.mendsIn += 1; if (o.onMend && clock.now() - lastMendNote >= cfg.mendNoteMs) { lastMendNote = clock.now(); o.onMend(m.n); } }
+    } else if (m.t === 'u') {
       const bytes = dlSyncUnb64(m.b64, cfg.messageBytes);
       if (!bytes) { stats.bad += 1; reason('not_base64'); changed(); return; }
       receiveUpdate(bytes, key);
@@ -567,12 +629,31 @@ function dlSyncSession(PM, o) {
       if (!map) { stats.bad += 1; reason('vector_unreadable'); changed(); return; }
       // a vector with content is someone with a state to give; an empty one is another page that is joining, or a document with nothing in it
       if (joining && key !== o.me && map.size > 0) peerSeen = true;
-      answer({ bytes, map }, key);
+      answer({ bytes, map, ds: m.ds }, key);
       if (!known) sendVector(key); // someone new: say who this page is (the cap is counted from these)
       const mine = dlSyncVector(PM.encodeStateVector(doc), 100000);
       if (mine && dlSyncHasMore(map, mine)) askAfterGap(key); // they have what this page lacks
     }
     changed();
+  }
+
+  // A message came from another lineage. The seed marker is the truth: if it is not this page's lineage, this page is the stale one.
+  function checkLineage() {
+    if (frozen || checking || !o.marker || !o.marker.store) return;
+    const t = clock.now();
+    if (t - lastLineageCheck < cfg.lineageCheckMs) return;
+    lastLineageCheck = t; checking = true;
+    Promise.resolve().then(() => o.marker.store.get(dlSeedMarkerKey(o.marker.doc))).then((cur) => {
+      checking = false;
+      if (stopped || frozen) return;
+      const m = cur && dlCleanSeedMarker(cur.value);
+      if (!m || epoch === null) return; // no marker we can read: no decision
+      if ((m.epoch || 0) !== epoch || (seedId !== null && m.id !== seedId)) {
+        frozen = true; editor = false; local.length = 0; direct.length = 0; stats.lineageChanged += 1; writerKey = '';
+        changed();
+        if (o.onLineage) o.onLineage({ epoch: m.epoch || 0 });
+      }
+    }, () => { checking = false; });
   }
 
   // ---- the page's own life ---------------------------------------------------------------------------------------------------------------
@@ -590,7 +671,15 @@ function dlSyncSession(PM, o) {
   }
   function take() { // the last good state, for a rebuild: only when nothing refused has touched the document since
     if (!goodDirty) return;
+    const t0 = Date.now();
     try { good = PM.encodeStateAsUpdate(doc); goodDirty = false; } catch (e) { /* keep the old one */ }
+    lastTakeCost = Date.now() - t0; lastTake = clock.now(); stats.takes += 1; stats.takeMs = lastTakeCost;
+  }
+  // After a change: the good state is taken goodMs after the last take (longer when taking it is slow: at most 1 / goodLoad of the time goes to it).
+  function takeSoon() {
+    if (goodTimer !== null || stopped) return;
+    const wait = Math.max(0, lastTake + Math.max(cfg.goodMs, lastTakeCost * cfg.goodLoad) - clock.now());
+    goodTimer = setTimer(() => { goodTimer = null; take(); }, wait);
   }
   function beat() {
     take();
@@ -649,14 +738,15 @@ function dlSyncSession(PM, o) {
       let snapPending = Boolean(o.snapshot); let snapRes = null; let firstSent = !o.snapshot; let reseedWanted = false; let loadTimer = null; let firstTimer = null;
       const sendFirst = () => { if (firstSent) return; firstSent = true; if (firstTimer !== null) clearTimer(firstTimer); sendVector(null); };
       const content = () => doc.getXmlFragment(gateApi.limits.root).length > 0;
-      const finish = (how, seedId) => {
+      const finish = (how, seedIdIn) => {
         if (finished) return;
         finished = true; joinCheck = null; joining = false;
         if (wait !== null) clearTimer(wait);
         if (settle !== null) clearTimer(settle);
         if (tick !== null) clearTimer(tick);
         if (loadTimer !== null) clearTimer(loadTimer);
-        if (!content()) { o.seed(doc, seedId); if (guard) guard.reseed(); goodDirty = true; take(); if (reseedWanted) stats.rebuiltFromText += 1; }
+        if (!content()) { o.seed(doc, seedIdIn); if (guard) guard.reseed(); goodDirty = true; take(); if (reseedWanted) stats.rebuiltFromText += 1; }
+        if (epoch === null && heardEpoch !== null) epoch = heardEpoch; // joined from a peer's state: its lineage
         sendFirst();
         stats.joinMs = clock.now() - t0;
         admitted = roster.others().length;
@@ -680,7 +770,7 @@ function dlSyncSession(PM, o) {
           o.snapshot.reseed().then((r) => {
             claiming = false;
             if (finished || stopped || content()) return;
-            if (r.won) { stats.marker = 'reseed'; finish(how, r.id); return; }
+            if (r.won) { stats.marker = 'reseed'; epoch = r.epoch; seedId = r.id; finish(how, r.id); return; }
             if (r.error) { stats.markerFailed += 1; stats.marker = 'failed'; stats.lastError = String(r.error && r.error.message).slice(0, 80); finish(how); return; }
             reseedWanted = false; held = r.marker; if (!heldAt) heldAt = clock.now(); stats.marker = 'waiting'; changed();
           });
@@ -690,7 +780,7 @@ function dlSyncSession(PM, o) {
           claiming = false;
           if (finished || stopped) return;
           if (content()) return; // the state came while the marker was asked for: the tick settles
-          if (r.won) { stats.marker = r.took ? 'took' : 'won'; finish(how, r.id); return; }
+          if (r.won) { stats.marker = r.took ? 'took' : 'won'; epoch = r.epoch || 0; seedId = r.id; finish(how, r.id); return; }
           if (r.error) { stats.markerFailed += 1; stats.marker = 'failed'; stats.lastError = String(r.error && r.error.message).slice(0, 80); finish(how); return; }
           held = r.marker; if (!heldAt) heldAt = clock.now(); stats.marker = 'waiting'; changed();
         });
@@ -715,6 +805,12 @@ function dlSyncSession(PM, o) {
         if (!r.judged) r.judged = o.snapshot.judge(r.bytes, r.header);
         const j = r.judged;
         if (j.reject) { snapReject(j.reject); return; }
+        // A copy made before the last save does not hold what was saved after it. Peers hold that, so beside them the copy is a starting point; alone, it is not
+        // the document (the page would show the older text and its next save would take the newer away): the page opens from the stored text.
+        if (r.header.rev < o.snapshot.storedRev()) {
+          if (!knownAlone()) return;
+          if (aloneNow()) { try { j.doc.destroy(); } catch (e) { /* gone */ } snapReject('rev_old'); return; }
+        }
         const cmp = dlSnapCompaction({ header: r.header, textLen: o.snapshot.textLen(), vectorBytes: j.vectorBytes });
         if (cmp.compact) {
           if (!knownAlone()) return; // not yet known whether anyone is here: look again
@@ -728,6 +824,7 @@ function dlSyncSession(PM, o) {
         goodDirty = true; take();
         if (o.onRebuild) o.onRebuild(doc);
         stats.snapshotLoaded += 1; stats.snapshotMs = elapsed();
+        epoch = r.header.epoch; seedId = r.header.seed;
         if (o.snapshot.adopted) o.snapshot.adopted(r.header);
         snapPending = false; sendFirst();
         if (settle === null) settle = setTimer(() => finish('state'), cfg.settleMs);
@@ -769,7 +866,17 @@ function dlSyncSession(PM, o) {
     admitted: () => admitted,
     // Who writes the text now: the key, '' for none; and whether that is this page.
     writer: () => writerKey,
-    isWriter: () => writerKey !== '' && writerKey === o.me && !stopped,
+    isWriter: () => writerKey !== '' && writerKey === o.me && !stopped && !frozen,
+    // The lineage of this page's document: { epoch, seed } (null where not known yet).
+    lineage: () => ({ epoch, seed: seedId }),
+    frozen: () => frozen,
+    // The writer removed a block that could not be saved (the mend): everyone else is told once.
+    announceMend(n) {
+      if (!started || stopped || frozen) return;
+      stats.mendsOut += 1;
+      direct.push({ data: { m: 1, n: Math.max(1, Math.min(16, n | 0)) }, to: null });
+      pump();
+    },
     // Waits (at most `ms`) until this page's own changes have gone out, so a page that leaves does not lose its last typing on the way.
     drain(ms) {
       return new Promise((resolve) => {
@@ -780,7 +887,7 @@ function dlSyncSession(PM, o) {
     },
     hearPeople(keys) { atModule = keys; roster.people(keys); },
     roster,
-    stats: () => ({ ...stats, writer: writerKey, isWriter: writerKey !== '' && writerKey === o.me, reasons: { ...stats.reasons }, details: { ...stats.details }, guard: guard ? guard.stats() : null, bytesMax, sending, hold: Math.max(0, holdUntil - clock.now()), sinceSend: sentAt ? clock.now() - sentAt : -1, pending: local.length + direct.length, assembling: assemblies.size }),
+    stats: () => ({ ...stats, epoch, frozen, writer: writerKey, isWriter: writerKey !== '' && writerKey === o.me && !frozen, reasons: { ...stats.reasons }, details: { ...stats.details }, guard: guard ? guard.stats() : null, bytesMax, sending, hold: Math.max(0, holdUntil - clock.now()), sinceSend: sentAt ? clock.now() - sentAt : -1, pending: local.length + direct.length, assembling: assemblies.size }),
     doc: () => doc,
     rebuild,
     sendVector,

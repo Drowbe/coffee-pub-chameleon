@@ -263,14 +263,13 @@ await test('rejected: a good state of ANOTHER text with correct hashes (the veri
   assert.equal(st.snapshotLoaded, 0); assert.equal(st.snapshotRejected, 1); assert.match(st.snapshotReason, /text_differs|verify_/);
   assert.equal(c.text(), text);
 });
-await test('a copy older than the text with its own lineage is a starting point; a copy of another lineage is not', async () => {
+await test('a copy older than the saved text, for a page that is alone, is not the document (4b slice 3: it would show the older text and its save would take the newer away): the page opens from the text', async () => {
   const W = await withCopy(big(300), { stay: true });
   typeAt(W, W.b, 7, ' later'); await W.run(9000); await W.leave(W.b); await W.leave(W.a); await W.run(200);
   assert.ok(W.stored().rec.textRev > header(W).rev);
   const c = await openAlone(W, 'cccc3333', 8000);
-  assert.equal(stats(c).snapshotLoaded, 1, 'older, same lineage: a starting point');
-  // alone: nobody sends the difference; the page holds the older state and its writer's save/copy converge (the stored text is the truth)
-  assert.ok(c.doc().getXmlFragment(W.frag).length === 300);
+  assert.equal(stats(c).snapshotLoaded, 0); assert.equal(stats(c).snapshotReason, 'rev_old');
+  assert.ok(c.text().includes(' later'), 'the text saved after the copy is in the page');
 });
 
 // ---- 4. compaction -----------------------------------------------------------------------------------------------------------------------
