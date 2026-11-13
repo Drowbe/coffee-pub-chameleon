@@ -197,7 +197,8 @@ function selectTab(name) {
 }
 // The About tab's Open-source software list (#773): public/credits.json, drawn once, as text and never as markup. A group
 // is a heading and a list; each line is the name, what it is for, its licence and link, and a "Licence text" disclosure
-// (a native <details>, so the keyboard and screen readers have it) with the notice the licence asks us to show.
+// (a native <details>, so the keyboard and screen readers have it) with the notice the licence asks us to show. An entry of
+// kind "own" is our own artwork: one plain line ("Made by Coffee Pub."), no licence, link or licence text.
 let creditsShown = false;
 async function showCredits() {
   if (creditsShown) return;
@@ -220,6 +221,12 @@ async function showCredits() {
         head.append(make('strong', c.name));
         if (c.version) head.append(make('span', c.version, 'hint'));
         li.append(head, make('div', c.use, 'hint'));
+        if (c.kind === 'own') {
+          // Our own work: said in plain words, with no licence, link or licence text.
+          li.append(make('div', c.notice || 'Made by Coffee Pub.', 'credit-meta'));
+          ul.append(li);
+          continue;
+        }
         const meta = make('div', '', 'credit-meta');
         meta.append(make('span', c.licence));
         if (/^https:\/\//.test(c.link)) {
