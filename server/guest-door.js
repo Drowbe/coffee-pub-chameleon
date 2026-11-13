@@ -115,15 +115,23 @@ const mixesScripts = (value) => {
 // round brackets. A typed name that already ends in the mark (the word or "guest", any case) is taken without it, so the
 // mark is never doubled.
 const escapeRe = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const INVISIBLE = /[\u200B-\u200F\u2060\uFEFF\u202A-\u202E\u2066-\u2069\u061C]/g;
 const markPattern = (word) => new RegExp(`\\(\\s*(?:guest|${escapeRe(word || 'guest')})\\s*\\)\\s*$`, 'iu');
 const guestMark = (word) => { const w = String(word || 'guest'); return `(${w.charAt(0).toUpperCase()}${w.slice(1)})`; };
+// A name read the way a person sees it: invisible and direction characters gone, full-width forms made plain
+// (NFKC: "（Ｇｕｅｓｔ）" reads as "(Guest)").
+const seen = (name) => String(name || '').replace(INVISIBLE, '').normalize('NFKC');
 // True when `name` ends in the guest mark, as a person may not be called (a member's display name).
-const endsWithGuestMark = (name, word) => markPattern(word).test(String(name || ''));
-// The typed name without any guest mark on its end.
+const endsWithGuestMark = (name, word) => markPattern(word).test(seen(name).trim());
+// The typed name without any guest mark on its end (in any bracket form: the mark holds no other bracket, so the last
+// opening one starts it).
 function stripGuestMark(typed, word) {
-  let out = String(typed || '').trim();
-  const re = markPattern(word);
-  for (let i = 0; i < 5 && re.test(out); i += 1) out = out.replace(re, '').trim();
+  let out = String(typed || '').replace(INVISIBLE, '').trim();
+  for (let i = 0; i < 5 && endsWithGuestMark(out, word); i += 1) {
+    const open = Math.max(out.lastIndexOf('('), out.lastIndexOf('\uFF08'), out.lastIndexOf('\uFE59'));
+    if (open < 0) break;
+    out = out.slice(0, open).trim();
+  }
   return out;
 }
 // The name as kept and shown everywhere: the typed name and the mark once.

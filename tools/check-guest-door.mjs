@@ -54,7 +54,7 @@ const test = async (name, fn) => {
   });
   await test('the account session and the guest session are different keys and shapes', () => {
     const auth = require('../server/auth.js');
-    const account = auth.issueSession(SECRET, { key: 'k1', passwordHash: 'x' });
+    const account = auth.issueSession(SECRET, { key: 'key1abc', passwordHash: 'x' });
     assert.equal(rd(account), null, 'an account session never reads as a guest');
     assert.equal(auth.readSession(SECRET, door.issue(SECRET, base), () => ({ key: base.id, passwordHash: 'x' })), null, 'a guest session never reads as an account');
     assert.equal(auth.sessionToken({ get: (h) => (h === 'cookie' ? `guest_session=${door.issue(SECRET, base)}` : '') }), null, 'app_session reader ignores the guest cookie');
@@ -74,6 +74,14 @@ const test = async (name, fn) => {
   await test('a bad guest id is nobody', () => {
     assert.equal(rd(door.issue(SECRET, { ...base, id: 'someone' })), null);
     assert.equal(rd(door.issue(SECRET, { ...base, id: 'guest-../x' })), null);
+  });
+    await test('the guest mark is found however it is written: hidden characters, full-width brackets and letters, any case', () => {
+    for (const bad of ['Anna (Guest)', 'Anna (GUEST)', 'Anna (Guest)\u200b', 'Anna (Guest)\u200f', 'Anna \u202e(Guest)', 'Anna \uff08Guest\uff09', 'Anna \uff08\uff27\uff55\uff45\uff53\uff54\uff09', 'Anna ( guest )  ']) assert.equal(door.endsWithGuestMark(bad, 'guest'), true, JSON.stringify(bad));
+    for (const good of ['Anna Guest', 'Anna (Guest) Smith', 'Anna (Guests)', 'Guest Anna']) assert.equal(door.endsWithGuestMark(good, 'guest'), false, good);
+    assert.equal(door.endsWithGuestMark('Anna (Visitor)', 'visitor'), true, "the template's word");
+    assert.equal(door.markedGuestName('Thomas\uff08Guest\uff09', 'guest'), 'Thomas (Guest)', 'a full-width mark is shown once');
+    assert.equal(door.markedGuestName('Thomas (Guest)\u200b', 'guest'), 'Thomas (Guest)');
+    assert.equal(door.markedGuestName('Thomas \uff08guest\uff09 (Guest)', 'guest'), 'Thomas (Guest)');
   });
   await test('the register counts who is here and forgets the idle and the ended', () => {
     const r = new door.GuestRegister({ activeMs: 1000 });
@@ -282,6 +290,42 @@ try {
       assert.equal((await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia Guest' } })).status, 200, 'a name that only contains the word is fine');
       assert.equal((await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia Member' } })).status, 200);
     });
+    await test('a member\'s name is checked as it will be kept: cut to 40, hidden characters and full-width brackets can not hide the mark; every route that sets one', async () => {
+      const tricks = [`${'a'.repeat(32)} (Guest)xx`, 'Anna (Guest)\u200b', 'Anna (Guest)\u200f', 'Anna (Guest)\u202e', 'Anna \uff08Guest\uff09', 'Anna (Guest)\ufeff'];
+      const login = (i) => `trick${i}`;
+      // The long one: cut to 40 characters, it still holds the whole mark only when the cut lands after it. 32 + 8 = 40 ends in "(Guest)", so check both forms.
+      const ends = [`${'a'.repeat(33)} (Guest)xx`, `${'a'.repeat(32)} (Guest)xx`];
+      for (const name of [...tricks, ...ends]) {
+        const p = await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: name } });
+        const kept = [...name.replace(/[\u200b-\u200f\u202a-\u202e\ufeff]/g, '')].slice(0, 40).join('').normalize('NFKC');
+        const refused = /\(guest\)\s*$/i.test(kept);
+        assert.equal(p.status, refused ? 400 : 200, `edit ${JSON.stringify(name)}`);
+        if (refused) assert.match(p.json.error, /can't end in \(guest\)\./);
+      }
+      for (const [i, name] of tricks.entries()) {
+        const add = await N.call('POST', '/api/users', { token: n0.admin, body: { login: login(i), displayName: name, role: 'member', password: 'memberpass1234' } });
+        assert.equal(add.status, 400, `add ${JSON.stringify(name)}`);
+      }
+      const fine = await N.call('PATCH', `/api/users/${n0.keys.member}`, { token: n0.admin, body: { displayName: 'Mia\u200b Member' } });
+      assert.equal(fine.status, 200);
+      assert.equal(fine.json.user.displayName, 'Mia Member', 'hidden characters are not kept');
+      // Self sign-up (and an invite's accept goes the same way, through Store#addUser).
+      assert.equal((await N.call('PATCH', '/api/settings', { token: n0.admin, body: { allowRegistration: true } })).status, 200);
+      for (const [i, name] of tricks.entries()) assert.equal((await N.call('POST', '/api/register', { body: { login: `reg${i}`, displayName: name, password: 'memberpass1234' } })).status, 400, `register ${JSON.stringify(name)}`);
+      assert.equal((await N.call('POST', '/api/register', { body: { login: 'regok', displayName: 'Rita Real', password: 'memberpass1234' } })).status, 201);
+    });
+    await test('a person restored from a zip or read from the data file with a name ending in the mark is called by their login', async () => {
+      const { Store } = require('../server/store.js');
+      const dir = fs.mkdtempSync(path.join(tmp, 'restore-'));
+      fs.writeFileSync(path.join(dir, 'app.json'), JSON.stringify({ users: [
+        { key: 'key1abc', login: 'anna', displayName: 'Anna (Guest)', role: 'member' },
+        { key: 'key2abc', login: 'bo', displayName: 'Bo (Guest)\u200b', role: 'member' },
+        { key: 'key3abc', login: 'cy', displayName: 'Cy \uff08guest\uff09', role: 'member' },
+        { key: 'key4abc', login: 'di', displayName: 'Di Guest', role: 'member' },
+      ] }));
+      const store = new Store(dir);
+      assert.deepEqual(store.data.users.map((u) => u.displayName), ['anna', 'bo', 'cy', 'Di Guest']);
+    });
     await test('a guest\'s name: the typed name and the mark once, never doubled; a member\'s name is not refused; mixed alphabets are', async () => {
       const enter = (name) => enterDoor(N, name);
     // A member's name is no longer refused: every guest name carries the mark, so no guest passes as a member.
@@ -294,6 +338,11 @@ try {
       const r = await enter( typed);
       assert.equal(r.status, 201, typed);
       assert.equal(r.json.guest.name, 'Thomas (Guest)', `${typed}: never doubled`);
+    }
+    for (const typed of ['Thomas\uff08Guest\uff09', 'Thomas \uff08guest\uff09 ', 'Thomas (Guest)\u200b']) {
+      const r = await enter( typed);
+      assert.equal(r.status, 201, typed);
+      assert.equal(r.json.guest.name, 'Thomas (Guest)', `${JSON.stringify(typed)}: the typed mark is taken off in any form`);
     }
     assert.equal((await enter( '(Guest)')).status, 400, 'only the mark typed is no name');
     for (const mixed of ['M\u0430ry Jones', 'Sam \u03bflive', 'Jon \u0531nna']) {
@@ -352,6 +401,15 @@ try {
     assert.equal(r.json.spaces[0].state, 'open');
     assert.equal(r.json.guest.name, 'Sam (Guest)');
     assert.ok(r.json.unavailable.length > 3);
+    // The list claims only what a door guest can not do: the Calendar and Map views in a space are theirs (the modules' guest
+    // defaults let a guest read them), so only the pages that gather every space may be listed, and the top bar offers a guest none.
+    for (const m of ['calendar', 'maps']) {
+      const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', m, 'module.json'), 'utf8'));
+      assert.equal(manifest.permissions.find((x) => x.key === 'view')?.default?.guest, true, `${m}: a guest may see it`);
+    }
+    for (const line of r.json.unavailable) if (/calendar|map/i.test(line)) assert.match(line, /pages? that gather every/i, `claims too much: ${line}`);
+    assert.ok(!r.json.unavailable.some((l) => /\bthe calendar or the map\b/i.test(l)));
+    assert.deepEqual((await A.call('GET', '/api/destinations', { cookie: sam.cookie })).json.destinations, [], 'no Calendar or Map page for a guest');
     assert.match(r.json.none, /No spaces are open to guests at this time\./);
     // The guest role's permissions, exactly what a guest link's join answers with (the page shows chat and the call by them; a guest link's join answers the same).
     const roles = await A.call('GET', '/api/roles', { token: a.admin });
