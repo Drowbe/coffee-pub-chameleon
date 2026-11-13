@@ -47,7 +47,7 @@ for (const file of files) {
 // through host.ui.editor, sized to the form and never clipped by the module's box. Once a bundled module is migrated
 // (steps 3 to 8 of the plan add it here), its #editor is a <dialog class="sdk-editor"> and its stylesheet keeps no
 // overlay rule (`.editor { position: absolute; inset: 0 }`) that would draw the form inside the module's window.
-const EDITOR_MIGRATED = ['todo', 'calendar', 'travel', 'polls', 'research', 'places', 'budget'];
+const EDITOR_MIGRATED = ['todo', 'calendar', 'travel', 'polls', 'research', 'maps', 'budget'];
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 // An icon scan that waits for each pending icon separately attaches a scan to every other pending icon too: a form opened
 // while its icons load scanned itself 2^n times and froze the Planner (#192). Pending icons are waited for together, once.
@@ -60,6 +60,8 @@ for (const file of files) {
 for (const id of EDITOR_MIGRATED) {
   const src = path.join(root, 'modules', id, 'src');
   const html = fs.readdirSync(src).filter((n) => n.endsWith('.html')).map((n) => `modules/${id}/src/${n}`);
+  // The script that holds the module's form: Maps' is its list part (the Places editor moved in; the map has no form).
+  const formScript = id === 'maps' ? 'maps-lib-g-list-view.js' : `${id}.js`;
   // The module's script: Cancel goes through the handle's cancel() (the same question as Escape and Close), never by
   // clicking the SDK's own button, and the dialog is shown and hidden by the handle, never by `hidden`.
   for (const name of fs.readdirSync(src).filter((n) => n.endsWith('.js') && !/-lib-a-/.test(n))) {
@@ -69,7 +71,7 @@ for (const id of EDITOR_MIGRATED) {
       if (/querySelector\(\s*['"]\.sdk-editor-close['"]\s*\)/.test(line)) problems.push(`${rel}:${i + 1}: clicks the SDK's Close button; call editor.cancel() instead`);
       if (/\$\(\s*['"]editor['"]\s*\)\.hidden\b/.test(line)) problems.push(`${rel}:${i + 1}: "$('editor').hidden"; the handle's open() and close() show and hide the dialog`);
     });
-    if (name === `${id}.js` && !/\beditor\.cancel\(\)/.test(lines.join('\n'))) problems.push(`${rel}: the form's Cancel must call editor.cancel() (the "Discard your changes?" question when something was typed)`);
+    if (name === formScript && !/\beditor\.cancel\(\)/.test(lines.join('\n'))) problems.push(`${rel}: the form's Cancel must call editor.cancel() (the "Discard your changes?" question when something was typed)`);
     // A read-only form (To-do, Calendar: a task or event the viewer may not change) has nothing to lose, takes no input and
     // opens with focus on the window itself, not on a picker or a button.
     if (name === `${id}.js` && (id === 'todo' || id === 'calendar')) {

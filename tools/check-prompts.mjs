@@ -248,7 +248,7 @@ function world({ sees = {}, spaceSees = null, aiOff = false, noChatRead = [], ex
     { ref: ref('research', 'note', 'n3'), title: 'Tram 28 route', text: 'Early.' },
     { ref: ref('calendar', 'event', 'e1'), title: 'Museum visit', when: '2026-11-14', text: '' },
     { ref: ref('calendar', 'event', 'e2'), title: 'Far away', when: '2026-12-30', text: '' },
-    { ref: ref('places', 'place', 'p1'), title: 'Secret bar', text: 'Only for readers of Places.' },
+    { ref: ref('maps', 'place', 'p1'), title: 'Secret bar', text: 'Only for readers of Maps.' },
     { ref: ref('research', 'note', 'o1', 'space', 's2'), title: 'Porto dinner', text: 'Other space.' },
     { ref: ref('todo', 'task', 't1', 'environment'), title: 'Renew passports', text: 'Before any trip.' },
     { ref: ref('research', 'note', 'm1', 'person'), title: 'My own note', text: 'Personal.' },
@@ -256,7 +256,7 @@ function world({ sees = {}, spaceSees = null, aiOff = false, noChatRead = [], ex
   for (let i = 0; i < 25; i += 1) objects.push({ ref: ref('research', 'note', `x${i}`), title: `Dinner option ${i}`, text: `Option ${i}` });
   for (const o of extra) objects.push({ ...o, ref: ref(...o.ref) });
   const key = (r) => `${r.module}|${r.kind}|${r.scope}|${r.space || ''}|${r.id}`;
-  const canRead = (who, o) => !(o.ref.module === 'places' && who.user.key === 'noread');
+  const canRead = (who, o) => !(o.ref.module === 'maps' && who.user.key === 'noread');
   const summaryOf = (o, withText) => ({ ref: o.ref, kind: o.ref.kind, kindName: o.ref.kind[0].toUpperCase() + o.ref.kind.slice(1), module: { id: o.ref.module, name: o.ref.module }, open: true, title: o.title, ...(o.when ? { when: o.when } : {}), ...(o.subtitle !== undefined ? { subtitle: o.subtitle } : {}), ...(o.place !== undefined ? { place: o.place } : {}), ...(o.paidBy ? { paidBy: o.paidBy } : {}), ...(o.spaces ? { spaces: o.spaces } : {}), ...(withText && o.text ? { text: o.text } : {}) });
   const resolveRef = (who, r, _from, { withText } = {}) => {
     const o = objects.find((x) => key(x.ref) === key(r));
@@ -264,7 +264,7 @@ function world({ sees = {}, spaceSees = null, aiOff = false, noChatRead = [], ex
     return summaryOf(o, withText);
   };
   const chat = { s1: [] };
-  const links = [{ from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'n2') }, { from: ref('research', 'note', 'n1'), to: ref('places', 'place', 'p1') }, { from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'o1', 'space', 's2') }];
+  const links = [{ from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'n2') }, { from: ref('research', 'note', 'n1'), to: ref('maps', 'place', 'p1') }, { from: ref('research', 'note', 'n1'), to: ref('research', 'note', 'o1', 'space', 's2') }];
   const ai = { ready: () => true, view: () => ({}), overCap: () => false, inFlight: () => 0, config: { sees }, key: () => 'sk-ai-key-SECRET-1234567' };
   const store = {
     spaces, streamKey: 'streamkeySECRET99999', users: Object.values(users),
@@ -275,7 +275,7 @@ function world({ sees = {}, spaceSees = null, aiOff = false, noChatRead = [], ex
   const word = (w, o = {}) => { const map = { space: ['space', 'spaces'], object: ['object', 'objects'], guest: ['guest', 'guests'], owner: ['owner', 'owners'], member: ['member', 'members'], moderator: ['moderator', 'moderators'], module: ['module', 'modules'], environment: ['environment', 'environments'] }; const s = map[w][o.many ? 1 : 0]; return o.cap ? s[0].toUpperCase() + s.slice(1) : o.a ? `a ${s}` : s; };
   const policy = policyLib.createAiPolicy({
     store, ai, word, resolveRef, hasOwnerRights: (u) => u.role === 'owner', aiCallsRefusal: () => '',
-    modules: { enabledAll: () => ['research', 'calendar', 'places', 'todo'].map((id) => ({ manifest: { id } })) },
+    modules: { enabledAll: () => ['research', 'calendar', 'maps', 'todo'].map((id) => ({ manifest: { id } })) },
     limits: { take: () => ({ ok: true }), refund: () => {} },
   });
   const builder = createContextBuilder({
@@ -327,7 +327,7 @@ await test('history: the 6 newest turns, the oldest dropped over budget, only th
 });
 
 await test('the rollup per role and per What AI may see setting (golden), never another space, never what the asker can\'t read', () => {
-  const attach = (w) => [w.ref('research', 'note', 'n1'), w.ref('places', 'place', 'p1'), w.ref('research', 'note', 'o1', 'space', 's2'), w.ref('todo', 'task', 't1', 'environment'), w.ref('research', 'note', 'm1', 'person')];
+  const attach = (w) => [w.ref('research', 'note', 'n1'), w.ref('maps', 'place', 'p1'), w.ref('research', 'note', 'o1', 'space', 's2'), w.ref('todo', 'task', 't1', 'environment'), w.ref('research', 'note', 'm1', 'person')];
   const cases = {
     defaults: {},
     'relevant-off': { sees: { relevant: false } },
@@ -338,7 +338,7 @@ await test('the rollup per role and per What AI may see setting (golden), never 
     'members-on': { sees: { members: true } },
     'environment-never': { sees: { environment: 'never' } },
     'environment-readable': { sees: { environment: 'readable' } },
-    'places-left-out': { spaceSees: { modules: ['research', 'calendar', 'todo'] } },
+    'maps-left-out': { spaceSees: { modules: ['research', 'calendar', 'todo'] } },
     'cannot-read-places': { asker: 'noread', sees: { environment: 'readable' } },
     'no-space': { space: null },
   };
@@ -358,8 +358,8 @@ await test('the rollup per role and per What AI may see setting (golden), never 
     for (const secret of ['guesttokenSECRET1234', 'sk-ant-abcdefghijklmnop123', 'streamkeySECRET99999', 'sk-ai-key-SECRET-1234567']) assert.ok(!text.includes(secret), `${kase}: ${secret}`);
     for (const field of policyLib.REDACTED_FIELDS) assert.ok(!new RegExp(`"${field}":`).test(JSON.stringify([built.context.relevant, built.context.linked, built.material])), `${kase}: ${field} sent`);
     assert.ok(built.leftOut.some((l) => l.part === 'attached' && l.why === 'other-space' && l.count === (c.space === null ? 4 : 2)) || kase === 'attached-off', `${kase}: the other space's and the person's object said to be left out`);
-    if (asker === 'noread') assert.ok(!/Secret bar/.test(text) && !(built.sent.notSent || []).some((x) => x.module === 'places'), 'not sent and not named');
-    if (kase === 'places-left-out') { assert.ok(!/Secret bar/.test(text)); assert.ok(built.sent.notSent.some((x) => x.module === 'places' && x.why === 'setting')); }
+    if (asker === 'noread') assert.ok(!/Secret bar/.test(text) && !(built.sent.notSent || []).some((x) => x.module === 'maps'), 'not sent and not named');
+    if (kase === 'maps-left-out') { assert.ok(!/Secret bar/.test(text)); assert.ok(built.sent.notSent.some((x) => x.module === 'maps' && x.why === 'setting')); }
     if (kase === 'defaults') { assert.ok(/Renew passports/.test(JSON.stringify(built.material)), 'an attached environment-wide object is sent'); assert.ok(!built.context.members && !built.context.chat); }
     if (kase === 'environment-readable') assert.ok(!/Renew passports/.test(JSON.stringify(built.context.relevant || [])) || true);
     if (kase === 'environment-never') assert.ok(!/Renew passports/.test(text));

@@ -85,7 +85,7 @@ export function cleanAddEntries(entries) {
 // their order (10 at most, as the bar took). A quick-add item is a leaf too (its label, else its placeholder, else "Add";
 // icon `plus` unless it gave one); `quick` lists their ids, whose pick sends { id, value: '' }. `overflow` and `iconOnly`
 // mean nothing in a menu and are dropped. Returns { entries, quick }; entries go through cleanAddEntries as any others.
-// The adds of several parts of one page (a composite's Map and its Places panel), each a list as host.add.set sent it: an
+// The adds of several parts of one page (a composite's Map and its list part), each a list as host.add.set sent it: an
 // add another part already offers (the same label and icon) is left out of the later one. Returns the lists, same order.
 export function dropRepeatedAdds(lists) {
   const seen = new Set();

@@ -141,3 +141,12 @@ body { margin: 0; overflow: hidden; }
 
 .app.narrow .results { left: 8px; right: 8px; width: auto; }
 .app.narrow .result { min-height: 44px; }
+
+/* ---- the window: the list and the map side by side, or one at a time ----
+   #window's data-mode says which show: list (no map file, a narrow window on the list, a destination's list), map, or both (a wide
+   window with a map file). The two views are the places seen two ways; the list is on the right, as the destination draws it. */
+.window { flex-direction: row; gap: 0; }
+.view { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
+.window[data-mode="list"] > .view-map, .window[data-mode="map"] > .view-list { display: none; }
+.window[data-mode="both"] > .view-list { flex: 0 0 min(26rem, 42%); border-left: 1px solid var(--edge-hairline); }
+#list-nomap { margin: var(--space-2); flex: none; }

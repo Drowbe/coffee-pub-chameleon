@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /*
- * check-places.mjs -- run the Places module's model (modules/places/src/places-lib.js) and the SDK's geo helpers on their own.
+ * check-maps-list.mjs -- run the Places module's model (modules/maps/src/maps-lib-f-list-model.js) and the SDK's geo helpers on their own.
  * The library is written to be inlined into a module page, so it is loaded here as a function body with the SDK's `geo`
  * and a small in-memory stand-in for the SDK's store.
  */
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import zlib from 'node:zlib';
 
 // The real SDK, run against a bare window, for its geo helpers.
 const sdk = fs.readFileSync(new URL('../public/sdk/host.js', import.meta.url), 'utf8');
@@ -15,8 +17,8 @@ new Function('window', 'document', sdk)(win, { createElement: (tag) => ({ tag })
 const geo = win.createHost({ call: async () => ({}), root: { appendChild() {} }, rootElement: {} }).host.util.geo;
 
 // The bundled types library, which the module build inlines ahead of the lib as `LIB_TYPES` (server/module-build.js).
-const TYPES_FILE = JSON.parse(fs.readFileSync(new URL('../modules/places/src/places-lib-types.json', import.meta.url), 'utf8'));
-const lib = new Function('geo', 'LIB_TYPES', 'word', `${fs.readFileSync(new URL('../modules/places/src/places-lib.js', import.meta.url), 'utf8')}\nreturn { cleanPlace, placeValue, placeFromRequest, createPlaces, createBookmarks, movePlace, homeFor, ticksOf, defaultTicks, ticksFromIn, narrows, marksOnly, bookmarkKey, cleanBookmark, cleanForward, markedFor, shownOnce, searchOn, readEntry, PLACE_PREFIX, CATEGORIES, DEFAULT_CATEGORIES, OLD_CATEGORIES, findCategory, TYPES, typeOf, typeFromOsm, STATUSES, TINTS, categoryColor, cssColor, lookOf, typeGroups, iconOptions, findDuplicate, metresBetween };`)(geo, TYPES_FILE, (key) => key); // `word`: the page's, a stand-in
+const TYPES_FILE = JSON.parse(fs.readFileSync(new URL('../modules/maps/src/maps-lib-types.json', import.meta.url), 'utf8'));
+const lib = new Function('geo', 'LIB_TYPES', 'word', `${fs.readFileSync(new URL('../modules/maps/src/maps-lib-f-list-model.js', import.meta.url), 'utf8')}\nreturn listModel(geo, LIB_TYPES, word);`)(geo, TYPES_FILE, (key) => key); // `word`: the page's, a stand-in
 
 // An in-memory SDK: the store (with versions and 409s), events, ids, pointers and the actions a page provides.
 function fakeHost() {
@@ -40,7 +42,7 @@ function fakeHost() {
     },
     on: () => () => {},
     util: { id: () => `id${(n += 1)}` },
-    objects: { make: (kind, id) => ({ module: 'places', kind, id, scope: 'space', space: 'r' }), setLinks: async (from, to) => { links.push([from.id, to.length]); } },
+    objects: { make: (kind, id) => ({ module: 'maps', kind, id, scope: 'space', space: 'r' }), setLinks: async (from, to) => { links.push([from.id, to.length]); } },
     actions: { provide: (h) => Object.assign(handlers, h) },
   };
   return { host, data, handlers, links };
@@ -176,7 +178,7 @@ await test('whether a search is set up', () => {
 });
 
 await test('one way to add a place in every context: Where, the same finish, the picture map, the refusal', () => {
-  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
   // Shows in: ticks, not a dropdown; a new place is never put anywhere the ticks did not say.
   assert.match(page, /const canAdd = \(\) => canEveryone\(\) \|\| canHere\(\) \|\| canMine\(\) \|\| \(!inSpace && otherSpaces\(\)\.some\(\(r\) => r\.write === true\)\);/);
   assert.match(page, /const target = targetOf\(ticksNow\(\)\);\n\s+if \(target\.error\) return editorError\(whereLine\(target\)\);/);
@@ -195,14 +197,14 @@ await test('one way to add a place in every context: Where, the same finish, the
   assert.match(page, /hide\(\$\('f-links-out'\), !e\.id \|\| onPicture\(\)\)/);
   assert.match(page, /state\.search = searchOn\(v\) && !onPicture\(\)/);
   // The target beside Position: tucks the editor (state kept), asks a map to pick, and comes back with the spot or none.
-  const html = fs.readFileSync(new URL('../modules/places/src/places.html', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
   assert.match(html, /id="f-pick" hidden aria-label="Pick the position on the map" data-tip="Click the map to set the position"/);
   // Only a map open in this page answers (the host's `open`), asked for this page only (`here`): a map in another tab never takes it.
   assert.match(page, /pickAction = list\.find\(\(a\) => a\.name === 'pickPoint' && a\.open === true\)/);
   assert.match(page, /host\.actions\.request\(pickAction\.action, \{\}, \{ wait: true, here: true \}\)/);
   // No map answered in time: the dialog comes back at once with "no map is open", and the target is hidden until the next open.
   assert.match(page, /if \(out\.status !== 'done'\) \{ pickAction = null; \$\('f-pick'\)\.hidden = true; throw new Error\('no map is open'\); \}/);
-  const placesManifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const placesManifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   const picked = placesManifest.actions.provides.find((a) => a.name === 'positionPicked');
   assert.ok(picked && picked.input.page === 'string?' && picked.input.pageUntil === 'number?', 'positionPicked takes the host\'s page fields, so only this page\'s Places hears it');
   // The picture map is live: host.on('environment') redraws what depends on it, without a reload.
@@ -217,10 +219,10 @@ await test('one way to add a place in every context: Where, the same finish, the
   assert.match(page, /\$\('f-pick'\)\.hidden = !pickAction/);
   assert.match(page, /positionPicked: async \(input\) => \{/);
   assert.match(page, /if \(point\) \{ \$\('f-point'\)\.value = geo\.coordsText\(point\.lat, point\.lng\); readPoint\(\); \}/);
-  assert.ok(JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8')).actions.provides.some((a) => a.name === 'positionPicked' && a.local === true));
+  assert.ok(JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8')).actions.provides.some((a) => a.name === 'positionPicked' && a.local === true));
   // The category list is the owner's (the `categories` setting): it starts as the eleven of the library, Other can never be removed, and every
   // place of the page goes through catOf, so an id that is off the list shows under Other and is not rewritten.
-  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   const catDef = manifest.settings.find((d) => d.key === 'categories');
   assert.ok(catDef && catDef.type === 'list' && catDef.scope === 'environment' && catDef.fixed.includes('other'));
   assert.deepEqual(catDef.default, lib.DEFAULT_CATEGORIES, 'the manifest\'s default list and the page\'s are the same eleven rows');
@@ -350,13 +352,13 @@ await test('what a place is drawn with: place, then type, then category', () => 
   assert.equal(lib.cssColor({ tint: 'teal' }), 'var(--tint-teal)');
   assert.equal(lib.cssColor({ hex: '#336699' }), '#336699');
   // the drawn icon is what the page stores, and the summary maps it
-  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   const summary = manifest.refs.produces.find((r) => r.kind === 'place').summary;
   assert.equal(summary.icon, 'icon');
   assert.equal(summary.visit, 'status');
   assert.equal(summary.color, 'color', 'the summary carries the place\'s own colour (a tint name) for Maps');
   assert.ok(lib.TINTS.includes(lib.cleanPlace('a', { title: 'x', color: 'pink' }).color) && lib.placeValue(lib.cleanPlace('a', { title: 'x', color: 'pink' })).color === 'pink', 'a colour is stored as a tint name');
-  const pageSrc = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
+  const pageSrc = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
   assert.match(pageSrc, /colors\[c\.id\] = col\.hex \|\| col\.tint;/, 'categoryColors answers a tint name for the automatic categories');
   assert.equal(summary.category, 'category');
 });
@@ -374,8 +376,8 @@ await test('type, icon, colour and visit status are stored and read back checked
 });
 
 await test('the form: one row of type, icon and colour, the status, and the words', () => {
-  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
-  const html = fs.readFileSync(new URL('../modules/places/src/places.html', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
   assert.match(page, /host\.ui\.kindPicker\(\$\('f-type'\)/, 'the type is the SDK kind picker');
   assert.doesNotMatch(page, /kindPicker\(\$\('f-icon'\)/, 'the icon is a button with a flyout, not a second picker');
   for (const id of ['f-look', 'f-type', 'f-icon', 'f-color', 'f-status']) assert.match(html, new RegExp(`id="${id}"`));
@@ -403,7 +405,7 @@ await test('the form: one row of type, icon and colour, the status, and the word
   assert.match(page, /place\.icon = lookOf\(place, cats\)\.icon;/, 'the drawn icon is stored');
   assert.match(page, /typeFromOsm\(h\.osm \|\| h\.category\)/);
   assert.match(page, /id: 'status',\n\s+label: 'Status'/, 'a Status submenu in the place menu');
-  const css = fs.readFileSync(new URL('../modules/places/src/places.css', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../modules/maps/src/maps-lib-list.css', import.meta.url), 'utf8');
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,6}\b(?![^{]*\{)/);
   const mine = css.slice(css.indexOf('/* ---- type, look and visit status ---- */'));
   assert.match(css, /\.look-btn \{[^}]*width: var\(--field-h\)[^}]*height: var\(--field-h\)/, 'the icon and colour buttons are as high as a field (38 px, 44 px on a phone)');
@@ -411,7 +413,7 @@ await test('the form: one row of type, icon and colour, the status, and the word
   assert.doesNotMatch(mine, /border-radius:\s*(?!var\(--radius-(min|small|medium|large|round)\))\d/, 'radii from tokens');
   assert.doesNotMatch(mine, /#[0-9a-fA-F]{3,8}\b/, 'theme tokens only');
   assert.doesNotMatch(mine, /border(?!-radius)[^;]*:\s*[^;]*solid/, 'selected states are fills');
-  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   const help = manifest.settings.find((d) => d.key === 'categories').help;
   assert.match(help, /removes no place and no type/);
 });
@@ -453,7 +455,7 @@ function fakeServer(members) {
       on: () => () => {},
       util: { id: () => `p${(n += 1)}` },
       objects: {
-        make: (kind, id, o) => (o && (o.scope === 'person' || o.scope === 'environment') ? { module: 'places', kind, id: String(id), scope: o.scope } : { module: 'places', kind, id: String(id), scope: 'space', space: (o && o.space) || here }),
+        make: (kind, id, o) => (o && (o.scope === 'person' || o.scope === 'environment') ? { module: 'maps', kind, id: String(id), scope: o.scope } : { module: 'maps', kind, id: String(id), scope: 'space', space: (o && o.space) || here }),
         setLinks: async (from, to) => { links.push([from, to.length]); },
       },
     };
@@ -646,7 +648,7 @@ await test('the list of Mine: a bookmark in the person\'s own store, the home\'s
   const ref = ana.objects.make('place', p.id, { scope: 'environment' });
   await marks.add(ref, p.title);
   assert.ok(marks.has(ref));
-  assert.deepEqual(srv.file('person:ana').get(lib.bookmarkKey(ref)).value, { ref: { module: 'places', kind: 'place', id: p.id, scope: 'environment' }, title: 'Gelato' });
+  assert.deepEqual(srv.file('person:ana').get(lib.bookmarkKey(ref)).value, { ref: { module: 'maps', kind: 'place', id: p.id, scope: 'environment' }, title: 'Gelato' });
   assert.ok(!('saved' in srv.file('environment').get(`place:${p.id}`).value) && !JSON.stringify(srv.file('environment').get(`place:${p.id}`).value).includes('ana'), 'never written on the shared record');
   const benMarks = lib.createBookmarks(ben);
   await benMarks.load();
@@ -666,13 +668,17 @@ await test('the list of Mine: a bookmark in the person\'s own store, the home\'s
   assert.equal(lib.bookmarkKey({ scope: 'space', space: 'trip1', id: 'a1' }), 'saved:s:trip1:a1');
   assert.equal(lib.bookmarkKey({ scope: 'environment', id: 'a1' }), 'saved:e:a1');
   assert.equal(lib.cleanBookmark('saved:e:a1', { ref: { scope: 'person', id: 'a1' } }), null);
+  // A bookmark whose pointer names another module (one saved before Places folded into Maps) is not read: no reader for the old id.
+  assert.equal(lib.cleanBookmark('saved:e:a1', { ref: { module: 'places', kind: 'place', scope: 'environment', id: 'a1' }, title: 'x' }), null, 'an old places pointer is dropped');
+  assert.equal(lib.cleanBookmark('saved:e:a1', { ref: { scope: 'environment', id: 'a1' }, title: 'x' }), null, 'a pointer with no module is dropped');
+  assert.deepEqual(lib.cleanBookmark('saved:e:a1', { ref: { module: 'maps', kind: 'place', scope: 'environment', id: 'a1' }, title: 'x' }), { key: 'saved:e:a1', ref: { module: 'maps', kind: 'place', id: 'a1', scope: 'environment' }, title: 'x' });
   assert.equal(lib.cleanBookmark('saved:e:zz', { ref: { scope: 'environment', id: 'a1' } }), null, 'the key must match its pointer');
 });
 
 await test('the page: Shows in, its line, the narrowing question, the menu, sharePlace and the guest', () => {
-  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
-  const html = fs.readFileSync(new URL('../modules/places/src/places.html', import.meta.url), 'utf8');
-  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const page = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   assert.match(html, /<fieldset id="f-where" class="sdk-section where" aria-describedby="f-where-line" hidden>\s*<legend class="sdk-section-title">Shows in<\/legend>/);
   assert.match(html, /<template id="tpl-tick"><label class="sdk-choice-row"><input type="checkbox">/, 'native checkboxes, the label the whole row');
   assert.doesNotMatch(html, /<select id="f-where"/, 'no dropdown');
@@ -701,11 +707,11 @@ await test('the page: Shows in, its line, the narrowing question, the menu, shar
   const add = manifest.actions.provides.find((a) => a.name === 'addPlace');
   const share = manifest.actions.provides.find((a) => a.name === 'sharePlace');
   assert.equal(add.input.in, 'string?');
-  assert.ok(share && share.local === true && share.input.place === 'ref:places:place' && share.input.in === 'string?');
+  assert.ok(share && share.local === true && share.input.place === 'ref:maps:place' && share.input.in === 'string?');
   assert.match(page, /if \(!ownRequest\(ctx\) \|\| !personal\) throw new Error\('only that person can share it'\);/);
   assert.match(page, /if \(asked && asked\.mine && !own\) throw new Error\('only that person can add to their own list'\);/);
   assert.equal(manifest.refs.produces[0].summary.spaces, 'spaces', 'the summary carries the marks');
-  assert.match(manifest.version, /^0\.12\.\d+$/, 'Places is still 0.12.x');
+  assert.match(manifest.version, /^0\.\d+\.\d+$/, 'Maps has a version');
 });
 
 test('a new place that repeats one is found: the same search result, or the same name within about 30 m', () => {
@@ -721,9 +727,9 @@ test('a new place that repeats one is found: the same search result, or the same
   assert.equal(lib.cleanPlace('x', { title: 'T', origin: 'osm:1' }).origin, 'osm:1');
   assert.ok(!('origin' in lib.cleanPlace('x', { title: 'T' })), 'no key, no field');
   assert.equal(lib.placeValue(lib.cleanPlace('x', { title: 'T', origin: 'osm:1' })).origin, 'osm:1');
-  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
+  const page = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
   assert.match(page, /if \(!e\.id && !e\.dupOk\) \{\s*const dup = findDuplicate\(entries\(\), \{ origin: e\.origin, title, point: e\.point \}\);\s*if \(dup\) return askDuplicate\(dup\);/, 'saving a new place asks first');
-  const html = fs.readFileSync(new URL('../modules/places/src/places.html', import.meta.url), 'utf8');
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
   assert.ok(html.includes('data-action="open-duplicate">Open it</button>') && html.includes('data-action="save-anyway">Save anyway</button>'), 'Open it and Save anyway');
   assert.match(page, /`Already in \$\{whereName\(dup\.w\)\}`/, 'a result already in a list says where');
   assert.ok(page.includes("h.source === 'server' ? 'From earlier searches'") && !page.includes('Saved on this server'), 'the saved search results are "From earlier searches"');
@@ -737,10 +743,10 @@ test('the list sorts by number, not as text', () => {
 });
 
 test('the dialog opens where it is seen, the "+" is the viewer\'s, backlinks come in one request, and delete says who uses the place', () => {
-  const page = fs.readFileSync(new URL('../modules/places/src/places.js', import.meta.url), 'utf8');
-  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/places/module.json', import.meta.url), 'utf8'));
+  const page = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   // A phone shows one part at a time: the dialog is Places' own, so Places shows its part first (the "+" and a new place asked for).
-  assert.match(page, /const revealPart = \(\) => \{ if \(asPart && host\.destination\) host\.destination\.set\(\{ reveal: 'panel' \}\)/);
+  assert.match(page, /const revealPart = \(\) => \{ if \(env\.show\) env\.show\('list'\); else if \(asPart && host\.destination\) host\.destination\.set\(\{ reveal: 'panel' \}\)/);
   assert.match(page, /host\.on\('add', \(e\) => \{ if \(e\.id === 'place' && canAdd\(\)\) \{ closeFound\(\); revealPart\(\); openEditor\(null, null\); \} \}\);/);
   assert.match(page, /closeFound\(\);\s*revealPart\(\);\s*openEditor\(null, null, \{ title:/, 'newPlace (the map\'s ask) shows the part too');
   // The map hides its "+" when this says no.
@@ -760,9 +766,61 @@ test('the dialog opens where it is seen, the "+" is the viewer\'s, backlinks com
   assert.match(page, /value: typeOf\(e\.type\) \? e\.type : e\.id \? '' : DEFAULT_TYPE/);
   // Beside the map a change is told to the map through the page.
   assert.match(page, /host\.destination\.set\(\{ changed: tellCount \}\)/);
-  const css = fs.readFileSync(new URL('../modules/places/src/places.css', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../modules/maps/src/maps-lib-list.css', import.meta.url), 'utf8');
   assert.match(css, /\.place-row\.on :is\(\.sub, \.pinned, \.nopos, \.scope-mark, \.saved-state\) \{ color: var\(--text-primary\); \}/, 'the selected row\'s words read in dark');
   assert.ok(!/\.found-row \.source \{[^}]*opacity/.test(css), 'a result\'s source line is not dimmed');
 });
 
-console.log(`check-places: OK (${n} checks)`);
+// The files of a zip the module build wrote (local headers carry the sizes; deflate or stored).
+function unzipSync(buf) {
+  const out = new Map();
+  for (let o = 0; buf.readUInt32LE(o) === 0x04034b50;) {
+    const method = buf.readUInt16LE(o + 8); const csize = buf.readUInt32LE(o + 18); const nlen = buf.readUInt16LE(o + 26); const xlen = buf.readUInt16LE(o + 28);
+    const name = buf.toString('utf8', o + 30, o + 30 + nlen);
+    const data = buf.subarray(o + 30 + nlen + xlen, o + 30 + nlen + xlen + csize);
+    out.set(name, method === 8 ? zlib.inflateRawSync(data) : data);
+    o += 30 + nlen + xlen + csize;
+  }
+  return out;
+}
+// --- the window: the list is mounted once, with the map beside it or alone (plan-places-and-maps.md, J2) -------------------------
+test('one page holds the list and the map: no id twice, the list mounted once, a notice where there is no map file', () => {
+  const html = fs.readFileSync(new URL('../modules/maps/src/maps.html', import.meta.url), 'utf8');
+  const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids.filter((id, i) => ids.indexOf(id) !== i), [], 'an id is used twice in the page');
+  for (const id of ['window', 'map-view', 'list-view', 'map-app', 'list-app', 'list-nomap', 'body', 'editor', 'f-title', 'f-point', 'f-save']) assert.ok(ids.includes(id), `#${id} is in the page`);
+  assert.equal((html.match(/id="list-app"/g) || []).length, 1, 'the list is in the page once');
+  assert.match(html, /<div id="window" class="sdk-slot window" data-mode="list">/, 'the list is what shows first');
+  assert.match(html, /id="list-nomap"[^>]*>[\s\S]*?No map yet\. <span data-word="owner" data-word-form="a cap"><\/span> ticks a map file in Manage to draw one\./);
+  const script = fs.readFileSync(new URL('../modules/maps/src/maps.js', import.meta.url), 'utf8');
+  assert.equal((script.match(/runList\(\{ host: viewHost\('list'\), show \}\)/g) || []).length, 1, 'the window starts the list once');
+  // In a destination each frame runs its half; anywhere else the window runs the list, and the map once there is a map file.
+  assert.match(script, /if \(part === 'main'\) \{ win\.dataset\.mode = 'map'; return runMap\(\{ host: rawHost \}\); \}/);
+  assert.match(script, /if \(part === 'panel'\) \{ win\.dataset\.mode = 'list'; return runList\(\{ host: rawHost \}\); \}/);
+  assert.match(script, /const modeNow = \(\) => \(!hasMap \? 'list' : narrow \? shown : 'both'\);/, 'no map file: the list; narrow: the one shown; wide: both');
+  assert.match(script, /if \(hasMap\) startMap\(\);/, 'the map starts only when there is a map file');
+  assert.match(script, /if \(hasMap && narrow\) \{\s*ownSwitch = rawHost\.ui\.viewSwitch\(\{ id: 'maps-view', label: 'View', options: \[\{ id: 'list', label: 'List', icon: 'list' \}, \{ id: 'map', label: 'Map', icon: 'map' \}\]/, 'the List | Map switch only while narrow with a map');
+  assert.match(script, /byId\('list-nomap'\)\.hidden = hasMap;/);
+  // The two views share one toolbar, "+" and status line: only the view on show draws them.
+  assert.match(script, /const gate = \(view, key, send\) => \(items\) => \{ held\[view\]\[key\] = items; return activeNow\(\) === view \? send\(items\) : Promise\.resolve\(true\); \};/);
+  assert.match(script, /const activeNow = \(\) => \(modeNow\(\) === 'map' \? 'map' : 'list'\);/);
+  // The local actions between them are plain calls here; the ones other modules may ask still go to the host.
+  assert.match(script, /if \(LOCAL\[name\]\) registry\.set\(name, fn\);\s*if \(!LOCAL\[name\] \|\| name === 'showOnMap'\) rest\[name\] = fn;/);
+  assert.match(script, /if \(name === 'pickPoint'\) show\('map'\);/, 'picking a spot brings the map up while narrow');
+  assert.match(script, /if \(\(name === 'pickPoint' && !result\.ok\) \|\| name === 'positionPicked'\) show\('list'\);/, 'the dialog comes back to the list');
+  // The map draws the "add here" tools in the window too, since the list is there to answer.
+  assert.match(script, /if \(!part && !env\.withList\) return;/);
+  // The list's own words for a place with no map to show it on.
+  const view = fs.readFileSync(new URL('../modules/maps/src/maps-lib-g-list-view.js', import.meta.url), 'utf8');
+  assert.match(view, /const asPart = Boolean\(info\.context\.destination && info\.context\.destination\.part\);/);
+  assert.ok(!/document\.getElementById|\$\('app'\)|\$\('msg'\)|\$\('loading'\)/.test(view), 'the list asks for its own ids only');
+  // The built page carries both, and there is no second page for the list.
+  const built = createRequire(import.meta.url)('../server/module-build.js').buildModule(new URL('../modules/maps', import.meta.url).pathname);
+  const files = unzipSync(built.zip);
+  assert.deepEqual([...files.keys()].sort(), ['canvas.html', 'module.json', 'page.html'], 'there is no second page for the list');
+  const text = files.get('page.html').toString('utf8');
+  assert.ok(text.includes('async function runList(env)') && text.includes('async function runMap(env)') && text.includes('function listModel('), 'the built page has the list and the map');
+  assert.ok(text.includes('LIB_TYPES') && text.indexOf('const LIB_TYPES') < text.indexOf('function listModel('), 'the types library is ahead of the list model');
+});
+
+console.log(`check-maps-list: OK (${n} checks)`);

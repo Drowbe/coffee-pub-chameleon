@@ -1,8 +1,11 @@
+// The list's model (see below). A function of its own so its names (TINTS, cssColor, markedFor, the categories) stay apart from the map's:
+// the list view calls it once, with `geo` (host.util.geo), `word` (host.util.word) and `LIB_TYPES` (maps-lib-types.json, put ahead by the build).
+function listModel(geo, LIB_TYPES, word) {
   // The Places module's model: no page in it, so the page and the checks can both use it. A place is one stored value
   // (`place:<id>`): { title, category, address, point?, notes, owners, by, ref?, type?, icon?, iconOwn?, color?, status? }. `point` is a
   // field of its own so the module's summary can name it (a summary's `place`); a place with only an address has none. The page
   // defines `geo` (host.util.geo) and `word` (host.util.word) ahead of this code, as the check does, and the build puts the bundled types library
-  // (places-lib-types.json) ahead of it as `LIB_TYPES` (plan-places-library.md, Part B).
+  // (maps-lib-types.json) ahead of it as `LIB_TYPES` (plan-places-library.md, Part B).
   const PLACE_PREFIX = 'place:';
   const CATEGORY_ID = /^[a-z][a-z0-9-]{0,29}$/;
   const ICON_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -195,7 +198,9 @@
     if (!v || typeof v !== 'object' || !v.ref || typeof v.ref !== 'object') return null;
     const home = cleanHome(v.ref);
     if (!home || home.scope === 'person' || typeof v.ref.id !== 'string' || !PLACE_ID.test(v.ref.id)) return null;
-    const ref = { module: typeof v.ref.module === 'string' ? v.ref.module : 'places', kind: 'place', id: v.ref.id, ...home };
+    // The pointer names the module that keeps places; one that names any other (a bookmark from before Places folded into Maps) is not read.
+    if (v.ref.module !== 'maps') return null;
+    const ref = { module: 'maps', kind: 'place', id: v.ref.id, ...home };
     if (key !== bookmarkKey(ref)) return null;
     return { key, ref, title: geo.oneLine(v.title, 120) };
   }
@@ -512,3 +517,5 @@
     if (v.searchProvider === 'custom') return typeof v.search === 'string' && /^https?:\/\//i.test(v.search);
     return typeof v.searchProvider === 'string' && v.searchProvider !== '' && v.searchProvider !== 'none';
   }
+  return { PLACE_PREFIX, CATEGORY_ID, ICON_NAME, AUTO_COLOR, DEFAULT_CATEGORIES, CATEGORIES, OLD_CATEGORIES, NEW_FOR_OLD, newCategoryId, findCategory, TYPES, TYPE_BY_ID, typeOf, typeFromOsm, STATUSES, statusOf, TINTS, isHex, asColor, categoryColor, cssColor, lookOf, typeGroups, iconOptions, SAVED_PREFIX, MAX_MARKS, MAX_SAVED, SPACE_ID, PLACE_ID, cleanMarks, cleanHome, sameHome, cleanForward, forwardValue, homeFor, ticksOf, defaultTicks, ticksFromIn, narrows, withoutMarks, marksOnly, bookmarkKey, cleanBookmark, markedFor, shownOnce, metresBetween, sameName, findDuplicate, cleanPlace, placeValue, placeFromRequest, createPlaces, movePlace, createBookmarks, readEntry, searchOn };
+}

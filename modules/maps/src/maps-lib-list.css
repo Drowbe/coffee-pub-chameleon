@@ -2,16 +2,16 @@
  * The Places module's look. The markup it styles is fixed in CONTRACT.md; the script builds that markup and toggles state
  * classes and data attributes, it never sets a style. Colours come only from the theme tokens (see public/sdk/host.css), so a
  * light theme works. Nothing has a fixed pixel height: the module fills its pane and scrolls inside it. The narrow layout keys on
- * `.app.narrow`, which the script sets from the pane's width (under 720 px), not the window's.
+ * `.list-app.narrow`, which the script sets from the pane's width (under 720 px), not the window's.
  */
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 .ic { display: inline-flex; align-items: center; flex: none; }
 .ic svg { width: 1em; height: 1em; fill: currentColor; }
 .msg { padding: 16px; color: var(--text-muted); }
-/* #app is the content slot (.sdk-slot, system.css): the host fills the frame with it and pads it. The title, the toolbar row
+/* #list-app is the content slot (.sdk-slot, system.css): the host fills the frame with it and pads it. The title, the toolbar row
    (the filter and the category chips) and the status line are the host's. */
-.app { background: var(--surface-page); }
+.list-app { display: flex; flex-direction: column; flex: 1 1 auto; gap: var(--space-2); min-height: 0; padding: var(--mf-inset); background: var(--surface-page); }
 
 /* ---- the list, grouped by category ---- */
 .body { flex: 1; min-height: 0; overflow: auto; }
@@ -49,26 +49,26 @@
 .readonly dt { color: var(--text-muted); font-size: var(--text-12); }
 
 /* ---- states ---- */
-.sdk-empty { max-width: 420px; margin: 8vh auto; }
+.list-app .sdk-empty, #list-msg { max-width: 420px; margin: 8vh auto; }
 .sdk-skel-block { --h: 64px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* phones and narrow panes: the script sets .narrow on .app from the pane's width (under 720 px), not the window's */
-.app.narrow .rows { grid-template-columns: minmax(0, 1fr); }
+.list-app.narrow .rows { grid-template-columns: minmax(0, 1fr); }
 
 /* ---- whose places (mine, this space, everyone): host.ui.viewSwitch draws the switch itself in the toolbar ---- */
 .view-note { display: flex; align-items: center; gap: 6px; margin: -2px 0 0; color: var(--text-muted); font-size: var(--text-12); }
 
-/* something from another module dragged over the pane (see the drop target in places.js) */
-.app.drop-target { outline: 2px dashed var(--accent-fill); outline-offset: -4px; }
+/* something from another module dragged over the pane (see the drop target in maps-list.js) */
+.list-app.drop-target { outline: 2px dashed var(--accent-fill); outline-offset: -4px; }
 .view-note .ic { color: var(--accent); }
 
 /* ---- as the Map destination's panel: search results above the list ---- */
 .scope-mark { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; color: var(--text-muted); font-size: var(--text-11); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .scope-mark .ic svg { width: 1em; height: 1em; fill: currentColor; }
 .find-more { margin: 14px 0 0; text-align: center; }
-.app.part .found { position: relative; left: auto; right: auto; bottom: auto; flex: none; max-height: 45%; box-shadow: none; }
-.app.part .sdk-empty { margin-top: 4vh; }
+.list-app.part .found { position: relative; left: auto; right: auto; bottom: auto; flex: none; max-height: 45%; box-shadow: none; }
+.list-app.part .sdk-empty { margin-top: 4vh; }
 
 /* ---- find a place: results over the bar at the bottom, when a search address is set ---- */
 /* #found is the shared banded card (Cards, system.css): its band is .found-head ("Results for", the text, the close button). It
@@ -87,7 +87,7 @@
 .found-state { padding: 16px; text-align: center; color: var(--text-muted); font-size: var(--text-13); }
 .found-credit { padding: 4px 14px 8px; color: var(--text-muted); font-size: var(--text-11); text-align: right; }
 
-.app.narrow .found { left: 8px; right: 8px; max-height: 65%; }
+.list-app.narrow .found { left: 8px; right: 8px; max-height: 65%; }
 
 /* ---- type, look and visit status ---- */
 .status-row { display: flex; flex-wrap: wrap; gap: 6px; }

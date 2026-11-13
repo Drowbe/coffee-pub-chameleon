@@ -1,19 +1,29 @@
 {
   "id": "maps",
   "name": "Maps",
-  "version": "0.9.15",
+  "version": "0.10.3",
   "content": "flush",
   "icon": "map-location-dot",
   "color": "pink",
-  "description": "A map of every place your {space} has: the places you have saved and the {objects} other {modules} put somewhere. Pick a spot to save a new place.",
+  "description": "The places your {space} cares about (where to stay, where to eat, what to see) and a map of them, with the {objects} other {modules} put somewhere. Pick a spot to save a new place.",
   "author": "Coffee Pub",
   "scope": [
     "environment",
-    "space"
+    "space",
+    "person"
   ],
   "surfaces": {
     "destination": [
-      { "id": "map", "part": "main", "entry": "page.html" }
+      {
+        "id": "map",
+        "part": "main",
+        "entry": "page.html"
+      },
+      {
+        "id": "map",
+        "part": "panel",
+        "entry": "page.html"
+      }
     ],
     "page": {
       "entry": "page.html"
@@ -31,7 +41,7 @@
   "permissions": [
     {
       "key": "view",
-      "label": "See the map and its places",
+      "label": "See the map and the places",
       "default": {
         "member": true,
         "guest": true,
@@ -40,7 +50,7 @@
     },
     {
       "key": "edit",
-      "label": "Save places from the map and put {objects} on it",
+      "label": "Add, change and remove places, and put {objects} on the map",
       "default": {
         "member": true,
         "guest": false,
@@ -48,7 +58,142 @@
       }
     }
   ],
+  "access": {
+    "read": "view",
+    "write": "edit"
+  },
   "settings": [
+    {
+      "key": "categories",
+      "label": "Categories",
+      "type": "list",
+      "scope": "environment",
+      "maxLength": 30,
+      "fixed": [
+        "other"
+      ],
+      "help": "How places are grouped and coloured, in this order. Other is always there and holds any place whose category is not on the list; you can rename it but not remove it. Taking a category off the list removes no place and no type: its places show under Other, and its types stay in the picker. Grey keeps the automatic colour.",
+      "default": [
+        {
+          "id": "food",
+          "label": "Food & Drink",
+          "icon": "utensils",
+          "color": "#888888"
+        },
+        {
+          "id": "stay",
+          "label": "Accommodations",
+          "icon": "bed",
+          "color": "#888888"
+        },
+        {
+          "id": "sights",
+          "label": "Sights & Culture",
+          "icon": "landmark",
+          "color": "#888888"
+        },
+        {
+          "id": "nature",
+          "label": "Nature & Outdoors",
+          "icon": "tree",
+          "color": "#888888"
+        },
+        {
+          "id": "activities",
+          "label": "Activities & Experiences",
+          "icon": "ticket",
+          "color": "#888888"
+        },
+        {
+          "id": "nightlife",
+          "label": "Entertainment & Nightlife",
+          "icon": "masks-theater",
+          "color": "#888888"
+        },
+        {
+          "id": "shopping",
+          "label": "Shopping",
+          "icon": "bag-shopping",
+          "color": "#888888"
+        },
+        {
+          "id": "transport",
+          "label": "Transportation",
+          "icon": "train",
+          "color": "#888888"
+        },
+        {
+          "id": "services",
+          "label": "Services & Essentials",
+          "icon": "circle-info",
+          "color": "#888888"
+        },
+        {
+          "id": "health",
+          "label": "Health & Wellness",
+          "icon": "heart-pulse",
+          "color": "#888888"
+        },
+        {
+          "id": "other",
+          "label": "Personal & Other",
+          "icon": "location-dot",
+          "color": "#888888"
+        }
+      ]
+    },
+    {
+      "key": "searchProvider",
+      "label": "Place search",
+      "type": "choice",
+      "scope": "environment",
+      "default": "none",
+      "defaultIfSet": {
+        "key": "search",
+        "value": "custom"
+      },
+      "help": "Where a search for a place by name is asked. The server sends nothing out unless you choose one.",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "photon",
+          "label": "Photon, the public service",
+          "help": "Every search is sent to the public Photon service at photon.komoot.io, and the server otherwise sends nothing out.\nTheir terms are \"reasonable limits\": extensive use may be throttled or banned, and there is no availability guarantee (https://github.com/komoot/photon).\nResults come from OpenStreetMap data, so \"© OpenStreetMap contributors\" applies (the map already shows that credit)."
+        },
+        {
+          "value": "custom",
+          "label": "My own address",
+          "help": "Searches go to the address you give below: a Photon-compatible service you run or may use."
+        }
+      ]
+    },
+    {
+      "key": "search",
+      "label": "Search address",
+      "type": "url",
+      "scope": "environment",
+      "default": "",
+      "showWhen": {
+        "key": "searchProvider",
+        "value": "custom"
+      },
+      "help": "A Photon-compatible place search that you run or may use, over https (for example https://search.example.org/api)."
+    },
+    {
+      "key": "saveResults",
+      "label": "Save places in this {environment}",
+      "type": "boolean",
+      "scope": "environment",
+      "default": false,
+      "showWhen": {
+        "key": "searchProvider",
+        "not": "none"
+      },
+      "help": "Places a search returns are saved in this {environment} and shared by every {space}, so later searches use them first and the outside service is asked less. Only the place is kept, never who looked for it."
+    },
     {
       "key": "map",
       "label": "Map files",
@@ -66,7 +211,9 @@
       "folder": "image-map",
       "scope": "environment",
       "default": "",
-      "upload": { "accept": "pmtiles-picture" },
+      "upload": {
+        "accept": "pmtiles-picture"
+      },
       "help": "A picture of an invented world, made into a PMTiles file of picture tiles. When set, the map shows only this picture, in every {space}, and place search looks only at saved places. Places saved before keep their positions, which will not mean anything on this picture. It is kept with this {environment}, so a backup carries it."
     },
     {
@@ -78,21 +225,101 @@
       "httpsOnly": true,
       "pathEnds": ".pmtiles",
       "help": "A world PMTiles file to cut a region from with \"Add a region\". The server reads only the part it cuts, over https range requests, never the whole file. Protomaps publishes a daily build at https://build.protomaps.com/YYYYMMDD.pmtiles, where YYYYMMDD is the build's date (https://build.protomaps.com/20261101.pmtiles, say); only recent builds are kept, so use a date from the last few weeks, or point this at your own stable copy. Left empty, cutting a region is off. With {environments} this is the host's, on the host console."
-    },
-    {
-      "key": "searchNote",
-      "type": "note",
-      "scope": "environment",
-      "label": "Search on the map",
-      "help": "The search field over the map searches through whichever {module} offers a place search, and that {module}'s own configuration is where the search is chosen and switched on; this {module} has no search of its own. Until one is chosen there, the field still takes pasted coordinates or a map link."
     }
   ],
-  "access": {
-    "read": "view",
-    "write": "edit"
-  },
   "actions": {
     "provides": [
+      {
+        "name": "addPlace",
+        "label": "Save it as a place",
+        "description": "Save a new place, with its position or address.",
+        "effect": "write",
+        "needs": [
+          "place"
+        ],
+        "input": {
+          "title": "string",
+          "lat": "number?",
+          "lng": "number?",
+          "address": "string?",
+          "category": "string?",
+          "notes": "text?",
+          "ref": "ref?",
+          "in": "string?"
+        }
+      },
+      {
+        "name": "sharePlace",
+        "label": "Share a place",
+        "local": true,
+        "input": {
+          "place": "ref:maps:place",
+          "in": "string?"
+        }
+      },
+      {
+        "name": "setPlacePoint",
+        "label": "Give a place a position",
+        "description": "Give a saved place a position on the map, as a latitude and longitude.",
+        "effect": "write",
+        "input": {
+          "place": "ref:maps:place",
+          "lat": "number",
+          "lng": "number"
+        }
+      },
+      {
+        "name": "searchPlaces",
+        "label": "Search for a place",
+        "local": true,
+        "input": {
+          "q": "string",
+          "lat": "number?",
+          "lon": "number?"
+        }
+      },
+      {
+        "name": "positionPicked",
+        "label": "Set the position of the place being added",
+        "local": true,
+        "input": {
+          "lat": "number?",
+          "lng": "number?",
+          "page": "string?",
+          "pageUntil": "number?"
+        }
+      },
+      {
+        "name": "categoryColors",
+        "label": "Tell the colours chosen for categories",
+        "local": true,
+        "input": {
+          "page": "string?",
+          "pageUntil": "number?"
+        }
+      },
+      {
+        "name": "mayAdd",
+        "label": "Tell whether this person may add places",
+        "local": true,
+        "input": {
+          "page": "string?",
+          "pageUntil": "number?"
+        }
+      },
+      {
+        "name": "newPlace",
+        "label": "Save a place here",
+        "local": true,
+        "input": {
+          "origin": "string?",
+          "title": "string?",
+          "lat": "number?",
+          "lng": "number?",
+          "address": "string?",
+          "notes": "text?"
+        }
+      },
       {
         "name": "pickPoint",
         "label": "Pick a spot on the map",
@@ -119,13 +346,42 @@
     ]
   },
   "refs": {
+    "produces": [
+      {
+        "kind": "place",
+        "name": "Place",
+        "open": true,
+        "backlinks": true,
+        "key": "place:{id}",
+        "summary": {
+          "title": "title",
+          "subtitle": "address",
+          "place": "point",
+          "category": "category",
+          "icon": "icon",
+          "visit": "status",
+          "color": "color",
+          "spaces": "spaces"
+        }
+      }
+    ],
     "consumes": [
       "*"
     ]
   },
-  "requires": [
-    "places"
-  ],
+  "geocoder": {
+    "provider": "searchProvider",
+    "address": "search",
+    "save": "saveResults",
+    "custom": "custom",
+    "providers": {
+      "photon": {
+        "name": "Photon",
+        "address": "https://photon.komoot.io/api",
+        "credit": "Search by Photon · © OpenStreetMap contributors"
+      }
+    }
+  },
   "pictureMap": {
     "setting": "imageMap"
   },

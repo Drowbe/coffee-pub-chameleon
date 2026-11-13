@@ -164,9 +164,9 @@ test('environments: add, find, update, remove', () => {
   assert.deepEqual(r.findEnvironment('acme'), t);
   assert.equal(r.findEnvironment('nope'), null);
 
-  const updated = r.updateEnvironment('acme', { name: 'Acme Inc', plan: { modules: ['places', 'travel'], members: 20 } });
+  const updated = r.updateEnvironment('acme', { name: 'Acme Inc', plan: { modules: ['maps', 'travel'], members: 20 } });
   assert.equal(updated.name, 'Acme Inc');
-  assert.deepEqual(updated.plan.modules, ['places', 'travel']);
+  assert.deepEqual(updated.plan.modules, ['maps', 'travel']);
   assert.equal(updated.plan.members, 20);
   assert.throws(() => r.updateEnvironment('nope', {}), (e) => e instanceof HostError && e.status === 404);
 
@@ -1745,7 +1745,7 @@ try {
     const registry = fs.existsSync(path.join(modulesDir, 'registry.json')) ? readJson(path.join(modulesDir, 'registry.json')) : { modules: {}, autoInstalled: [] };
     const oldVersion = (v) => { const [a, b, c] = v.split('.').map(Number); return c > 0 ? `${a}.${b}.${c - 1}` : b > 0 ? `${a}.${b - 1}.99` : `${a - 1}.99.99`; };
     const current = {};
-    for (const id of ['maps', 'places', 'stream']) {
+    for (const id of ['maps', 'stream']) {
       const now = readJson(path.join(ROOT, 'modules', id, 'module.json'));
       current[id] = now.version;
       const version = oldVersion(now.version);
@@ -1762,14 +1762,13 @@ try {
     registry.autoInstalled = [...new Set([...(registry.autoInstalled || []), 'stream'])];
     fs.writeFileSync(path.join(modulesDir, 'registry.json'), JSON.stringify(registry));
     server = await startServer(single, { ADMIN_PASSWORD: 'admin-password-1' });
-    for (const id of ['maps', 'places', 'stream']) await waitFor(`Updated "${id}" from ${oldVersion(current[id])} to ${current[id]}: the version installed was built for an older version of ${PRODUCT}.`);
+    for (const id of ['maps', 'stream']) await waitFor(`Updated "${id}" from ${oldVersion(current[id])} to ${current[id]}: the version installed was built for an older version of ${PRODUCT}.`);
     const out = server.output();
     assert.ok(!out.includes('Could not update'), out);
-    assert.ok(out.indexOf('Updated "places"') < out.indexOf('Updated "maps"'), `Places before Maps:\n${out}`);
     assert.ok(out.includes(`Updated "stream" from ${oldVersion(current.stream)} to ${current.stream}: the version installed was built for an older version of ${PRODUCT}. It stays on: its new permission (view_page) is off for every role, so only owners have it.`), out);
     const admin = cookieOf(await call(server, '', 'POST', '/api/login', { body: { login: 'admin', password: 'admin-password-1' } }));
     const byId = Object.fromEntries((await call(server, '', 'GET', '/api/modules', { cookie: admin })).json.modules.map((m) => [m.id, m]));
-    for (const id of ['maps', 'places', 'stream']) assert.deepEqual([id, byId[id].version, byId[id].enabled, byId[id].missing, byId[id].needsUpdate], [id, current[id], true, [], []]);
+    for (const id of ['maps', 'stream']) assert.deepEqual([id, byId[id].version, byId[id].enabled, byId[id].missing, byId[id].needsUpdate], [id, current[id], true, [], []]);
     // An ordinary space: the Lobby keeps only the modules made for it (plan-modules, the Lobby addendum).
     const side = (await call(server, '', 'POST', '/api/spaces', { cookie: admin, body: { name: 'Side' } })).json.space.id;
     assert.equal((await call(server, '', 'GET', `/api/modules/maps/context?scope=space&space=${side}`, { cookie: admin })).status, 200, 'Maps runs');
@@ -1792,7 +1791,7 @@ try {
     const registry = readJson(path.join(modulesDir, 'registry.json'));
     const older = (v) => { const [a, b, c] = v.split('.').map(Number); return c > 0 ? `${a}.${b}.${c - 1}` : `${a}.${b - 1}.99`; };
     const current = {};
-    for (const id of ['places', 'maps', 'todo', 'travel']) {
+    for (const id of ['maps', 'todo', 'travel']) {
       const now = readJson(path.join(ROOT, 'modules', id, 'module.json'));
       current[id] = now.version;
       const version = older(now.version);
@@ -1813,11 +1812,10 @@ try {
     fs.writeFileSync(path.join(dataDir, `space-${side}.json`), JSON.stringify({ 'trip:main': entry({ title: 'Lisbon' }), 'item:a1': entry({ title: 'Ferry to Cacilhas', date: '2026-10-01' }), 'item:c1': entry({ title: 'old copy' }), 'plan:c1': entry({ title: 'new copy' }) }));
     fs.writeFileSync(path.join(dataDir, 'environment.json'), JSON.stringify({ 'item:e1': entry({ title: 'Passports' }) }));
     server = await startServer(single, { ADMIN_PASSWORD: 'admin-password-1' });
-    for (const id of ['places', 'maps', 'travel']) await waitFor(`Updated "${id}" from ${older(current[id])} to ${current[id]}, the version this server ships.`);
+    for (const id of ['maps', 'travel']) await waitFor(`Updated "${id}" from ${older(current[id])} to ${current[id]}, the version this server ships.`);
     await waitFor(`"todo" ${current.todo} is here, but it asks for something new, so it waits for an owner to update it in Modules; ${older(current.todo)} keeps running.`);
     await waitFor('Renamed "travel"\'s stored keys from item: to plan: (2 in 2 places; kept 1 whose new name was already taken).');
     const out = server.output();
-    assert.ok(out.indexOf('Updated "places"') < out.indexOf('Updated "maps"'), `Places before Maps:\n${out}`);
     const space = readJson(path.join(dataDir, `space-${side}.json`));
     assert.deepEqual(Object.keys(space).sort(), ['item:c1', 'plan:a1', 'plan:c1', 'trip:main'], 'moved, and the taken name never overwritten');
     assert.deepEqual([space['plan:a1'], space['plan:c1'].value.title, space['item:c1'].value.title], [entry({ title: 'Ferry to Cacilhas', date: '2026-10-01' }), 'new copy', 'old copy'], 'value, version, time and author kept');
@@ -1825,15 +1823,15 @@ try {
     const admin = cookieOf(await call(server, '', 'POST', '/api/login', { body: { login: 'admin', password: 'admin-password-1' } }));
     const as = (method, url, body) => call(server, '', method, url, { cookie: admin, body });
     const byId = Object.fromEntries((await as('GET', '/api/modules')).json.modules.map((m) => [m.id, m]));
-    for (const id of ['places', 'maps', 'travel']) assert.deepEqual([id, byId[id].version, byId[id].enabled, byId[id].allSpaces], [id, current[id], true, true]);
+    for (const id of ['maps', 'travel']) assert.deepEqual([id, byId[id].version, byId[id].enabled, byId[id].allSpaces], [id, current[id], true, true]);
     assert.deepEqual([byId.todo.version, byId.todo.enabled], [older(current.todo), true], 'the To-do waits, still on, on its old version');
     // plan-primary-nav step 1 (decision 12): every module with an environment page is listed, widget or not, and a
-    // manifest's surfaces.page.nav is no longer read (Places sets it to false). Maps has an environment page from 0.8.0
+    // manifest's surfaces.page.nav is no longer read (Maps once set it to false). Maps has an environment page from 0.8.0
     // (plan-map-destination, decision 20: the map across the person's spaces).
     const pages = (await as('GET', '/api/modules/nav')).json.modules;
-    assert.deepEqual(pages.map((m) => m.id).sort(), ['maps', 'places', 'stream', 'todo', 'travel'], 'Places, Maps and the modules with a tile are listed');
+    assert.deepEqual(pages.map((m) => m.id).sort(), ['maps', 'stream', 'todo', 'travel'], 'Maps and the modules with a tile are listed');
     for (const m of pages) assert.deepEqual([m.id, m.nav, typeof m.name, typeof m.icon, typeof m.page], [m.id, true, 'string', 'string', 'string'], 'each with its name, icon and page, and nav always true');
-    assert.equal(pages.find((m) => m.id === 'places').widget, false);
+    assert.equal(pages.find((m) => m.id === 'maps').widget, false);
     assert.equal(pages.find((m) => m.id === 'todo').widget, true);
     // Nobody signed in, and a guest's link: no module pages (a guest uses modules only in their space).
     const link = await as('POST', `/api/spaces/${side}/guest-link`, {});
@@ -1985,7 +1983,7 @@ try {
     assert.deepEqual(await as('PATCH', '/api/modules/nope', { displayName: 'x' }).then((r) => [r.status, r.json]), [404, { error: 'no such module' }]);
 
     // A module's own icon, not in the environment's icon list: Planner's, and a built-in's (Chat's), are allowed.
-    assert.equal((await as('PATCH', '/api/modules/places', { displayIcon: 'suitcase-rolling' })).status, 404, 'Places is not installed here');
+    assert.equal((await as('PATCH', '/api/modules/maps', { displayIcon: 'suitcase-rolling' })).status, 404, 'Maps is not installed here');
     const own = await as('PATCH', '/api/modules/travel', { displayIcon: 'suitcase-rolling' });
     assert.deepEqual([own.status, own.json.module.displayIcon], [200, 'suitcase-rolling'], own.text);
     assert.equal((await as('PATCH', '/api/modules/travel', { displayIcon: 'message' })).json.module.displayIcon, 'message', 'Chat\'s own icon');
@@ -1999,7 +1997,7 @@ try {
     assert.equal((await stream()).settings.find((d) => d.key === 'asideDim').label, 'Huddle: dim (%)', 'a manifest\'s placeholders in the owner\'s words');
     assert.match((await planner()).description, /the events, tasks and polls your trip already has\.$/);
     assert.ok((await as('GET', '/api/roles')).json.permissions.some((p) => p.group === 'Tool: Itinerary'));
-    assert.match((await as('GET', '/api/modules')).json.bundled.find((m) => m.id === 'places').description, /your trip cares about/, 'the Available list too');
+    assert.match((await as('GET', '/api/modules')).json.bundled.find((m) => m.id === 'maps').description, /your trip cares about/, 'the Available list too');
 
     // Uninstalling with its data clears its display name; a plain uninstall keeps it.
     assert.equal((await as('PATCH', '/api/modules/stream', { displayName: 'Broadcast' })).status, 200);
@@ -2028,12 +2026,12 @@ try {
     assert.deepEqual((await call(server, 'admin', 'GET', '/api/host/templates', { cookie: boss })).json.templates.map((t) => t.id), ['games', 'travel']);
     assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss, body: { slug: 'nope', name: 'Nope', template: 'camping' } }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called camping.' }]);
     for (const template of [['travel'], { id: 'travel' }, 7]) assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss, body: { slug: 'nope', name: 'Nope', template } }).then((r) => [r.status, r.json]), [400, { error: 'A template is named by its id, such as games.' }], JSON.stringify(template));
-    const plan = { modules: fs.readdirSync(path.join(ROOT, 'modules')).filter((m) => m !== 'maps') };
+    const plan = { modules: fs.readdirSync(path.join(ROOT, 'modules')).filter((m) => m !== 'budget') };
     assert.equal((await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss, body: { slug: 'trips', name: 'Trips', plan, template: 'travel', owner: { login: 'olga', password: 'olga-password-1' } } })).status, 201);
     const listed = async () => (await call(server, 'admin', 'GET', '/api/host/environments', { cookie: boss })).json.environments.find((e) => e.slug === 'trips').template;
     let template;
     for (let i = 0; i < 100 && !(template = await listed())?.appliedAt; i += 1) await new Promise((r) => setTimeout(r, 50));
-    assert.deepEqual([template.id, template.name, template.skipped.map((x) => [x.id, x.name, x.why])[0]], ['travel', 'Travel', ['maps', 'Maps', 'not in the plan']]);
+    assert.deepEqual([template.id, template.name, template.skipped.map((x) => [x.id, x.name, x.why])[0]], ['travel', 'Travel', ['budget', 'Budget', 'not in the plan']]);
     const owner = cookieOf(await call(server, 'trips', 'POST', '/api/login', { body: { login: 'olga', password: 'olga-password-1' } }));
     const settingsOf = async () => (await call(server, 'trips', 'GET', '/api/settings', { cookie: owner })).json.settings;
     let st = await settingsOf();
@@ -2044,8 +2042,8 @@ try {
     assert.deepEqual([st.words.space.one, st.homeIcon, st.templateWords.space.one, st.templateHomeIcon], ['journey', 'couch', 'trip', 'suitcase-rolling'], 'the template\'s stay readable under the owner\'s');
     const travel = (await call(server, 'trips', 'GET', '/api/modules', { cookie: owner })).json.modules.find((m) => m.id === 'travel');
     assert.deepEqual([travel.displayName, travel.ownDisplayName, travel.templateDisplayName, travel.templateDisplayIcon], ['Plans', 'Plans', 'Itinerary', null]);
-    const places = (await call(server, 'trips', 'GET', '/api/modules', { cookie: owner })).json.modules.find((m) => m.id === 'places');
-    assert.deepEqual([places.templateDisplayName, places.templateDisplayIcon], [null, null]);
+    const maps = (await call(server, 'trips', 'GET', '/api/modules', { cookie: owner })).json.modules.find((m) => m.id === 'maps');
+    assert.deepEqual([maps.templateDisplayName, maps.templateDisplayIcon], [null, null]);
     await server.stop();
     server = await start();
     const again = (await call(server, 'admin', 'GET', '/api/host/environments', { cookie: (cookieOf(await call(server, 'admin', 'POST', '/api/host/login', { body: { login: 'boss', password: 'host-password-3' } }))) })).json.environments.find((e) => e.slug === 'trips').template;
@@ -2060,7 +2058,7 @@ try {
     assert.equal(backup.status, 200);
     assert.equal((await call(server, 'admin', 'POST', '/api/host/environments/plain/restore', { cookie: boss2, body: backup.raw, type: 'application/zip' })).status, 200);
     const restored = await plainTemplate();
-    assert.deepEqual([restored.id, restored.name, restored.appliedAt, restored.skipped[0].id], ['travel', 'Travel', template.appliedAt, 'maps']);
+    assert.deepEqual([restored.id, restored.name, restored.appliedAt, restored.skipped[0].id], ['travel', 'Travel', template.appliedAt, 'budget']);
     assert.equal(readJson(path.join(hosted, 'host.json')).environments.find((e) => e.slug === 'plain').template, 'travel', 'the registry follows the record');
     assert.equal((await call(server, 'plain', 'GET', '/api/branding')).json.words.space.one, 'journey', 'the owner\'s own word travels with the backup too');
     assert.ok(!/\[plain\] Applied the/.test(server.output()), 'a restored record is not applied again');

@@ -87,7 +87,7 @@ await test('manifest: upload and pictureMap are kept; the rules hold', () => {
   assert.throws(() => cleanManifest(m({}, [{ ...pic, upload: { accept: 'zip' } }]), files), /upload must be/);
   assert.throws(() => cleanManifest(m({}, [{ ...pic, type: 'files' }]), files), /upload must be/);
   assert.throws(() => cleanManifest(m({}, [{ ...pic, shared: 'host' }]), files), /cannot be shared/);
-  const maps = cleanManifest(JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'maps', 'module.json'), 'utf8')), new Map([['page.html', Buffer.from('')], ['canvas.html', Buffer.from('')]]));
+  const maps = cleanManifest(JSON.parse(fs.readFileSync(path.join(ROOT, 'modules', 'maps', 'module.json'), 'utf8')), new Map([['page.html', Buffer.from('')], ['list.html', Buffer.from('')], ['canvas.html', Buffer.from('')]]));
   assert.deepEqual(maps.pictureMap, { setting: 'imageMap' });
   const def = maps.settings.find((d) => d.key === 'imageMap');
   assert.equal(def.type, 'file');
@@ -149,7 +149,7 @@ try {
   assert.ok(owner, 'the admin signs in');
   expect(await send(server, 'POST', '/api/users', { cookie: owner, json: { login: 'pat', displayName: 'Pat', role: 'member', password: 'memberpass1234' } }), 201, 'make a member');
   const pat = cookieOf(await send(server, 'POST', '/api/login', { json: { login: 'pat', password: 'memberpass1234' } }));
-  for (const id of ['places', 'maps']) {
+  for (const id of ['maps']) {
     expect(await send(server, 'POST', `/api/modules/bundled/${id}/install`, { cookie: owner, json: {} }), 201, `install ${id}`);
     expect(await send(server, 'PATCH', `/api/modules/${id}`, { cookie: owner, json: { enabled: true, allSpaces: true } }), 200, `enable ${id}`);
   }
@@ -162,7 +162,7 @@ try {
 
   await test('before anything: no picture map, the search is asked as before', async () => {
     assert.equal((await context()).environment.pictureMap, null);
-    const r = await send(server, 'GET', '/api/modules/places/geocode?q=paris', { cookie: owner });
+    const r = await send(server, 'GET', '/api/modules/maps/geocode?q=paris', { cookie: owner });
     assert.equal(r.status, 200);
     assert.equal(r.json.pictureMap, undefined);
     assert.equal(r.json.configured, false, 'no search chosen, as before');
@@ -281,10 +281,10 @@ try {
   });
 
   await test('the search is off while it is set, and asks nobody', async () => {
-    const r = await send(server, 'GET', '/api/modules/places/geocode?q=paris', { cookie: owner });
+    const r = await send(server, 'GET', '/api/modules/maps/geocode?q=paris', { cookie: owner });
     expect(r, 200, 'the search');
     assert.deepEqual(r.json, { results: [], configured: false, pictureMap: true, message: 'Place search is off while the map is a picture of an invented world.' });
-    const cache = path.join(dataDir, 'modules', 'places', 'geocode.json');
+    const cache = path.join(dataDir, 'modules', 'maps', 'geocode.json');
     assert.ok(!fs.existsSync(cache), 'no place collection written');
   });
 
@@ -310,7 +310,7 @@ try {
     assert.deepEqual(left(), []);
     assert.equal((await values()).imageMap, '');
     assert.equal((await context()).environment.pictureMap, null);
-    const r = await send(server, 'GET', '/api/modules/places/geocode?q=paris', { cookie: owner });
+    const r = await send(server, 'GET', '/api/modules/maps/geocode?q=paris', { cookie: owner });
     assert.equal(r.json.pictureMap, undefined);
     assert.equal(r.json.configured, false);
     assert.ok(fs.existsSync(path.join(mapFolder, 'city.pmtiles')), 'the map files were not touched');
@@ -381,7 +381,7 @@ try {
   // The default limit when the variable is not set: a file over 0.01 MB goes in (the limit is MAP_IMAGE_MAX_MB, default 100).
   const second = await startServer(path.join(base, 'data2'), { ADMIN_PASSWORD: 'testpass1234' });
   const cookie2 = cookieOf(await send(second, 'POST', '/api/login', { json: { login: 'admin', password: 'testpass1234' } }));
-  for (const id of ['places', 'maps']) {
+  for (const id of ['maps']) {
     await send(second, 'POST', `/api/modules/bundled/${id}/install`, { cookie: cookie2, json: {} });
     await send(second, 'PATCH', `/api/modules/${id}`, { cookie: cookie2, json: { enabled: true, allSpaces: true } });
   }

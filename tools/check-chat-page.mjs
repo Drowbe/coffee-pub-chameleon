@@ -466,7 +466,7 @@ test('a tint colours a message\'s portrait (no edge: the Chat family, step 29) a
 // --- step 6 ---------------------------------------------------------------------------------------------------------
 
 test('every bundled module\'s colour (decision 20), a known tint; Stream and the Assistant have none', () => {
-  const want = { research: 'blue', todo: 'green', calendar: 'red', travel: 'teal', polls: 'purple', places: 'orange', budget: 'gold', maps: 'pink', whiteboard: 'teal', documents: 'orange', vault: 'blue', stream: undefined, assistant: undefined };
+  const want = { research: 'blue', todo: 'green', calendar: 'red', travel: 'teal', polls: 'purple', budget: 'gold', maps: 'pink', whiteboard: 'teal', documents: 'orange', vault: 'blue', stream: undefined, assistant: undefined };
   const dirs = fs.readdirSync(path.join(ROOT, 'modules')).filter((d) => fs.existsSync(path.join(ROOT, 'modules', d, 'module.json')));
   for (const id of dirs) {
     const manifest = JSON.parse(read(`modules/${id}/module.json`));

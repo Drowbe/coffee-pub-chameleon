@@ -99,9 +99,9 @@ function unitChecks() {
   expect(questionTooLong('x'.repeat(1000)) === '' && questionTooLong('') === '', 'a question of 1,000 or fewer is refused');
   expect(/^[A-Za-z_]+\/[A-Za-z_+\-0-9/]+$|^UTC$/.test(askZone()), `the time zone is "${askZone()}"`);
   const w = { object: 'object', objects: 'objects', space: 'space', owner: 'owner', member: 'member', members: 'members', nameOf: (id) => id };
-  const p = aiUsedParts({ attached: [], relevant: 3, linked: 1, history: 2, chat: 0, members: 1, notSent: [{ why: 'setting', module: 'places', count: 2 }, { why: 'other-space', module: 'research', moduleName: 'Research', count: 1 }], cut: true }, [], w);
+  const p = aiUsedParts({ attached: [], relevant: 3, linked: 1, history: 2, chat: 0, members: 1, notSent: [{ why: 'setting', module: 'maps', count: 2 }, { why: 'other-space', module: 'research', moduleName: 'Research', count: 1 }], cut: true }, [], w);
   expect(p.counts.join('|') === '3 related objects|1 linked object|2 earlier questions|1 member', `the counts read "${p.counts.join('|')}"`);
-  expect(p.notSent === "Not sent: 2 objects from places, kept out by the owner's setting; 1 object from Research, from another space.", `the Not sent line reads "${p.notSent}"`);
+  expect(p.notSent === "Not sent: 2 objects from maps, kept out by the owner's setting; 1 object from Research, from another space.", `the Not sent line reads "${p.notSent}"`);
   expect(p.fit === 'Some objects were left out to fit.', 'a cut call does not say some were left out to fit');
   expect(aiUsedParts({}, [{ part: 'relevant', why: 'budget', count: 2 }], w).fit !== '' && aiUsedParts({}, [{ part: 'x', why: 'setting', count: 2 }], w).fit === '', 'left out to fit is for the budget only');
   // Slice 2: the server's sent.lookup { searches, read } (read a count or a list of pointers); absent reads as none.

@@ -2242,7 +2242,7 @@ await (async () => {
   await plan.load();
   await plan.saveTrip({ title: 'Cabin', start: '2026-10-01', end: '2026-10-03' });
   const planKey = (id) => f.t.util.objectKey(f.t.objects.make('plan', id));
-  const placeRef = (id) => ({ module: 'places', kind: 'place', id, scope: 'space' });
+  const placeRef = (id) => ({ module: 'maps', kind: 'place', id, scope: 'space' });
   const keyOf = (r) => f.t.util.objectKey(r);
   const tick = () => new Promise((r) => setTimeout(r, 0));
   // A stop with a typed name only: nothing linked, nothing told.
@@ -2282,7 +2282,7 @@ await (async () => {
   // The pointer is cleaned on the way in: a stay or a note carries none, a bad one is dropped.
   const stay = await plan.addItem({ kind: 'stay', title: 'Hotel', placeRef: placeRef('p1'), date: '2026-10-01' });
   assert.ok(!stay.placeRef, 'only a stop is at a Place');
-  const bad = await plan.addItem({ kind: 'stop', title: 'Walk', placeRef: { module: 'places' }, date: '2026-10-02' });
+  const bad = await plan.addItem({ kind: 'stop', title: 'Walk', placeRef: { module: 'maps' }, date: '2026-10-02' });
   assert.equal(bad.placeRef, null, 'a pointer with no kind or id is dropped');
 })();
 n += 1;

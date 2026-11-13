@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 
 const read = (name) => fs.readFileSync(new URL(`../modules/maps/src/${name}`, import.meta.url), 'utf8');
 // The SDK's geo helpers, which the page hands to the library.
@@ -393,7 +394,7 @@ test('a pin takes the place\'s colour, else its category\'s, else the category\'
   assert.ok(!/% 360/.test(page) && !page.includes('BUILT_IN_CATS'), 'no hash hue');
   assert.match(css, /\.pin\[data-cat\]:not\(\.selected\) \{ --pin: var\(--tone\); --pin-text: var\(--tone-ink, var\(--surface-page\)\); \}/);
   assert.ok(!/--turn|oklch/.test(css), 'no turned hues in the stylesheet');
-  const places = fs.readFileSync(new URL('../modules/places/src/places-lib.js', import.meta.url), 'utf8'); // the colour rule moved into Places' library (0.11.0)
+  const places = fs.readFileSync(new URL('../modules/maps/src/maps-lib-f-list-model.js', import.meta.url), 'utf8'); // the colour rule moved into Places' library (0.11.0)
   assert.match(places, /const AUTO_COLOR = '#888888';/);
   assert.match(places, /const TINTS = \['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'gold', 'red'\];/, 'the same eight, in the same order, as Places');
   const order = [...places.matchAll(/\{ id: '([a-z]+)', label: '[^']+', icon: '[a-z-]+', color: AUTO_COLOR \}/g)].map((m) => m[1]);
@@ -413,7 +414,7 @@ test('a pin has the place\'s icon and its visit badge', () => {
   assert.deepEqual([look({ visit: 'visited' }).visitLabel, look({ visit: 'visited' }).visitIcon], ['Visited', 'circle-check']);
   assert.deepEqual([look({ visit: 'favorite' }).visitLabel, look({ visit: 'favorite' }).visitIcon], ['Favorite', 'star']);
   assert.equal(look({ visit: 'maybe' }).visit, '', 'no other state');
-  const places = fs.readFileSync(new URL('../modules/places/src/places-lib.js', import.meta.url), 'utf8');
+  const places = fs.readFileSync(new URL('../modules/maps/src/maps-lib-f-list-model.js', import.meta.url), 'utf8');
   for (const [id, label, icon] of [['want', 'Want to go', 'bookmark'], ['booked', 'Booked', 'calendar-check'], ['visited', 'Visited', 'circle-check'], ['favorite', 'Favorite', 'star']]) assert.ok(places.includes(`{ id: '${id}', label: '${label}', icon: '${icon}' }`), `${id}: the same words and icon as Places' rows`);
   assert.match(html, /<span class="pin-badge" data-visit="">/);
   assert.match(css, /\.pin-badge \{[^}]*border-radius: var\(--radius-round\)/);
@@ -514,6 +515,42 @@ test('the map follows the list beside it, hides a "+" that would do nothing, and
   assert.match(dest, /filterOnly: 'Filter places',/);
   const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
   assert.ok(!JSON.stringify(manifest).includes('20260924'), 'the help\'s example build date is one that exists');
+});
+
+// --- Places folded into Maps (plan-places-and-maps.md, jobs J1, J3, J4, J5): one module, `maps`, owns the places ----------------
+test('Maps owns the places: its manifest declares what Places declared, and nothing is left of the old id', () => {
+  const root = new URL('..', import.meta.url).pathname;
+  const manifest = JSON.parse(fs.readFileSync(new URL('../modules/maps/module.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.requires, undefined, 'Maps requires nothing: there is no Places');
+  assert.deepEqual(manifest.scope, ['environment', 'space', 'person']);
+  assert.deepEqual(manifest.refs.produces.map((r) => [r.kind, r.key, r.open, r.backlinks]), [['place', 'place:{id}', true, true]]);
+  assert.ok(manifest.geocoder && manifest.geocoder.provider === 'searchProvider' && manifest.geocoder.address === 'search', 'the place search is declared by Maps');
+  for (const key of ['categories', 'searchProvider', 'search', 'saveResults', 'map', 'imageMap', 'worldSource']) assert.ok(manifest.settings.some((d) => d.key === key), `setting ${key}`);
+  const names = manifest.actions.provides.map((a) => a.name);
+  for (const name of ['addPlace', 'sharePlace', 'setPlacePoint', 'newPlace', 'pickPoint', 'showOnMap']) assert.ok(names.includes(name), `action ${name}`);
+  const inputs = manifest.actions.provides.flatMap((a) => Object.values(a.input || {}));
+  assert.ok(inputs.includes('ref:maps:place') && !inputs.some((t) => /^ref:(?!maps:)/.test(t)), 'a place pointer in an action is ref:maps:place and no other module\'s');
+  assert.deepEqual(manifest.surfaces.destination.map((d) => [d.id, d.part, d.entry]), [['map', 'main', 'page.html'], ['map', 'panel', 'page.html']], 'the Map destination: the map, and the list beside it (both are the one built page; the part it is handed says which half runs)');
+  assert.equal(fs.existsSync(path.join(root, 'modules', 'places')), false, 'modules/places is gone');
+  const versions = JSON.parse(fs.readFileSync(new URL('../tools/module-versions.json', import.meta.url), 'utf8'));
+  assert.equal(versions.places, undefined, 'no recorded version for Places');
+  // The built module: the map page carries the map libraries and not the list; the list part carries the list and not the map libraries.
+  const { buildModule, bundledModules } = createRequire(import.meta.url)('../server/module-build.js');
+  const { zipFiles } = createRequire(import.meta.url)('../server/module-build.js');
+  assert.ok(zipFiles);
+  assert.ok(!bundledModules(path.join(root, 'modules')).some((m) => m.id === 'places'), 'Places is not a bundled module');
+  const built = buildModule(path.join(root, 'modules', 'maps'));
+  assert.equal(built.fileCount, 3, 'module.json, page.html, canvas.html: one page holds the list and the map');
+  // No reader for the old id: nowhere in the code, the manifests, the templates or the checks is a place pointed at as module "places".
+  const bad = /module: ?'places'|"module": ?"places"|ref:places:|\/modules\/places|modules\/places\/|from=places|'places:(?:place|addPlace|setPlacePoint)/;
+  const skip = new Set(['tools/check-maps.mjs', 'tools/check-maps-list.mjs', 'tools/check-names-allow.json']); // the list check feeds a stale pointer on purpose
+  const walk = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) return /^(node_modules|\.git|\.wiki-build|dist|fixtures|legacy|vendor|pdfjs|models)$/.test(e.name) ? [] : walk(rel);
+    return /\.(js|mjs|json|html|css|md)$/.test(e.name) && !skip.has(rel) ? [rel] : [];
+  });
+  const found = ['modules', 'server', 'public', 'templates', 'tools'].flatMap(walk).filter((rel) => bad.test(fs.readFileSync(path.join(root, rel), 'utf8')));
+  assert.deepEqual(found, [], 'files that still name Places as a module');
 });
 
 console.log(`check-maps: OK (${n} checks)`);

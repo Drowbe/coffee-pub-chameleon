@@ -427,10 +427,10 @@ test('a display name and icon are checked before anything is saved, each with on
     ]) assert.throws(() => store.checkModuleDisplay('travel', patch), (err) => err.status === 400 && err.message === sentence, JSON.stringify(patch));
     store.applyModuleDisplay('travel', { name: 'Itinerary', icon: 'compass' });
     assert.deepEqual(store.moduleDisplay('travel'), { name: 'Itinerary', icon: 'compass', ownName: 'Itinerary', ownIcon: 'compass', templateName: null, templateIcon: null });
-    store.templateModuleNames = { travel: 'Journey', places: 'Stops' };
-    store.templateModuleIcons = { places: 'map', calendar: 'not-in-the-list' };
+    store.templateModuleNames = { travel: 'Journey', maps: 'Stops' };
+    store.templateModuleIcons = { maps: 'map', calendar: 'not-in-the-list' };
     assert.equal(store.moduleDisplay('travel').name, 'Itinerary', 'the owner\'s, over the template\'s');
-    assert.deepEqual(store.moduleDisplay('places'), { name: 'Stops', icon: 'map', ownName: null, ownIcon: null, templateName: 'Stops', templateIcon: 'map' }, 'else the template\'s');
+    assert.deepEqual(store.moduleDisplay('maps'), { name: 'Stops', icon: 'map', ownName: null, ownIcon: null, templateName: 'Stops', templateIcon: 'map' }, 'else the template\'s');
     assert.equal(store.moduleDisplay('calendar').icon, 'not-in-the-list', 'a template\'s icon counts as drawable: server/templates.js takes only Font Awesome Free solid icons');
     assert.deepEqual(store.checkModuleDisplay('travel', { displayIcon: 'map' }), { icon: 'map' }, 'and the owner may pick a template\'s icon');
     // Any installed or built-in module's own icon is allowed too, though it is not in the environment's icon list.
@@ -438,14 +438,14 @@ test('a display name and icon are checked before anything is saved, each with on
     store.moduleIconIds = () => ['suitcase-rolling', 'video'];
     assert.deepEqual(store.checkModuleDisplay('travel', { displayIcon: 'suitcase-rolling' }), { icon: 'suitcase-rolling' });
     // Another module's own icon, chosen, then that module gone: kept as the owner's, not drawn, and accepted back as it is.
-    store.applyModuleDisplay('places', { icon: 'suitcase-rolling' });
+    store.applyModuleDisplay('maps', { icon: 'suitcase-rolling' });
     store.moduleIconIds = () => ['video'];
-    assert.deepEqual([store.moduleDisplay('places').icon, store.moduleDisplay('places').ownIcon], ['map', 'suitcase-rolling'], 'the next one down (the template\'s) is shown');
-    assert.deepEqual(store.checkModuleDisplay('places', { displayName: 'Stops', displayIcon: 'suitcase-rolling' }), { name: 'Stops', icon: 'suitcase-rolling' }, 'saving only the name keeps it');
+    assert.deepEqual([store.moduleDisplay('maps').icon, store.moduleDisplay('maps').ownIcon], ['map', 'suitcase-rolling'], 'the next one down (the template\'s) is shown');
+    assert.deepEqual(store.checkModuleDisplay('maps', { displayName: 'Stops', displayIcon: 'suitcase-rolling' }), { name: 'Stops', icon: 'suitcase-rolling' }, 'saving only the name keeps it');
     assert.throws(() => store.checkModuleDisplay('travel', { displayIcon: 'suitcase-rolling' }), /There is no icon called suitcase-rolling/, 'but not for another module');
     store.moduleIconIds = () => ['suitcase-rolling', 'video'];
-    assert.equal(store.moduleDisplay('places').icon, 'suitcase-rolling', 'and it draws again once that module is back');
-    store.applyModuleDisplay('places', { icon: null });
+    assert.equal(store.moduleDisplay('maps').icon, 'suitcase-rolling', 'and it draws again once that module is back');
+    store.applyModuleDisplay('maps', { icon: null });
     store.templateModuleIcons = { calendar: 'video' };
     assert.equal(store.moduleDisplay('calendar').icon, 'video', 'a template\'s module icon that is a module\'s own');
     assert.throws(() => store.checkModuleDisplay('travel', { displayIcon: 'unicorn-rocket' }), /There is no icon called unicorn-rocket/);

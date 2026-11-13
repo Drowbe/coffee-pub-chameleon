@@ -21,7 +21,7 @@
     { "login": "sam", "displayName": "Sam Okafor", "role": "member", "moderator": false }
   ],
   "modules": {
-    "places": {
+    "maps": {
       "what": "places",
       "count": ["place:"],
       "steps": [
@@ -136,7 +136,7 @@
             "plan:d30": {"by":"Mia Alvarez","order":30000,"kind":"stop","type":"bar","title":"Drinks at Pavilhao Chines","date":"start+4","time":"19:30","minutes":90,"place":"Pavilhao Chines","address":"Rua Dom Pedro V 89","estimate":30},
             "plan:d31": {"by":"Mia Alvarez","order":31000,"kind":"link","title":"Lisboa Card runs out","date":null,"ref":{"module":"calendar","kind":"event","id":"dm-card","scope":"space","space":"{space}"}},
             "plan:d32": {"by":"Mia Alvarez","order":32000,"kind":"link","title":"Video call with family","date":null,"ref":{"module":"calendar","kind":"event","id":"dm-family","scope":"space","space":"{space}"}},
-            "plan:d33": {"by":"Mia Alvarez","order":33000,"kind":"link","title":"Miradouro da Senhora do Monte","date":"start+4","ref":{"module":"places","kind":"place","id":"senhoramonte","scope":"space","space":"{space}"},"notes":""},
+            "plan:d33": {"by":"Mia Alvarez","order":33000,"kind":"link","title":"Miradouro da Senhora do Monte","date":"start+4","ref":{"module":"maps","kind":"place","id":"senhoramonte","scope":"space","space":"{space}"},"notes":""},
             "plan:d34": {"by":"Mia Alvarez","order":34000,"kind":"lane","type":"rest","after":"start+4"},
             "plan:d35": {"by":"Mia Alvarez","order":35000,"kind":"journey","mode":"taxi","title":"Taxi to Santa Apolonia","date":"start+6","time":"08:30","minutes":15,"from":"Casa do Largo","to":"Santa Apolonia Station","estimate":10},
             "plan:d36": {"by":"Mia Alvarez","order":36000,"kind":"journey","mode":"train","title":"Train to Porto","date":"start+6","time":"09:35","arrives":"start+6T12:20","minutes":165,"operator":"CP Alfa Pendular","number":"AP 120","from":"Lisboa Santa Apolonia","to":"Porto Campanha","platform":"5","carriage":"4","seat":"41, 42, 43","travelClass":"Second","confirm":"DEMO-TR-9","cost":118.5,"paidBy":"@mia","owners":["@mia","@lee","@sam"]},
@@ -154,12 +154,12 @@
             "plan:d48": {"by":"Mia Alvarez","order":48000,"kind":"stop","type":"tour","title":"Douro winery tour and tasting","date":"start+8","time":"11:00","minutes":120,"place":"Taylor's Port Cellars","admissionCount":3,"estimate":120},
             "plan:d49": {"by":"Mia Alvarez","order":49000,"kind":"stop","type":"restaurant","title":"Lunch at the winery","date":"start+8","time":"13:30","minutes":90,"estimate":75},
             "plan:d50": {"by":"Mia Alvarez","order":50000,"kind":"stop","type":"sight","title":"Pinhao viewpoint","date":"start+8","time":"16:00","minutes":45,"place":"Pinhao viewpoint"},
-            "plan:d51": {"by":"Mia Alvarez","order":51000,"kind":"link","title":"Ponte Dom Luis I at sunset","date":"start+8","ref":{"module":"places","kind":"place","id":"luis","scope":"space","space":"{space}"}},
+            "plan:d51": {"by":"Mia Alvarez","order":51000,"kind":"link","title":"Ponte Dom Luis I at sunset","date":"start+8","ref":{"module":"maps","kind":"place","id":"luis","scope":"space","space":"{space}"}},
             "plan:d52": {"by":"Mia Alvarez","order":52000,"kind":"journey","mode":"flight","title":"Flight home","date":"start+9","time":"11:20","arrives":"start+9T13:45","minutes":445,"operator":"Lusa Air","number":"LA 483","fromCode":"OPO","toCode":"BOS","from":"Porto","to":"Boston Logan","terminal":"1","gate":"A3","seat":"23A, 23B, 23C","travelClass":"Economy","confirm":"DEMO-4831","owners":["@mia","@lee","@sam"]},
             "plan:d53": {"by":"Mia Alvarez","order":53000,"kind":"lane","type":"buffer","after":"start+9"},
             "plan:d54": {"by":"Mia Alvarez","order":54000,"kind":"note","title":"Which cities?","date":"today+1","notes":"Lisbon for the city, Sintra for a day of palaces, Porto for the river. Skip the Algarve this time."},
             "plan:d55": {"by":"Mia Alvarez","order":55000,"kind":"note","title":"Rough budget: 6,500 euros","date":"today+3","notes":"Flights and hotels first, then about 100 a day for food and tickets."},
-            "plan:d56": {"by":"Mia Alvarez","order":56000,"kind":"link","title":"Casa do Largo (the hotel we like)","date":"today+4","ref":{"module":"places","kind":"place","id":"casalargo","scope":"space","space":"{space}"}},
+            "plan:d56": {"by":"Mia Alvarez","order":56000,"kind":"link","title":"Casa do Largo (the hotel we like)","date":"today+4","ref":{"module":"maps","kind":"place","id":"casalargo","scope":"space","space":"{space}"}},
             "plan:d57": {"by":"Mia Alvarez","order":57000,"kind":"stop","type":"other","title":"Read about Sintra in one day","date":"today+6","time":"19:00","minutes":30,"notes":"Pena first, then Regaleira. See Research."},
             "plan:d58": {"by":"Mia Alvarez","order":58000,"kind":"stop","type":"other","title":"Pena Palace: book the time slot","date":"today+9","time":"09:00","minutes":30,"notes":"Timed entry. Lee books for 10:45.","owners":["@lee"]},
             "plan:d59": {"by":"Mia Alvarez","order":59000,"kind":"stop","type":"other","title":"Flight booked: LA 482 to Lisbon","date":"today+10","time":"20:15","minutes":30,"notes":"Seats 23A to 23C, confirmation DEMO-4821.","confirm":"DEMO-4821","owners":["@mia","@lee","@sam"]},
@@ -348,7 +348,7 @@
         {"as":"lee","text":"I will be there. Also, the Douro day needs the rental car; pick-up is the evening before."},
         {"as":"sam","text":"> pick-up is the evening before\nGot it, and drop-off at the airport on the last morning."},
         {"as":"mia","text":"Everything for the trip is in the Planner, Places and To-do. Add what you find."},
-        {"as":"lee","text":"Added three places near the hotel to Places."},
+        {"as":"lee","text":"Added three places near the hotel to Maps."},
         {"as":"sam","text":"Great. Two months and we are in Lisbon."}
       ]
     }

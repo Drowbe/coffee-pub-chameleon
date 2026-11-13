@@ -334,7 +334,7 @@ function useLive(store, template) {
   return template;
 }
 
-// The bundled module ids a template's list needs, each after what it requires (Maps after Places), with the modules
+// The bundled module ids a template's list needs, each after what it requires (a module after the ones it requires), with the modules
 // it requires added though the template left them out.
 function withRequirements(ids, manifests) {
   const out = [];

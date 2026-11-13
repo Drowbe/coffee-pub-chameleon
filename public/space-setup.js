@@ -465,7 +465,7 @@ export function createSpaceSetup(deps) {
             <p class="setup-subheading" id="setup-opens-with-label">A new person sees these open</p>
             <div class="opens-with-list setup-opens-with" id="setup-opens-with" role="group" aria-labelledby="setup-opens-with-label" aria-describedby="setup-opens-with-hint"></div>
             <p class="hint" id="setup-opens-with-note" hidden></p>
-            <p class="hint" id="setup-opens-with-hint">What opens the first time someone new enters, in the Workspace. Maps takes in Places and Calendar takes in To-do.</p>
+            <p class="hint" id="setup-opens-with-hint">What opens the first time someone new enters, in the Workspace. Calendar takes in To-do.</p>
           </div>
           <div class="setup-first-layouts" id="setup-first-visit-layouts"></div>
         </fieldset>
@@ -919,7 +919,7 @@ export function createSpaceSetup(deps) {
     const list = q('#setup-opens-with');
     const all = choices();
     const stored = state.draft.opensWith || [];
-    const apart = new Set(groupedParts(all.map((c) => c.id))); // Places and To-do sit under Maps and Calendar
+    const apart = new Set(groupedParts(all.map((c) => c.id))); // To-do sits under Calendar
     const rows = all.filter((c) => !apart.has(c.id));
     const kept = stored.filter((id) => id !== 'conference' && !all.some((c) => c.id === id)).map(keptChoice);
     list.innerHTML = switchListHtml([...rows, ...kept].map((c) => ({ ...c, on: switchOn(stored, c.id) })), 'opens');
