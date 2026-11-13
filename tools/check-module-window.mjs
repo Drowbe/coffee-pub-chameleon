@@ -61,7 +61,7 @@ for (const id of EDITOR_MIGRATED) {
   const src = path.join(root, 'modules', id, 'src');
   const html = fs.readdirSync(src).filter((n) => n.endsWith('.html')).map((n) => `modules/${id}/src/${n}`);
   // The script that holds the module's form: Maps' is its list part (the Places editor moved in; the map has no form).
-  const formScript = id === 'maps' ? 'maps-list.js' : `${id}.js`;
+  const formScript = id === 'maps' ? 'maps-lib-g-list-view.js' : `${id}.js`;
   // The module's script: Cancel goes through the handle's cancel() (the same question as Escape and Close), never by
   // clicking the SDK's own button, and the dialog is shown and hidden by the handle, never by `hidden`.
   for (const name of fs.readdirSync(src).filter((n) => n.endsWith('.js') && !/-lib-a-/.test(n))) {

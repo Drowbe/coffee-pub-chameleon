@@ -39,7 +39,7 @@ const shown = `const shown = (e) => e && !e.hidden && e.getClientRects().length 
 
 const MAPS = `(() => { ${ROOTS} ${shown}
   const out = [];
-  for (const r of roots) { const st = r.querySelector('#state'); const win = r.host ? r.host.closest('.mf, .module-floating, body') : null; const se = win ? win.querySelector('.mf-toolbar .mf-search') : null;
+  for (const r of roots) { const st = [...r.querySelectorAll('#state, #list-nomap')].find(shown) || null; const win = r.host ? r.host.closest('.mf, .module-floating, body') : null; const se = win ? win.querySelector('.mf-toolbar .mf-search') : null;
     if (!shown(st) || st.querySelector('.sdk-skel')) continue;
     const a = st.getBoundingClientRect(); const own = a.top;
     const title = st.querySelector('.sdk-empty-title'); const t = title ? title.getBoundingClientRect() : null;
@@ -171,13 +171,13 @@ async function main() {
     const S = { base: server.base, ctx: boot.ctx, cookies: boot.cookies };
     browser = await launch(bin);
 
-    // 1. Maps' notice below its search field.
+    // 1. Maps' notice (with no map file, the list's "No map yet") below its search field.
     const workspace = { id: 'workspace', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true };
     const page = { id: 'maps-page', as: 'mia', url: '/modules/maps?space={trip}', wait: '#module-frame >>> *' };
     for (const [name, size, screen] of [['Workspace 1280', 1280, workspace], ['Maps page 390', 390, page], ['Maps page 1280', 1280, page]]) {
       const got = await view(browser, S, size, 'light', screen, MAPS, 3000);
       const states = (got || []).filter((x) => x.search !== null);
-      if (!states.length) failures.push(`${name}: Maps showed no notice with a search field (the seed has no map file), so nothing was measured`);
+      if (!states.length) failures.push(`${name}: Maps showed no map notice under a search field (the seed has no map file: the list says so), so nothing was measured`);
       for (const x of states) if (x.state < x.search - 0.5) failures.push(`${name}: the notice starts at ${Math.round(x.state)}px, over the search field that ends at ${Math.round(x.search)}px`);
       say(`${name}: ${states.length ? states.map((x) => `notice top ${Math.round(x.state)} / search bottom ${Math.round(x.search)}`).join('; ') : 'no search field over a notice'}`);
     }

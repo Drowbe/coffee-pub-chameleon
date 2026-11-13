@@ -1,26 +1,26 @@
 // Maps' list part (the Places module's page before it folded into Maps): the space's saved places, listed by category, each with an address, an optional position, notes and
-// owners. The places live in the module's store (see maps-list-lib.js) and, with a position, give their summary a `place` that a map
-// module draws. This page draws into the markup in maps-list.html by cloning its templates and filling their [data-slot] and
+// owners. The places live in the module's store (see maps-lib-f-list-model.js) and, with a position, give their summary a `place` that a map
+// module draws. This page draws into the markup in maps.html by cloning its templates and filling their [data-slot] and
 // [data-icon] hooks, and toggles the state classes and data attributes CONTRACT.md lists. It builds no markup from strings
 // and sets no style (the item menu is placed under the button that opened it). Nothing here names another module.
 // As the Map destination's list (plan-map-destination) it lists Mine, the environment's own and each chosen space's places
 // in one list, following the page's filter and search (host.destination), and a new place asks where it goes, every time.
 // As that list in a space (/map?space=<id>; plan-map-places.md, step 2) it lists this space's, Mine and the environment's
 // own by the page's filter there, reads a store only once the filter has it on, and Where offers the same three.
-(async () => {
+async function runList(env) {
   'use strict';
 
-  // This module runs in a frame (the SDK is a global) or in the page (its SDK is handed to its script); either way it looks
+  // `env.host` is the module's SDK (maps.js wraps it for the window, which holds the list and the map together). It looks
   // elements up in host.root, never in document.
-  const host = (document.currentScript && document.currentScript.host) || window.host;
+  const host = env.host;
   const root = host.root;
   const word = host.util.word; // the environment's word for a level or role (host.locale().words)
   const $ = (id) => root.getElementById(id);
   // States: loading is the skeleton in #loading; a failure or a plain notice is the block in #msg (.sdk-empty: an icon, a heading, a line,
   // and Retry on a failure, data-kind="error").
   function showMsg(title, text, retry) {
-    $('loading').hidden = true;
-    const m = $('msg');
+    $('list-loading').hidden = true;
+    const m = $('list-msg');
     const icon = document.createElement('span');
     icon.className = 'ic';
     host.ui.icon(retry ? 'triangle-exclamation' : 'circle-info').then((svg) => { icon.innerHTML = svg; }).catch(() => {});
@@ -41,7 +41,7 @@
       again.type = 'button';
       again.className = 'btn';
       again.textContent = 'Retry';
-      again.addEventListener('click', () => { m.hidden = true; $('loading').hidden = false; retry(); });
+      again.addEventListener('click', () => { m.hidden = true; $('list-loading').hidden = false; retry(); });
       actions.append(again);
       parts.push(actions);
     }
@@ -69,7 +69,7 @@
   const asPart = Boolean(info.context.destination && info.context.destination.part);
 
   const geo = host.util.geo;
-  /*__LIB__*/
+  const { PLACE_PREFIX, CATEGORY_ID, ICON_NAME, AUTO_COLOR, DEFAULT_CATEGORIES, CATEGORIES, OLD_CATEGORIES, NEW_FOR_OLD, newCategoryId, findCategory, TYPES, TYPE_BY_ID, typeOf, typeFromOsm, STATUSES, statusOf, TINTS, isHex, asColor, categoryColor, cssColor, lookOf, typeGroups, iconOptions, SAVED_PREFIX, MAX_MARKS, MAX_SAVED, SPACE_ID, PLACE_ID, cleanMarks, cleanHome, sameHome, cleanForward, forwardValue, homeFor, ticksOf, defaultTicks, ticksFromIn, narrows, withoutMarks, marksOnly, bookmarkKey, cleanBookmark, markedFor, shownOnce, metresBetween, sameName, findDuplicate, cleanPlace, placeValue, placeFromRequest, createPlaces, movePlace, createBookmarks, readEntry, searchOn } = listModel(geo, LIB_TYPES, word);
 
   const canEdit = host.can('edit');
   // An invented world drawn from a picture (the environment's picture map): there is no real-world position, so nothing here
@@ -80,7 +80,7 @@
   // On a phone the link opens the person's own maps app; on a desktop it is OpenStreetMap's website, and says so.
   const MAPS_APP = apple || /Android/i.test(navigator.userAgent) ? 'Open in my maps app' : 'Open in OpenStreetMap';
   // The categories are the environment's list (the module's `categories` setting, an owner's to change in Manage), in order:
-  // [{ id, label, icon, color }]. This is what it starts as (maps-list-lib.js). A place keeps the id it was saved with; one whose id is
+  // [{ id, label, icon, color }]. This is what it starts as (maps-lib-f-list-model.js). A place keeps the id it was saved with; one whose id is
   // not on the list is shown under Other (catRow) and is not rewritten. The five ids from before the library (eat, do, travel) are
   // read as the new ones, and the other way round for a list stored before it. `other` is always on the list.
   const DEFAULT_CATS = DEFAULT_CATEGORIES;
@@ -89,7 +89,7 @@
   const catsRead = new Promise((r) => { catsReadDone = r; }); // the owner's list has been read (or could not be)
   const catRow = (id) => findCategory(cats, id) || findCategory(cats, 'other') || cats[cats.length - 1];
   const catOf = (p) => catRow(p.category);
-  // What a place is drawn with (icon, colour): its own, else its type's, else its category's (lookOf in maps-list-lib.js).
+  // What a place is drawn with (icon, colour): its own, else its type's, else its category's (lookOf in maps-lib-f-list-model.js).
   const lookFor = (p) => lookOf(p, cats);
   // Colour: a theme tint (the owner's list takes the eight in turn for the grey that means "automatic", a place may choose one) or a
   // colour chosen in the list, used as it is. Set as the element's --tone, with the text colour that reads on it.
@@ -289,11 +289,11 @@
 
   // The pane's width, not the window's: a bundled module runs in the page, so a media query would follow the window.
   const fit = () => {
-    const w = host.rootElement.clientWidth;
-    if (w) $('app').classList.toggle('narrow', w < 720);
+    const w = $('list-app').clientWidth; // the list's own pane
+    if (w) $('list-app').classList.toggle('narrow', w < 720);
   };
   fit();
-  new ResizeObserver(fit).observe(host.rootElement);
+  new ResizeObserver(fit).observe($('list-app'));
 
   // --- the list -----------------------------------------------------------------------------------------------------
 
@@ -420,7 +420,8 @@
   const ADD_PLACE = { id: 'place', label: 'Add a place', icon: 'location-dot' };
   // The dialog opens in this part. Where the parts are tabs (a phone) and the map's tab is the one showing, this part is hidden and the
   // dialog would open there, unseen and holding the page: show this part first. Harmless where both parts are on the screen.
-  const revealPart = () => { if (asPart && host.destination) host.destination.set({ reveal: 'panel' }).catch(() => {}); };
+  // (The window holding both views, narrow with the map on show: `env.show` brings the list up.)
+  const revealPart = () => { if (env.show) env.show('list'); else if (asPart && host.destination) host.destination.set({ reveal: 'panel' }).catch(() => {}); };
   let addAsked = null;
   function syncChrome() {
     if (asPart) {
@@ -455,7 +456,7 @@
     const all = entries().map((x) => x.p);
     const empty = state.loaded && !all.length;
     const body = $('body');
-    if (!state.loaded) { syncToolbar(empty, []); body.replaceChildren(clone('tpl-state-loading')); return; }
+    if (!state.loaded) { syncToolbar(empty, []); body.replaceChildren(clone('tpl-list-loading')); return; }
     // Beside the map, with nothing on in the page's filter (named Show in a space, with the space word's plural elsewhere).
     if (asPart && !shownWheres().length) {
       const none = clone('tpl-state-none');
@@ -1389,7 +1390,7 @@
   // This module's own offer, when the object has a position, is to save it as a place: the editor opens seeded from it,
   // so the person finishes it rather than a copy landing unseen. The modules around add theirs.
   if (host.objects && host.objects.dropTarget) {
-    const showDrop = (yes) => $('app').classList.toggle('drop-target', yes);
+    const showDrop = (yes) => $('list-app').classList.toggle('drop-target', yes);
     const foreign = (ref, dragged) => (ref ? ref.module !== info.module.id : Boolean(dragged && dragged.summary));
     host.objects.dropTarget({
       over: (_pt, ref, dragged) => showDrop(canAdd() && foreign(ref, dragged)),
@@ -1799,7 +1800,7 @@
     for (const id of spaceInfo.keys()) { stores[`in:${id}`].seed(bySpace.get(id) || []); loadedStores.add(`in:${id}`); }
   }
   if (asPart) {
-    $('app').classList.add('part');
+    $('list-app').classList.add('part');
     $('body').before($('found')); // the results show at the top of the list, not over its foot
     hide(root.querySelector('[data-slot="view-note"]'), true);
     if (host.destination) host.destination.onState(takeState);
@@ -1808,9 +1809,9 @@
   let lastSettings = null;
   let wired = false; // the settings and the environment are listened to once, however many times it is tried
   async function load() {
-    $('msg').hidden = true;
-    $('loading').hidden = true;
-    $('app').hidden = false;
+    $('list-msg').hidden = true;
+    $('list-loading').hidden = true;
+    $('list-app').hidden = false;
     render();
     try {
       // Everything the viewer may read, at once: this space's (or the view shown), the environment's (its marks fill a space's
@@ -1842,9 +1843,9 @@
       if (state.openWanted) { const f = state.openWanted; state.openWanted = null; f(); }
     } catch (err) {
       catsReadDone();
-      $('app').hidden = true;
+      $('list-app').hidden = true;
       showMsg('The places could not load', err.message, load);
     }
   }
   await load();
-})();
+}

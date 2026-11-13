@@ -645,7 +645,7 @@ test('the "+": one entry for one add (Thomas, 2026-10-14: the Map\'s "+" offered
   // destination.js builds the composite's "+" through it, and the bundled Map and its list both still offer "Add a place".
   assert.match(read('public/destination.js'), /dropRepeatedAdds\(parts\.map\(\(p\) => p\.adds\)\)/, 'the composite\'s "+" drops an add two parts both offer');
   const label = (f) => (read(f).match(/ADD_PLACE = (?:\{[^}]*label: |)'([^']+)'/) || [])[1];
-  assert.equal(label('modules/maps/src/maps.js'), label('modules/maps/src/maps-list.js'), 'the Map and its list word the add alike, which is how the two are seen as one');
+  assert.equal(label('modules/maps/src/maps.js'), label('modules/maps/src/maps-lib-g-list-view.js'), 'the Map and its list word the add alike, which is how the two are seen as one');
 });
 
 test('a composite\'s editor window: the Workspace lifts the frame, as it does a sandboxed module\'s', () => {

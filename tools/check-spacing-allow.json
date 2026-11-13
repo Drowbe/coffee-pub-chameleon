@@ -18,7 +18,7 @@
       "6px": 4,
       "10px": 3
     },
-    "modules/maps/src/maps-list.css": {
+    "modules/maps/src/maps-lib-list.css": {
       "3px": 1,
       "5px": 1,
       "6px": 7,

@@ -12,15 +12,24 @@
   'use strict';
 
   // This module runs in the page (its SDK is handed to its script; a frame cannot read a map file or start the map's worker).
-  const host = (document.currentScript && document.currentScript.host) || window.host;
+  const rawHost = (document.currentScript && document.currentScript.host) || window.host;
+  // What the libraries below share: the SDK's geo helpers (the map's libraries and the list's model read them).
+  const geo = rawHost.util.geo;
+  const { round6, oneLine, parsePoint, coordsText, mapsLink } = geo;
+  /*__LIB__*/
+
+  // The map: draws every place the space has on a map file, and what other modules put somewhere. `env.host` is the SDK, or the
+  // window's view of it (see the end of this file).
+  async function runMap(env) {
+  const host = env.host;
   const root = host.root;
   const word = host.util.word; // the environment's word for a level or role (host.locale().words)
   const $ = (id) => root.getElementById(id);
   // States: loading is the skeleton in #loading; a failure or a plain notice is the block in #msg (.sdk-empty: an icon, a heading, a line,
   // and Retry on a failure, data-kind="error").
   function showMsg(title, text, retry) {
-    $('loading').hidden = true;
-    const m = $('msg');
+    $('map-loading').hidden = true;
+    const m = $('map-msg');
     const icon = document.createElement('span');
     icon.className = 'ic';
     host.ui.icon(retry ? 'triangle-exclamation' : 'circle-info').then((svg) => { icon.innerHTML = svg; }).catch(() => {});
@@ -41,7 +50,7 @@
       again.type = 'button';
       again.className = 'btn';
       again.textContent = 'Retry';
-      again.addEventListener('click', () => { m.hidden = true; $('loading').hidden = false; retry(); });
+      again.addEventListener('click', () => { m.hidden = true; $('map-loading').hidden = false; retry(); });
       actions.append(again);
       parts.push(actions);
     }
@@ -69,16 +78,12 @@
   // The environment page on its own (no destination): a view of every place, with nothing beside it to save one in.
   const alone = !inSpace && !part;
 
-  const geo = host.util.geo;
-  const { round6, oneLine, parsePoint, coordsText, mapsLink } = geo;
-  /*__LIB__*/
-
   const canEdit = host.can('edit');
   const maplibregl = window.maplibregl;
   // The pane's width, not the window's: a bundled module runs in the page, so a media query would follow the window. The
   // stylesheet keys its narrow layout on `.app.narrow`.
   const NARROW = 720;
-  const isNarrow = () => $('app').classList.contains('narrow');
+  const isNarrow = () => $('map-app').classList.contains('narrow');
   const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
   // On a phone the link opens the person's own maps app; on a desktop it is OpenStreetMap's website, and says so.
   const MAPS_APP = apple || /Android/i.test(navigator.userAgent) ? 'Open in my maps app' : 'Open in OpenStreetMap';
@@ -239,9 +244,9 @@
     state.searcher = null;
     if (!host.actions || !host.actions.list) return;
     try {
-      // These actions are carried out by the list part of this module beside the map (src/maps-list.js), in the asking person's
-      // own open page, so asking from anywhere but the Map destination would wait for a part that is not there.
-      if (!part) return;
+      // These actions are carried out by the list of this module (src/maps-lib-g-list-view.js): the destination's list part in the
+      // asking person's own open page, or the list in this window (a plain call). Asked from any other page there is no list to answer.
+      if (!part && !env.withList) return;
       const list = await host.actions.list({ self: true });
       // Who may add is the list's call, not the map's: it refuses someone who may not (see askNewPlace), and a listing that
       // says `may: false` for the action takes the add tools away at once.
@@ -317,16 +322,16 @@
   // being laid out, so wait for a real one.
   const fit = () => {
     if (!host.rootElement.isConnected) { letGo(); return; } // the markup went: the observer hears that first
-    const w = host.rootElement.clientWidth;
+    const w = $('map-app').clientWidth; // the map's own pane (beside the list it is not the whole window)
     if (!w) return;
     const now = w < NARROW;
     if (now === isNarrow() && state.fitted) { state.map && state.map.resize(); return; }
     state.fitted = true;
-    $('app').classList.toggle('narrow', now);
+    $('map-app').classList.toggle('narrow', now);
     if (state.started) state.map && state.map.resize();
   };
   fit();
-  new ResizeObserver(fit).observe(host.rootElement);
+  new ResizeObserver(fit).observe($('map-app'));
 
   // As the destination's part the selection is the page's too (the panel beside follows it): tell it, unless it told us
   // (`o.quiet`).
@@ -648,7 +653,7 @@
   const tokenProbe = (name) => {
     const probe = document.createElement('span');
     probe.style.color = `var(${name})`;
-    $('app').appendChild(probe);
+    $('map-app').appendChild(probe);
     const c = rgbOf(getComputedStyle(probe).color);
     probe.remove();
     return c;
@@ -1179,17 +1184,163 @@
       applySettings((await host.settings.get()) || {});
       await Promise.all([loadFound(), findAdder()]);
       setBar();
-      $('msg').hidden = true;
-      $('loading').hidden = true;
-      $('app').hidden = false;
+      $('map-msg').hidden = true;
+      $('map-loading').hidden = true;
+      $('map-app').hidden = false;
       state.started = true;
       render();
       startedResolve();
       await startMap();
     } catch (err) {
-      $('app').hidden = true;
+      $('map-app').hidden = true;
       showMsg('The map could not load', err.message, start);
     }
   }
   await start();
+}
+
+// --- the window: what runs here ---------------------------------------------------------------------------------------
+  // In a destination the page gives this module a part: `main` draws only the map and `panel` only the list (two frames, each
+  // told the page's filter and search, and talking through the local actions). Anywhere else (a Workspace window, the module's own
+  // page, a pop-out) the window holds both views of the places: the list always, and the map once a map file is set. Wide, the
+  // list is beside the map; narrow, one shows at a time and the toolbar's List | Map switch changes it. With no map file the list
+  // is the window and says a map needs a file. The list is mounted once in either case.
+  const byId = (id) => rawHost.root.getElementById(id);
+  const win = byId('window');
+  rawHost.util.fillWords(byId('list-nomap')); // the notice's "An owner", in this environment's word
+  let info;
+  try {
+    info = await rawHost.ready();
+  } catch (err) {
+    win.dataset.mode = 'list';
+    return runList({ host: rawHost }); // it says what went wrong
+  }
+  const ownId = info.module.id;
+  const part = (info.context.destination && info.context.destination.part) || null;
+  if (part === 'main') { win.dataset.mode = 'map'; return runMap({ host: rawHost }); }
+  if (part === 'panel') { win.dataset.mode = 'list'; return runList({ host: rawHost }); }
+
+  // Which view owns the toolbar, the "+" and the status line: the list when both show, else the one shown.
+  const NARROW_WINDOW = 720;
+  let hasMap = false;
+  let narrow = false;
+  let shown = 'list'; // narrow: the view on show (the list is the phone's first)
+  let mapStarted = false;
+  const modeNow = () => (!hasMap ? 'list' : narrow ? shown : 'both');
+  const activeNow = () => (modeNow() === 'map' ? 'map' : 'list');
+  const held = { list: {}, map: {} }; // what each view last asked of the toolbar, "+" and status line
+  const live = []; // each view's switches: { view, make(), real }
+  let ownSwitch = null;
+  const gate = (view, key, send) => (items) => { held[view][key] = items; return activeNow() === view ? send(items) : Promise.resolve(true); };
+  function sync() {
+    const mode = modeNow();
+    win.dataset.mode = mode;
+    byId('list-nomap').hidden = hasMap;
+    // The window's own switch, only while narrow with a map; made first, so it stays before the list's.
+    for (const sw of live) if (sw.real) { sw.real.destroy(); sw.real = null; }
+    if (ownSwitch) { ownSwitch.destroy(); ownSwitch = null; }
+    if (hasMap && narrow) {
+      ownSwitch = rawHost.ui.viewSwitch({ id: 'maps-view', label: 'View', options: [{ id: 'list', label: 'List', icon: 'list' }, { id: 'map', label: 'Map', icon: 'map' }], value: shown, onChange: (v) => show(v) });
+    }
+    const on = activeNow();
+    for (const sw of live) if (sw.view === on) sw.real = sw.make();
+    rawHost.toolbar.set(held[on].toolbar || []).catch(() => {});
+    rawHost.add.set(held[on].add || []).catch(() => {});
+    rawHost.status.set(held[on].status || []).catch(() => {});
+  }
+  function show(view) {
+    if (!narrow || view === shown || (view === 'map' && !hasMap)) return;
+    shown = view;
+    sync();
+  }
+
+  // The local actions between the two views are plain calls here, not the bus: a view that provides one registers it; a view that
+  // asks finds it. The ones other modules may ask (addPlace and the like) go to the host as usual.
+  const LOCAL = {
+    newPlace: { label: 'Save a place here', input: { origin: 'string?', title: 'string?', lat: 'number?', lng: 'number?', address: 'string?', notes: 'text?' } },
+    searchPlaces: { label: 'Search for a place', input: { q: 'string', lat: 'number?', lon: 'number?' } },
+    positionPicked: { label: 'Set the position of the place being added', input: { lat: 'number?', lng: 'number?' } },
+    categoryColors: { label: 'Tell the colours chosen for categories', input: {} },
+    mayAdd: { label: 'Tell whether this person may add places', input: {} },
+    pickPoint: { label: 'Pick a spot on the map', input: {} },
+    showOnMap: { label: 'Show on the map', input: { ref: 'ref' } },
+  };
+  const registry = new Map();
+  const localActions = Object.create(rawHost.actions);
+  localActions.provide = (handlers) => {
+    const rest = {};
+    for (const [name, fn] of Object.entries(handlers)) {
+      if (LOCAL[name]) registry.set(name, fn);
+      if (!LOCAL[name] || name === 'showOnMap') rest[name] = fn; // showOnMap stays asked for by other modules too
+    }
+    if (Object.keys(rest).length) rawHost.actions.provide(rest);
+  };
+  localActions.list = async (o) => {
+    const real = rawHost.actions.list ? await rawHost.actions.list(o) : [];
+    if (!(o && o.self)) return real;
+    const mine = [...registry.keys()]
+      .filter((name) => !(o.accepts) || (o.accepts === `${ownId}:place` && name === 'showOnMap'))
+      .map((name) => ({ action: `${ownId}:${name}`, module: ownId, moduleName: info.module.name, name, label: LOCAL[name].label, input: LOCAL[name].input, open: true, own: true }));
+    return [...real.filter((a) => !(a.module === ownId && LOCAL[a.name])), ...mine];
+  };
+  localActions.request = async (action, input, o) => {
+    const [mod, name] = String(action || '').split(':');
+    const fn = mod === ownId && LOCAL[name] ? registry.get(name) : null;
+    if (!fn) return rawHost.actions.request(action, input, o);
+    if (name === 'pickPoint') show('map'); // the dialog steps aside and the map is what waits for a click
+    let result;
+    try {
+      const out = await fn(input || {}, { from: ownId, by: info.user && info.user.key });
+      result = { ok: true, ref: out && out.ref, ...(out && out.data !== undefined ? { data: out.data } : {}) };
+    } catch (err) {
+      result = { ok: false, error: String((err && err.message) || err) };
+    }
+    if ((name === 'pickPoint' && !result.ok) || name === 'positionPicked') show('list'); // the dialog comes back
+    return { status: 'done', result };
+  };
+
+  // Each view's host: the same SDK, with its toolbar, "+", status line, switches and events kept apart, so the two never
+  // draw over each other.
+  function viewHost(view) {
+    const h = Object.create(rawHost);
+    h.actions = localActions;
+    h.toolbar = Object.assign(Object.create(rawHost.toolbar), { set: gate(view, 'toolbar', (items) => rawHost.toolbar.set(items)) });
+    h.add = Object.assign(Object.create(rawHost.add), { set: gate(view, 'add', (items) => rawHost.add.set(items)) });
+    h.status = Object.assign(Object.create(rawHost.status), { set: gate(view, 'status', (items) => rawHost.status.set(items)) });
+    h.on = (name, fn) => rawHost.on(name, name === 'toolbar' || name === 'add' ? (e) => { if (activeNow() === view) fn(e); } : fn);
+    h.ui = Object.create(rawHost.ui);
+    h.ui.viewSwitch = (o) => {
+      const sw = { view, real: null, value: o.value, options: o.options };
+      sw.make = () => rawHost.ui.viewSwitch({ ...o, value: sw.value, options: sw.options });
+      live.push(sw);
+      if (activeNow() === view) sw.real = sw.make();
+      return {
+        set(value, options) { sw.value = value; if (options) sw.options = options; if (sw.real) sw.real.set(value, options); },
+        destroy() { if (sw.real) sw.real.destroy(); sw.real = null; const at = live.indexOf(sw); if (at >= 0) live.splice(at, 1); },
+      };
+    };
+    return h;
+  }
+
+  const startMap = () => { if (!mapStarted) { mapStarted = true; runMap({ host: viewHost('map'), withList: true }); } };
+  const mapFiles = (v) => Boolean(v && ((Array.isArray(v.map) ? v.map.length : v.map) || (typeof v.imageMap === 'string' && v.imageMap)));
+  let lastSettings = null;
+  const useSettings = (v) => {
+    hasMap = mapFiles(v) || Boolean(rawHost.environment && rawHost.environment.pictureMap);
+    sync();
+    if (hasMap) startMap();
+  };
+  const fitWindow = () => {
+    const w = win.clientWidth;
+    if (!w) return;
+    const now = w < NARROW_WINDOW;
+    if (now !== narrow) { narrow = now; sync(); }
+  };
+  fitWindow();
+  new ResizeObserver(fitWindow).observe(win);
+  rawHost.settings.onChange((v) => { lastSettings = v; useSettings(v); });
+  rawHost.on('environment', () => useSettings(lastSettings));
+  runList({ host: viewHost('list'), show });
+  try { lastSettings = await rawHost.settings.get(); } catch (err) { lastSettings = null; }
+  useSettings(lastSettings);
 })();

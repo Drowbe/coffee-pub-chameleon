@@ -7,6 +7,9 @@
 //      backlinks once the Itinerary has been open (GET /api/objects/links), so Places can say "Used by" and warn before a delete.
 //   4. A member whose role may not edit places is not shown the "+" on the Map page (it did nothing, silently).
 //   5. The search field's words fit its field: short enough to be read whole.
+//   6. The window (plan-places-and-maps.md, J2). With no map file the list is Maps' main view, with a short notice that a map needs a
+//      file, and a place can be added with no map (no position, or one typed). With a map file the list sits beside the map when the
+//      window is wide, and a List | Map switch shows one at a time when it is narrow. The list is there once.
 // Usage: node tools/check-maps-live.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -33,6 +36,7 @@ const ROOTS = `const roots = []; (function walk(r) { roots.push(r); for (const x
 // The open dialog's box (the editor window), searched through every shadow root.
 const DIALOG = `(() => { ${ROOTS} for (const r of roots) for (const d of r.querySelectorAll('dialog')) if (d.open) { const b = d.getBoundingClientRect(); return { id: d.id, w: Math.round(b.width), h: Math.round(b.height) }; } return null; })()`;
 const PLUS = `(() => { ${ROOTS} for (const r of roots) for (const b of r.querySelectorAll('button[aria-label="Add a place"]')) if (b.getClientRects().length) return true; return false; })()`;
+const WIN = `(() => { const r = document.getElementById('module-frame') && document.getElementById('module-frame').shadowRoot; if (!r) return null; const q = (s) => r.querySelector(s); const box = (e) => { if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x), w: Math.round(b.width), h: Math.round(b.height) }; }; const win = q('#window'); if (!win) return null; return { mode: win.dataset.mode, list: box(q('#list-view')), map: box(q('#map-view')), lists: r.querySelectorAll('#list-app').length, rows: r.querySelectorAll('.place-row').length, nopos: [...r.querySelectorAll('.place-row .nopos')].filter((e) => e.getClientRects().length).length, pinned: [...r.querySelectorAll('.place-row .pinned')].filter((e) => e.getClientRects().length).length, notice: box(q('#list-nomap')) ? q('#list-nomap').textContent.trim().replace(/\\s+/g, ' ') : '', switches: [...document.querySelectorAll('.mf-switch-btn')].map((b) => b.textContent.trim()) }; })()`;
 const FIELD = `(() => { ${ROOTS} for (const r of roots) for (const i of r.querySelectorAll('.mf-search input')) if (i.getClientRects().length) return { placeholder: i.placeholder, width: Math.round(i.getBoundingClientRect().width) }; return null; })()`;
 
 async function open(browser, S, size, as, url, wait) {
@@ -113,6 +117,42 @@ async function main() {
     if (!names.some((n) => /^travel:/.test(n))) failures.push(`the place p1 shows no link from the Itinerary after it was opened (before: ${JSON.stringify(before && before.summaries && before.summaries.length)}, after: ${JSON.stringify(names)})`);
     say(`backlinks of p1: before ${((before && before.summaries) || []).length}, after ${names.join(', ') || 'none'}`);
 
+
+    // 6a. With a map file, at the module's own page (the top bar's Map off, so the page is not the destination): wide, the list beside
+    // the map; narrow, the List | Map switch.
+    {
+      const off = await api('PATCH', '/api/settings', { showMap: false });
+      if (off.status !== 200) failures.push(`the Map could not be turned off: ${off.status}`);
+      const wide = await open(browser, S, 1280, 'mia', '/modules/maps', '#module-frame >>> #window');
+      try {
+        const w = await wide.tab.eval(WIN);
+        say(`window with a map file, 1280px: ${JSON.stringify(w)}`);
+        if (!w || w.mode !== 'both' || !w.list || !w.map) failures.push(`the window with a map file at 1280px is not the list and the map side by side: ${JSON.stringify(w)}`);
+        else if (w.list.x <= w.map.x || w.list.w < 200 || w.map.w < 300) failures.push(`the list is not beside the map at 1280px: ${JSON.stringify(w)}`);
+        else if (w.lists !== 1) failures.push(`the list is mounted ${w.lists} times`);
+        else if (w.switches.includes('Map')) failures.push('a wide window with a map file offers the List | Map switch');
+        else if (w.notice) failures.push('the no-map notice is shown although there is a map file');
+      } finally { await wide.done(); }
+      const narrow = await open(browser, S, 390, 'mia', '/modules/maps', '#module-frame >>> #window');
+      try {
+        const n = await narrow.tab.eval(WIN);
+        say(`window with a map file, 390px: ${JSON.stringify(n)}`);
+        if (!n || n.mode !== 'list' || !n.list || n.map) failures.push(`the narrow window with a map file does not show the list alone first: ${JSON.stringify(n)}`);
+        else if (!n.switches.includes('List') || !n.switches.includes('Map')) failures.push(`the narrow window has no List | Map switch: ${JSON.stringify(n.switches)}`);
+        else {
+          await narrow.tab.click('.mf-switch-btn', 'Map');
+          await sleep(600);
+          const m = await narrow.tab.eval(WIN);
+          if (!m || m.mode !== 'map' || !m.map || m.list) failures.push(`the Map switch does not show the map alone: ${JSON.stringify(m)}`);
+          await narrow.tab.click('.mf-switch-btn', 'List');
+          await sleep(600);
+          const l = await narrow.tab.eval(WIN);
+          if (!l || l.mode !== 'list' || !l.list || l.map) failures.push(`the List switch does not show the list alone: ${JSON.stringify(l)}`);
+          say(`narrow switch: Map -> ${m && m.mode}, List -> ${l && l.mode}`);
+        }
+      } finally { await narrow.done(); }
+    }
+
     // 4. A member who may not edit places or the map is not shown the "+".
     const members = await api('PATCH', '/api/roles/member', { 'module.maps.edit': false }, 'admin');
     if (members.status !== 200) failures.push(`could not take the edit rights from the member role (${members.status})`);
@@ -128,6 +168,53 @@ async function main() {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);
     fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+
+  // 6b. No map file: the list is the main view and a place can be added with no map.
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'maps-live-nomap-'));
+  let server2 = null; let browser2 = null;
+  try {
+    const boot2 = await bootSeeded('travel', dir2, await freePort());
+    server2 = boot2.server;
+    const S2 = { base: server2.base, ctx: boot2.ctx, cookies: boot2.cookies };
+    browser2 = await launch(bin);
+    for (const size of [1280, 390]) {
+      const v = await open(browser2, S2, size, 'mia', '/modules/maps?space={trip}', '#module-frame >>> #window');
+      try {
+        const w = await v.tab.eval(WIN);
+        say(`window with no map file, ${size}px: ${JSON.stringify(w)}`);
+        if (!w || w.mode !== 'list' || !w.list || w.map) failures.push(`with no map file the list is not Maps' main view at ${size}px: ${JSON.stringify(w)}`);
+        else if (!/^No map yet\./.test(w.notice) || !/ticks a map file in Manage/.test(w.notice)) failures.push(`the no-map notice reads "${w.notice}" at ${size}px`);
+        else if (w.rows < 1) failures.push(`the list shows no places at ${size}px`);
+        else if (w.switches.includes('Map')) failures.push('a window with no map file offers a Map switch');
+        else if (!(await v.tab.eval(PLUS))) failures.push(`no "Add a place" with no map file at ${size}px`);
+        if (size !== 1280 || !w) continue;
+        // A place with no position, then one with a typed position; neither needs a map.
+        let rows = w.rows;
+        for (const [title, point] of [['Plain place', ''], ['Typed place', '38.7139, -9.1394']]) {
+          await v.tab.click('button[aria-label="Add a place"]');
+          let box = null;
+          for (let i = 0; i < 20 && !box; i += 1) { await sleep(250); box = await v.tab.eval(DIALOG); }
+          if (!box || box.w < 100 || box.h < 100) { failures.push(`"+" opened no dialog with no map file (${JSON.stringify(box)})`); break; }
+          const pick = await v.tab.eval(`(() => { const r = document.getElementById('module-frame').shadowRoot; const b = r.getElementById('f-pick'); return !b || !b.getClientRects().length; })()`);
+          if (!pick) failures.push('the dialog offers "pick the position on the map" with no map');
+          await v.tab.typeInto('#module-frame >>> #f-title', title);
+          if (point) await v.tab.typeInto('#module-frame >>> #f-point', point);
+          await v.tab.click('#module-frame >>> #f-save');
+          let after = null;
+          for (let i = 0; i < 20; i += 1) { await sleep(300); after = await v.tab.eval(WIN); if (after && after.rows > rows) break; }
+          if (!after || after.rows !== rows + 1) { failures.push(`"${title}" was not added with no map file (rows ${rows} -> ${after && after.rows})`); break; }
+          rows = after.rows;
+          say(`added "${title}" with no map file: ${rows} places, ${after.nopos} with no position, ${after.pinned} with one`);
+          if (point && after.pinned < 1) failures.push('the place with a typed position does not say it has one');
+          if (!point && after.nopos < 1) failures.push('the place with no position does not say so');
+        }
+      } finally { await v.done(); }
+    }
+  } finally {
+    try { if (browser2) { browser2.cdp.ws.close(); browser2.child.kill(); fs.rmSync(browser2.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
+    if (server2) await stopServer(server2);
+    fs.rmSync(dir2, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
   if (failures.length) { for (const f of failures) say('FAIL', f); return 1; }
   say('ok');
