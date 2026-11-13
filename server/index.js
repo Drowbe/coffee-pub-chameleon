@@ -1651,7 +1651,7 @@ function presenceUser(u) {
 function maySeeGuestLink(user, space) {
   if (!user) return false;
   if (hasOwnerRights(user)) return true;
-  return space.members.includes(user.key) && Boolean(store.spacePermissions(user.key, space.id).canInvite);
+  return userIsIn(user, space) && Boolean(store.spacePermissions(user.key, space.id).canInvite);
 }
 // The space's budget target (#216; plan-budget-module.md, decisions 3, 5 and 6) is not a general part of the space.
 // Members read it through the module: its context (GET /api/modules/:id/context, for a signed-in person who may read
@@ -3974,7 +3974,11 @@ app.post('/api/call/join', async (req, res) => {
     const theSpace = store.spaceById(spaceId) || store.asideById(spaceId);
     if (!theSpace) return res.status(404).json({ error: `no such ${word('space')}` });
     if (spaceAccess.closedFor(personViewer(user), theSpace)) return res.status(403).json({ error: closedSentence(), closed: true });
-    if (!theSpace.members.includes(user.key) && !isOwner(req)) return res.status(403).json({ error: `you are not in that ${word('space')}` });
+    if (!theSpace.members.includes(user.key) && !isOwner(req)) {
+      // Someone who could not enter it even if it were open is answered as for an id that does not exist.
+      if (!spaceAccess.mayEnter({ key: user.key, owner: false }, { ...theSpace, closed: false })) return res.status(404).json({ error: `no such ${word('space')}` });
+      return res.status(403).json({ error: `you are not in that ${word('space')}` });
+    }
     identity = user.key;
     caller = { identity: user.key, name: user.displayName, media: Boolean(store.spacePermissions(user.key, spaceId).conference) };
   } else if (guestLink) {
@@ -4314,7 +4318,7 @@ app.delete('/api/me/images/:slot', requireUser, requireImageRight, (req, res) =>
 // The same for a space's own pictures, and the switch that turns them on.
 function requireOwnSpace(req, res, next) {
   const space = store.spaceById(req.params.spaceId);
-  if (!space || !space.members.includes(currentUser(req).key)) return res.status(403).json({ error: `not ${word('member', { a: true })} of that ${word('space')}` });
+  if (!space || !userIsIn(currentUser(req), space)) return res.status(403).json({ error: `not ${word('member', { a: true })} of that ${word('space')}` });
   next();
 }
 app.put('/api/me/spaces/:spaceId/images/:slot', requireUser, requireOwnSpace, requireImageRight, rawImage, checkStorageCap, (req, res) => {
@@ -7322,7 +7326,7 @@ function spaceFeedEvents(req, user, space) {
 }
 // The published calendar: no person's rights. The environment's own events and every space's (never the Lobby, which
 // has no members of its own; asides hold no modules) where the module is on, except spaces left out
-// (space.publishCalendar === false). The link goes to the Calendar destination when it is shown.
+// (space.publishCalendar === false) and spaces closed for set up (left out while closed). The link goes to the Calendar destination when it is shown.
 function publishedFeedEvents(req) {
   const ctx = { settings: store.settings, enabled: modules.enabledAll(), canRead: (manifest) => manifest.scope.includes('environment'), hasFile: moduleHasFile, values: envSettingValues };
   const sources = modules.enabledAll()
@@ -7332,7 +7336,7 @@ function publishedFeedEvents(req) {
       ...found,
       places: [
         ...(found.manifest.scope.includes('environment') ? [environmentPlace] : []),
-        ...(found.manifest.scope.includes('space') ? store.spaces.filter((r) => !r.isLobby && r.publishCalendar !== false && modules.isOnIn(found.entry.id, r.id)).map(spacePlace) : []),
+        ...(found.manifest.scope.includes('space') ? store.spaces.filter((r) => !r.isLobby && r.publishCalendar !== false && !spaceAccess.isClosed(r) && modules.isOnIn(found.entry.id, r.id)).map(spacePlace) : []),
       ],
     }));
   return readFeed(req, sources, { destinationFor: (id) => destinationPathOf(id, ctx), nameSpaces: true, published: true });
