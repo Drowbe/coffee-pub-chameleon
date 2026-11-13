@@ -285,10 +285,14 @@ export function layoutTabs({ system = [], favorites = [], layouts = [], current 
     out.push({ layout: id, kind: 'user', icon: icon(l, 'object-group'), label: name(l, 'Layout') });
   }
   // Any layout can be the one shown: a saved one that is not pinned (not a favorite) gets a temporary tab while it is
-  // shown, with its name; it is gone when another layout is shown. Not stored.
+  // shown, with its name; it is gone when another layout is shown. Not stored. The same for a fixed layout whose tab is off.
   if (current !== 'workspace' && !out.some((t) => t.layout === current)) {
     const l = known.find((x) => x.id === current);
     if (l && !SYSTEM_TAB_DEFAULTS[current]) out.push({ layout: current, kind: 'user', icon: icon(l, 'object-group'), label: name(l, 'Layout'), temp: true });
+    // A fixed layout with no tab (this person hid it, or the owner did) can still be chosen from the Layout menu: it gets a
+    // temporary tab while it is shown, as a saved one does, and no heart to pin (the owner's hide cannot be undone by one).
+    const fixed = list.find((s) => s.id === current);
+    if (fixed) out.push({ layout: current, kind: 'system', icon: icon(fixed, SYSTEM_TAB_DEFAULTS[current][1]), label: name(fixed, SYSTEM_TAB_DEFAULTS[current][0]), temp: true });
   }
   return out.map((t) => ({ id: `layout-tab-${t.layout}`, ...t, current: t.layout === current }));
 }

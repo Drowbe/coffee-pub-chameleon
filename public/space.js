@@ -2810,7 +2810,7 @@ function setupSaved(space, said, saved = []) {
   }
   loadPresence();
   updateCrumb();
-  if (saved.includes('defaultLayout')) refreshLayouts(); // the Layout menu's Default mark follows the first visit
+  if (saved.includes('defaultLayout') || saved.includes('tabs')) refreshLayouts(); // the Layout menu's Default mark follows the first visit, the bar the owner's tabs
   if (said) saySetup(said);
 }
 // After Delete (the panel's own question; it does not wait for Save): the space is gone, so this page leaves it and
@@ -2949,11 +2949,12 @@ function layoutMenuItems() {
   // always stays), then Rename and Change icon (systemRowItems). Never Delete: a system layout stays.
   for (const l of layoutList.system) {
     const tabbed = l.id !== 'workspace' && l.tab !== false;
+    const ownerHid = l.shown === false; // the owner took it out of the bar: it stays here to choose, and says why it has no tab
     items.push({
       icon: /^[a-z0-9-]{1,40}$/.test(l.icon || '') ? l.icon : 'object-group',
       label: l.name,
       mark: tabbed ? 'heart' : undefined,
-      tag: l.id !== 'workspace' && l.id === layoutList.firstVisit?.layout ? 'Default' : undefined, // Calendar or Map as the first visit (Set up)
+      tag: ownerHid ? 'Hidden by the owner' : l.id !== 'workspace' && l.id === layoutList.firstVisit?.layout ? 'Default' : undefined, // Calendar or Map as the first visit (Set up)
       radio: true,
       checked: l.id === currentLayoutTab,
       onPick: () => pressLayoutTab(l.id),
@@ -2990,9 +2991,12 @@ function systemRowItems(systemId) {
   if (!l || !mayFavorite()) return [];
   const entries = [];
   if (l.id !== 'workspace') {
-    entries.push(l.tab !== false
-      ? { icon: 'heart', label: 'Unfavorite', onPick: () => setFavorite(l, false) }
-      : { icon: 'heart', regular: true, label: 'Favorite', onPick: () => setFavorite(l, true) });
+    // The owner's hide wins (the server says 409): no way to turn its tab back on here, and the row says why.
+    entries.push(l.shown === false
+      ? { icon: 'heart', regular: true, label: 'Favorite', disabled: true, tag: 'Hidden by the owner' }
+      : l.tab !== false
+        ? { icon: 'heart', label: 'Unfavorite', onPick: () => setFavorite(l, false) }
+        : { icon: 'heart', regular: true, label: 'Favorite', onPick: () => setFavorite(l, true) });
     entries.push({ divider: true });
   }
   entries.push(
@@ -3480,7 +3484,7 @@ function renderLayoutTabs() {
       b.title = t.label;
       b.setAttribute('aria-label', t.label);
       b.innerHTML = `<i class="fa-solid fa-${escapeHtml(t.icon)} fa-fw" aria-hidden="true"></i><span class="core-label">${escapeHtml(t.label)}</span>`;
-      if (!t.temp) return [b];
+      if (!t.temp || t.kind === 'system') return [b]; // a fixed layout's tab is turned on by its Favorite, in the Layout menu
       // A temporary tab (a saved layout shown that is not a favorite): a heart beside it pins it as a favorite.
       const pin = doc.createElement('button');
       pin.type = 'button';
@@ -3535,7 +3539,7 @@ function fitLayoutTabs(avail) {
 // focused module's own tools change with the layout) and the tabs fitted again (the one shown never goes into the "...").
 function pressLayoutTab(id, from = null, { load = true } = {}) {
   const tab = layoutTabList().find((t) => t.layout === id);
-  if (!tab && id !== 'workspace' && !findLayout(id)) return;
+  if (!tab && id !== 'workspace' && !findLayout(id) && !findSystemLayout(id)) return;
   if (id === 'workspace') {
     currentLayoutTab = 'workspace';
     canvas.resumeMemory(); // the Workspace's own arrangement, as it was before another tab was pressed
@@ -3547,7 +3551,7 @@ function pressLayoutTab(id, from = null, { load = true } = {}) {
   }
   // Calendar and Map are system layouts (their `modules`: the composite, docked, filling the canvas), reloaded as saved
   // on every press (decision 15); a favorite is a saved layout. Both load the same way.
-  const layout = tab && tab.kind === 'system' ? findSystemLayout(id) : findLayout(id);
+  const layout = findSystemLayout(id) || findLayout(id);
   if (!layout || !Array.isArray(layout.modules)) return;
   canvas.holdMemory(); // only the Workspace remembers: from here on nothing is written until it is shown again
   currentLayoutTab = id;

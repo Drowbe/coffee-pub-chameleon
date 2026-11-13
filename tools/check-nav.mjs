@@ -698,7 +698,7 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   assert.ok(settingsHtml.indexOf('id="setup-opens-with-layout"') < settingsHtml.indexOf('id="setup-opens-with"'), 'above the switches');
   assert.match(settings, /`Opens with the layout \$\{known\.name\}`/);
   // Moved to the panel: Calendar or Map as the first visit are choices of their own, named from the layouts payload.
-  assert.match(settings, /system\.filter\(\(l\) => l\.id === 'calendar' \|\| l\.id === 'map'\)\.map\(\(l\) => \(\{ id: l\.id, name: l\.name,/, 'Calendar and Map are named choices');
+  assert.match(settings, /fixedAvailable\(\)\.filter\(\(r\) => r\.id !== 'workspace'\)\.map\(\(r\) => \(\{ id: r\.id, name: r\.name,/, 'the fixed layouts (Calendar and Map among them) are named choices');
   // Changed on purpose: the page PATCHed defaultLayout and opensWith at once; the panel keeps both as drafts for Save.
   assert.match(settings, /function stopUsingLayout\(\) \{\n\s*state\.draft\.defaultLayout = null;/, 'Stop using it is a draft change, saved with Save');
   assert.match(settings, /state\.draft\.opensWith = setSwitch\(state\.draft\.opensWith, event\.target\.dataset\.opens, event\.target\.checked\); \/\/ the first visit's choice stays as it is/, 'a list set by hand leaves the first visit alone');
@@ -773,7 +773,7 @@ test('the layout tabs (plan-layout-views.md, steps 2 and 3): after the switcher 
   // are drawn again (the focused module's own tools change with the layout; the Layout menu, Full screen and Pop out stay).
   const press = space.slice(space.indexOf('function pressLayoutTab('), space.indexOf("layoutTabsEl.addEventListener('click'"));
   assert.match(press, /currentLayoutTab = 'workspace';\n\s*canvas\.resumeMemory\(\);[^\n]*\n\s*rebaseLayout\(\);\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);\n\s*canvas\.refreshMenu\(\);/);
-  assert.match(press, /const layout = tab && tab\.kind === 'system' \? findSystemLayout\(id\) : findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/, 'Calendar and Map are their system layout, loaded as a saved one is');
+  assert.match(press, /const layout = findSystemLayout\(id\) \|\| findLayout\(id\);\n\s*if \(!layout \|\| !Array\.isArray\(layout\.modules\)\) return;/, 'a fixed layout (shown, or chosen from the menu with its tab off) is its system layout, loaded as a saved one is');
   assert.match(press, /canvas\.holdMemory\(\);[^\n]*\n\s*currentLayoutTab = id;\n\s*layoutBase = null;\n\s*renderLayoutTabs\(\);[^\n]*\n\s*nav\.draw\(\);[\s\S]*canvas\.loadLayout\(layout\);/);
   assert.ok(press.indexOf('canvas.holdMemory()') < press.indexOf('canvas.loadLayout(layout)'), 'held before the load writes anything');
   assert.ok(!/showView|viewFrame|destinationsNow/.test(press), 'no view code: one path for every tab');
@@ -817,7 +817,7 @@ test('Rename and Change icon (plan-layout-views.md, step 4): a system row\'s ...
   // The system row's ...: anyone signed in; Favorite/Unfavorite only off the Workspace; Rename and Change icon; no Delete.
   const sysFn = space.slice(space.indexOf('function systemRowItems(systemId) {'), space.indexOf('// A layout\'s ...: Favorite or Unfavorite first'));
   assert.match(sysFn, /if \(!l \|\| !mayFavorite\(\)\) return \[\];/, 'never for a guest');
-  assert.match(sysFn, /if \(l\.id !== 'workspace'\) \{\n\s*entries\.push\(l\.tab !== false\n\s*\? \{ icon: 'heart', label: 'Unfavorite', onPick: \(\) => setFavorite\(l, false\) \}\n\s*: \{ icon: 'heart', regular: true, label: 'Favorite', onPick: \(\) => setFavorite\(l, true\) \}\);/, 'the Workspace is never unfavorited');
+  assert.match(sysFn, /if \(l\.id !== 'workspace'\) \{\n[^\n]*\n\s*entries\.push\(l\.shown === false\n[^\n]*\n\s*: l\.tab !== false\n\s*\? \{ icon: 'heart', label: 'Unfavorite', onPick: \(\) => setFavorite\(l, false\) \}\n\s*: \{ icon: 'heart', regular: true, label: 'Favorite', onPick: \(\) => setFavorite\(l, true\) \}\);/, 'the Workspace is never unfavorited');
   assert.match(sysFn, /\{ icon: 'pen', label: 'Rename', onPick: \(\) => startRename\(l\.id\) \},\n\s*\{ icon: 'icons', label: 'Change icon', onPick: \(\) => startChangeIcon\(l\.id\) \},/);
   assert.ok(!/Delete|Replace|Make default/.test(sysFn), 'a system layout is not deleted, replaced or made the default here');
   // A saved row: Change icon after Rename, where the layout may be changed (the server refuses a member's PUT on a shared one).
@@ -2328,7 +2328,7 @@ fs.copyFileSync(path.join(ROOT, 'public/space-setup.js'), setupCopy);
   copyImports('space-setup.js');
   assert.ok(['action-bar.js', 'phase-sheet.js', 'ai-sees.js'].every((f) => copied.has(f)), 'the panel\'s imports are copied with it');
 }
-const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, configurationLabel, MODERATOR_FIELDS, tabOfField, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
+const { setupTabs, pickTab, setupAddress, setupPatch, dirtyTabs, takeSaved, problemField, setupSaidWords, configurationLabel, MODERATOR_FIELDS, tabOfField, LAYOUT_IDS, tabsWhole, layoutRows, withLayoutShown, withLayoutMoved, movedWords, withOpensFirst, budgetEntryProblem, budgetWanted, BUDGET_NOT_A_NUMBER } = await import(pathToFileURL(setupCopy).href);
 fs.rmSync(tmp, { recursive: true, force: true });
 
 test('Set up: a right-zone tool after your picture, before the window controls, for owners, the admin and moderators; Save and Cancel are the panel\'s action bar, not the top bar\'s', () => {
@@ -2455,17 +2455,18 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   // list, then the shared layouts; no select, no "Picking one sets Opens with".
   assert.match(setup, /<h3 class="setup-heading" id="setup-first-visit-heading">First visit<\/h3>/);
   assert.match(setup, /<fieldset class="setup-first-visit" id="setup-first-visit" aria-labelledby="setup-first-visit-heading"/);
-  assert.match(setup, /<input type="radio" name="setup-first-visit" value="workspace" id="setup-first-workspace">[\s\S]*?<div class="setup-workspace-content">[\s\S]*?id="setup-opens-with" role="group"[\s\S]*?<\/div>\n\s*<div class="setup-first-layouts" id="setup-first-visit-layouts"><\/div>/, 'the switches between the Workspace and the other choices');
-  assert.match(setup, /system\.filter\(\(l\) => l\.id === 'calendar' \|\| l\.id === 'map'\)/, 'Calendar and Map only while the payload lists them');
+  // Workspace's Opens first radio is the Layouts section's (plan-workspaces.md, step 3); the Workspace's Opens with switches stay in First visit.
+  assert.match(setup, /<fieldset class="setup-first-visit" id="setup-first-visit"[^>]*>\n\s*<div class="setup-workspace-content">[\s\S]*?id="setup-opens-with" role="group"[\s\S]*?<\/div>\n\s*<div class="setup-first-layouts" id="setup-first-visit-layouts"><\/div>/);
+  assert.match(setup, /layoutRows\(state\.draft\.tabs, state\.layouts\.system\)/, 'the fixed layouts only while the payload lists them');
   assert.match(setup, /\.\.\.shared\.map\(\(l\) => \(\{ id: l\.id, name: l\.name,/, 'the shared layouts by name');
-  assert.match(setup, /state\.draft\.defaultLayout = event\.target\.value === 'workspace' \? null : event\.target\.value; \/\/ Opens with stays as it is/);
+  assert.match(setup, /state\.draft = withOpensFirst\(state\.draft, t\.value\);/, 'Opens first is one group of radios, the Layouts rows and the shared layouts');
   assert.match(setup, /state\.draft\.opensWith = setSwitch\([^\n]*\); \/\/ the first visit's choice stays as it is\n\s*paintOpensWith\(\);/, 'a switch never touches the layout');
   assert.ok(!/Picking one sets Opens with|id="setup-layout"|picked\.modules\.map/.test(setup), 'the old drop-the-list wording and behaviour are gone');
   assert.ok(!/state\.draft\.opensWith = [^;\n]*modules/.test(setup), 'picking a layout never writes Opens with');
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
   assert.match(css, /\.setup-first-visit \{[^}]*border: 0;/);
   assert.match(css, /\.setup-choice:has\(input:focus-visible\) \{[^}]*outline: 2px solid var\(--accent\);/, 'the keyboard ring on the row');
-  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?#setup-opens-with-layout-stop,\n\s*\.setup-choice \{\n\s*min-height: 44px;/, 'a 44px row on a phone');
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?#setup-opens-with-layout-stop,\n\s*\.setup-layout-move \.btn,\n\s*\.setup-choice \{\n\s*min-height: 44px;/, 'a 44px row on a phone, and 44px Move buttons');
   assert.match(css, /\.space-setup \.phase-row \{\n\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);\n\s*grid-template-areas: "name name" "start end" "days tools" "problem problem";/, 'the rows as cards in the narrow panel');
   assert.match(css, /\.setup-status \{\n\s*margin: 8px 0 0;/, 'the refusal line stands clear of the last hint');
 });
@@ -2493,6 +2494,88 @@ test('Set up: one PATCH of what changed; the first visit\'s layout and Opens wit
   assert.deepEqual(setupPatch(withLayout, { ...withLayout }), {}, 'the same layout again is no change');
   assert.deepEqual(setupPatch(before, { name: 'Porto' }), { name: 'Porto' }, 'fields left out of the draft are unchanged');
   assert.deepEqual(setupPatch({ name: 'A' }, { name: 'A', profile: 'participants', opensWith: null, defaultLayout: null }), {}, 'a space with nothing set, a draft saying so');
+});
+
+test('Set up Layouts (plan-workspaces.md, step 3): the owner\'s order and hide as pure steps on a draft, the Workspace never hidden, unknown ids dropped, the default a shown layout, one PATCH of only what changed', () => {
+  const ALL = ['workspace', 'calendar', 'map', 'conference', 'whiteboard', 'documents'];
+  assert.deepEqual([...LAYOUT_IDS], ALL, 'the fixed layouts, in their default order (server/layouts.js SYSTEM_IDS)');
+  // tabs whole
+  assert.deepEqual(tabsWhole(undefined), { order: ALL, hide: [] }, 'unset reads as the defaults');
+  assert.deepEqual(tabsWhole({ order: ['conference', 'nope', 'conference', 'map'], hide: ['workspace', 'documents', 'zzz'] }), { order: ['conference', 'map', 'workspace', 'calendar', 'whiteboard', 'documents'], hide: ['documents'] }, 'unknown and repeated ids dropped, the rest added at the end, no Workspace in hide');
+  // rows: the layouts this space can show, in the owner\'s order
+  const system = [{ id: 'workspace', name: 'My place', defaultName: 'Workspace', defaultIcon: 'columns' }, { id: 'map', name: 'Map', defaultName: 'Map', defaultIcon: 'map-location-dot' }, { id: 'conference', name: 'Conference', defaultName: 'Conference', defaultIcon: 'video' }, { id: 'documents', name: 'Documents', defaultName: 'Documents', defaultIcon: 'file-lines' }];
+  const rows = layoutRows({ order: ['conference', 'calendar', 'workspace'], hide: ['documents'] }, system);
+  assert.deepEqual(rows.map((r) => r.id), ['conference', 'workspace', 'map', 'documents'], 'only what is available (no Calendar here), in the owner\'s order');
+  assert.deepEqual(rows.map((r) => r.shown), [true, true, true, false]);
+  assert.deepEqual(rows.map((r) => r.locked), [false, true, false, false], 'only the Workspace is locked on');
+  assert.equal(rows[1].name, 'Workspace', 'a layout\'s own name, not one person\'s rename');
+  // hide and show
+  const base = { tabs: tabsWhole(null), defaultLayout: null };
+  assert.equal(withLayoutShown(base, 'workspace', false), base, 'the Workspace cannot be hidden');
+  assert.equal(withLayoutShown(base, 'nope', false), base, 'an unknown id is dropped');
+  const hid = withLayoutShown(base, 'documents', false);
+  assert.deepEqual(hid.tabs.hide, ['documents']);
+  assert.deepEqual(base.tabs.hide, [], 'the draft given is not changed');
+  assert.deepEqual(withLayoutShown(hid, 'documents', true).tabs.hide, [], 'shown again');
+  assert.equal(withLayoutShown({ ...base, defaultLayout: 'map' }, 'map', false).defaultLayout, null, 'hiding what opens first puts the Workspace back');
+  assert.equal(withLayoutShown({ ...base, defaultLayout: 'map' }, 'documents', false).defaultLayout, 'map', 'hiding another leaves it');
+  // moves, among what is available; the ones that are not keep their places
+  const avail = ['workspace', 'map', 'conference', 'documents'];
+  const moved = withLayoutMoved(base, 'conference', -1, avail);
+  assert.deepEqual(moved.tabs.order, ['workspace', 'calendar', 'conference', 'map', 'whiteboard', 'documents'], 'Conference past Map; Calendar and Whiteboards stay where they were');
+  assert.equal(withLayoutMoved(base, 'workspace', -1, avail), base, 'the first cannot go up');
+  assert.equal(withLayoutMoved(base, 'documents', 1, avail), base, 'the last cannot go down');
+  assert.equal(withLayoutMoved(base, 'calendar', 1, avail), base, 'one this space cannot show cannot be moved');
+  assert.deepEqual(withLayoutMoved(moved, 'conference', 1, avail).tabs.order, ALL, 'down again, as it was');
+  assert.equal(movedWords(moved, 'conference', 'Conference', avail), 'Conference moved to position 2.', 'the live region counts what is shown here');
+  // what opens first
+  assert.equal(withOpensFirst(base, 'conference').defaultLayout, 'conference');
+  assert.equal(withOpensFirst({ ...base, defaultLayout: 'map' }, 'workspace').defaultLayout, null, 'the Workspace is none');
+  assert.equal(withOpensFirst(hid, 'documents'), hid, 'a hidden layout cannot open first');
+  assert.equal(withOpensFirst(base, 'a-shared-layout-id').defaultLayout, 'a-shared-layout-id', 'a shared layout can');
+  // the PATCH: tabs go whole and only when the order or the hidden set changed; defaultLayout alone when only it did
+  const before = { name: 'Lisbon', tabs: tabsWhole(null), defaultLayout: null };
+  assert.deepEqual(setupPatch(before, { ...before }), {}, 'nothing changed, nothing sent');
+  assert.deepEqual(setupPatch({ name: 'Lisbon' }, { name: 'Lisbon', tabs: tabsWhole(null) }), {}, 'a space with no tabs stored, the defaults drawn: no change');
+  assert.deepEqual(setupPatch(before, { ...before, tabs: moved.tabs }), { tabs: { order: moved.tabs.order, hide: [] } }, 'a move goes alone');
+  assert.deepEqual(setupPatch(before, { ...before, tabs: hid.tabs }), { tabs: { order: ALL, hide: ['documents'] } }, 'a hide goes alone');
+  assert.deepEqual(setupPatch(before, { ...before, defaultLayout: 'conference' }), { defaultLayout: 'conference' }, 'what opens first goes alone');
+  const both = withOpensFirst(withLayoutMoved(base, 'conference', -1, avail), 'conference');
+  assert.deepEqual(setupPatch(before, { ...before, ...both }), { tabs: { order: moved.tabs.order, hide: [] }, defaultLayout: 'conference' }, 'both changed: both go');
+  assert.deepEqual(setupPatch(before, { ...before, tabs: { order: ['workspace', 'calendar'], hide: ['workspace'] } }), {}, 'tabs are read whole before they are compared: a Workspace in hide and a short order are the defaults');
+  const hidFirst = { ...before, tabs: hid.tabs, defaultLayout: 'documents' };
+  assert.deepEqual(setupPatch(hidFirst, { ...hidFirst, ...withLayoutShown(hidFirst, 'documents', true) }), { tabs: { order: ALL, hide: [] } }, 'shown again: the whole list');
+  // who sends it, which tab it is on, what is said
+  assert.ok(MODERATOR_FIELDS.includes('tabs') && MODERATOR_FIELDS.includes('defaultLayout'), 'a moderator may send both (decision 22)');
+  assert.equal(tabOfField('tabs'), 'modules', 'on the Settings tab, with First visit');
+  assert.deepEqual([...dirtyTabs({ tabs: { order: ALL, hide: [] } })], ['modules']);
+  assert.equal(problemField({ tabs: {}, defaultLayout: 'x' }, 'The Workspace is always shown.'), 'tabs');
+  assert.equal(problemField({ tabs: {}, defaultLayout: 'x' }, 'There is no such layout here.'), 'defaultLayout', 'one sentence for both: the default is the one a person can point at');
+  assert.match(setupSaidWords({ saved: ['tabs'] }), /^Saved the layouts\./);
+  const taken = takeSaved({ tabs: tabsWhole(null) }, { tabs: moved.tabs }, ['tabs'], { tabs: { order: moved.tabs.order } });
+  assert.deepEqual(taken.before.tabs, taken.draft.tabs, 'after a save, what the server answered is what was');
+  assert.deepEqual(takeSaved({ tabs: moved.tabs }, { tabs: moved.tabs }, ['tabs'], {}).draft.tabs, tabsWhole(null), 'an answer with no tabs is the defaults');
+  // the panel's markup and code
+  const setup = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
+  assert.match(setup, /<h3 class="setup-heading" id="setup-layouts-heading">Layouts<\/h3>/);
+  assert.match(setup, /const parts = \[layoutsSectionHtml\(\), firstVisitHtml\(\)\];/, 'in the Settings tab, which a moderator has too');
+  for (const words of ['Show in the bar', 'Opens first', 'Move up', 'Move down', 'The Workspace is always shown.']) assert.ok(setup.includes(words), words);
+  assert.match(setup, /data-move="up" aria-label="Move \$\{name\} up"/, 'real buttons with names that say which');
+  assert.match(setup, /role="switch" data-layout-show=/, 'a switch');
+  assert.match(setup, /\$\{r\.locked \|\| !can \? ' disabled' : ''\}/, 'the Workspace\'s switch is on and disabled');
+  assert.match(setup, /role="status" aria-live="polite"><\/p><\/section>/, 'a live region says where a layout moved to');
+  assert.match(setup, /Which layouts show in the bar at the top of this \$\{esc\(spaceWord\(\)\)\}/, 'the template\'s word for space');
+  assert.match(setup, /name="setup-first-visit" value="\$\{escapeHtml\(r\.id\)\}"/, 'Opens first shares the First visit radios\' one name: one choice, not two');
+  // the page: the bar follows the owner\'s order and hide
+  const bar = layoutTabs({ space: 's', system: [{ id: 'workspace' }, { id: 'conference', tab: true, shown: true }, { id: 'map', tab: false, shown: false }, { id: 'documents', tab: true, shown: true }, { id: 'calendar', tab: true, shown: true }] });
+  assert.deepEqual(bar.map((t) => t.layout), ['workspace', 'conference', 'documents', 'calendar'], 'the server\'s order, the owner\'s hide (tab false) left out');
+  assert.deepEqual(layoutTabs({ space: 's', guest: true, system: [] }).map((t) => t.layout), ['workspace'], 'a guest has no fixed tabs');
+  const shownHidden = layoutTabs({ space: 's', current: 'map', system: [{ id: 'workspace' }, { id: 'map', tab: false, shown: false }] });
+  assert.deepEqual(shownHidden.map((t) => [t.layout, t.temp === true]), [['workspace', false], ['map', true]], 'chosen from the Layout menu, a hidden layout gets a temporary tab while it is shown');
+  const spacejs = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
+  assert.match(spacejs, /const ownerHid = l\.shown === false;/, 'the Layout menu says "Hidden by the owner"');
+  assert.match(spacejs, /label: 'Favorite', disabled: true, tag: 'Hidden by the owner'/, 'and its Favorite cannot turn the tab on (the 409\'s page side)');
+  assert.match(spacejs, /saved\.includes\('defaultLayout'\) \|\| saved\.includes\('tabs'\)\) refreshLayouts\(\)/, 'a save of the owner\'s tabs draws the bar again');
 });
 
 test('Set up: the budget (#216) goes in the one PATCH only when it changed, as null, { currency } or { amount, currency? }; on the phases tab (the moderator too); a refusal names it', () => {
