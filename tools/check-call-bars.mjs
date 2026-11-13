@@ -5,6 +5,9 @@
 // the keyboard on a toolbar button (focus-within). Every box must be the same in every state, the bars must be out of the
 // flow (position absolute or fixed), they must really be shown and hidden, and a mousemove that does not move the pointer
 // (what Chromium sends after a layout change under a resting pointer) must not bring them back.
+// It also looks at the call's own title bar in the column (plan-workspaces.md, decisions 15, 16, 18, 28): drawn with no call,
+// Start call on it and a large one in the call's area, Chat's menu with nothing of the call, and on the call the collapsed
+// rail's icon with its dot and its name.
 // Usage: node tools/check-call-bars.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -89,6 +92,56 @@ async function run(browser, S, people) {
   for (const s of states) if (s.name in want && (s.shown.head !== want[s.name] || s.shown.bar !== want[s.name])) failures.push(`${name}, ${s.name}: the bars are ${s.shown.head ? 'shown' : 'hidden'}/${s.shown.bar ? 'shown' : 'hidden'}, wanted ${want[s.name] ? 'shown' : 'hidden'}`);
 }
 
+// The call's own area (the column) with no call, on a call, and collapsed. Pure reading of the page; no pop-out.
+async function runArea(browser, S) {
+  const tab = new Tab(browser.cdp, S.ctx);
+  await tab.open(1280, 'light', true);
+  const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
+  const box = (id) => `(() => { const e = document.getElementById('${id}'); if (!e) return null; const r = e.getBoundingClientRect(); return { shown: !e.hidden && r.width > 0 && r.height > 0, w: Math.round(r.width), h: Math.round(r.height), label: e.getAttribute('aria-label'), parent: e.parentElement && e.parentElement.id } })()`;
+  const items = `[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] [role=menuitemradio]')].map((e) => e.textContent.trim())`;
+  try {
+    await driveScreen(tab, { id: 'area', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
+    const head = await tab.eval(box('call-head')); const join = await tab.eval(box('join-call')); const big = await tab.eval(box('call-start')); const empty = await tab.eval(box('call-empty'));
+    if (!head?.shown) failures.push('no call: the call\'s title bar is not drawn (decision 15)');
+    if (!join?.shown || join.parent !== 'call-head-tools' || join.label !== 'Start call') failures.push(`no call: Start call is not on the call's title bar (${JSON.stringify(join)})`);
+    if (!big?.shown || !empty?.shown || big.h < 40) failures.push(`no call: the large Start call is not in the call's area (${JSON.stringify(big)})`);
+    if ((await tab.eval(`(document.getElementById('call-head-name') || {}).textContent`)) !== 'Call') failures.push('no call: the title bar does not read Call');
+    // The call's menu holds the call items; Chat's holds only the chat's.
+    await tab.click('#call-more'); await sleep(300);
+    const callMenu = await tab.eval(items);
+    await tab.click('#call-more'); await sleep(300);
+    for (const want of ['Pop out the call', 'Call position']) if (!callMenu.includes(want)) failures.push(`no call: the call's menu lacks "${want}" (${callMenu.join(' / ')})`);
+    await tab.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await sleep(200);
+    await tab.click('#chat-more'); await sleep(300);
+    const chatMenu = await tab.eval(items);
+    if (chatMenu.some((l) => /call/i.test(l)) || !chatMenu.includes('Save the chat')) failures.push(`Chat's menu has something of the call, or lacks Save the chat (${chatMenu.join(' / ')})`);
+    await tab.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await sleep(200);
+    say(`no call: title bar, Start call (${join?.w}px, in the bar), the large one (${big?.w}x${big?.h}); call menu: ${callMenu.join(' / ')}; chat menu: ${chatMenu.join(' / ')}`);
+    // Collapsed, no call: the call's icon beside the chat's, no dot; pressing it opens the column and starts nothing.
+    await tab.click('#side-column-toggle'); await sleep(400);
+    const rail = await tab.eval(box('side-column-rail-call')); const dot0 = await tab.eval(box('side-column-rail-call-dot'));
+    if (!rail?.shown || rail.label !== 'Show the call' || dot0?.shown) failures.push(`collapsed, no call: the rail's call icon is not there named "Show the call" without a dot (${JSON.stringify(rail)} ${JSON.stringify(dot0)})`);
+    await tab.click('#side-column-rail-call'); await sleep(500);
+    if (await tab.eval(`document.getElementById('side-column').classList.contains('collapsed') || document.getElementById('side-column').classList.contains('in-call')`)) failures.push('the rail\'s call icon did not open the column, or it started a call');
+    // On the call: the title bar loses Start call and the large one; collapsed, the dot and the name.
+    await tab.click('#join-call');
+    const end = Date.now() + 10000;
+    while (Date.now() < end && !(await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`))) await sleep(200);
+    await sleep(500);
+    const j2 = await tab.eval(box('join-call')); const e2 = await tab.eval(box('call-empty')); const pop = await tab.eval(box('call-head-popout'));
+    if (j2?.shown || e2?.shown || !pop?.shown) failures.push(`on the call: Start call and the large button should be gone and Pop out shown (${JSON.stringify([j2, e2, pop])})`);
+    await tab.click('#side-column-toggle'); await sleep(400);
+    const rail2 = await tab.eval(box('side-column-rail-call')); const dot1 = await tab.eval(box('side-column-rail-call-dot'));
+    if (!rail2?.shown || !dot1?.shown || !/in a call/.test(rail2.label || '')) failures.push(`collapsed, on the call: the rail's call icon should show its dot and say it in its name (${JSON.stringify(rail2)} ${JSON.stringify(dot1)})`);
+    // The keyboard: Tab from the handle reaches the icon through the chat's.
+    await tab.eval(`document.getElementById('side-column-toggle').focus()`);
+    const seen = [];
+    for (let i = 0; i < 4; i++) { await tab.key('Tab'); await sleep(100); seen.push(await tab.eval(`document.activeElement && document.activeElement.id`)); }
+    if (!seen.includes('side-column-rail-call')) failures.push(`the rail's call icon is not in the tab order (${seen.join(', ')})`);
+    say(`collapsed on the call: icon named "${rail2?.label}", dot ${dot1?.shown ? 'shown' : 'hidden'}; tab order ${seen.join(', ')}`);
+  } finally { await tab.close(); }
+}
+
 async function main() {
   const bin = findBrowser();
   if (!bin) { say('SKIPPED. No Chromium found (set CHROME_PATH). This is not a pass; nothing was measured.'); return 0; }
@@ -100,6 +153,7 @@ async function main() {
     const S = { base: server.base, ctx: boot.ctx, cookies: boot.cookies };
     browser = await launch(bin);
     for (const people of [2, 4]) await run(browser, S, people);
+    await runArea(browser, S);
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);

@@ -516,8 +516,8 @@ if (!/sessionStorage\.setItem\(viewKey\(id\), view\)/.test(chatInputJs) || !/rea
 // The chosen part is checked and the Tab stop; the keys are the SDK's (no tablist of its own).
 if (!/el\.setAttribute\('aria-checked', v === view \? 'true' : 'false'\);/.test(chatInputJs) || !/window\.hostSwitch\.rove\(/.test(chatInputJs)) fail('public/chat-input.js: the chosen view\'s button is checked and the switch roved');
 if (/aria-selected|focusTab|ArrowRight: at \+ 1/.test(fnBodyOf(chatInputJs, 'function setView(') + chatInputJs.slice(chatInputJs.indexOf("for (const v of CHAT_VIEWS) {\n    $(`chat-view-${v}`)"), chatInputJs.indexOf("$('chat-command').addEventListener"))) ) fail('public/chat-input.js: no tab selection or tablist keys on Chat\'s switch');
-// Start call: the shared primary button, put at the end of the row (after the switch, not in it).
-if (!/\$\('chat-views'\)\?\.appendChild\(joinCallButton\)/.test(read('public/space.js'))) fail('public/space.js: Start call goes at the end of the chat\'s view row, after the switch');
+// Start call: the shared primary button; it is in the call's title bar now (plan-workspaces.md, decision 28), no longer at the end of the chat's row.
+if (!/\$\('call-head-tools'\)\?\.prepend\(joinCallButton\)/.test(read('public/space.js')) || /\$\('chat-views'\)\?\.appendChild\(joinCallButton\)/.test(read('public/space.js'))) fail('public/space.js: Start call goes first in the call\'s title bar tools, not in the chat\'s view row');
 // The page only filters: #messages carries data-view, each line data-in, and the stylesheet hides the rest.
 const styleCss = read('public/style.css');
 if (!/#messages\[data-view="discussion"\] > \[data-in="assistant"\],\s*#messages\[data-view="assistant"\] > :not\(\[data-in="assistant"\]\):not\(\[data-in="both"\]\):not\(\.chat-view-empty\) \{\s*display: none;/.test(styleCss)) fail('public/style.css: each view hides the lines it leaves out, and only those');

@@ -1465,9 +1465,13 @@ function paintJoinCall() {
   joinCallButton.title = running ? 'Join the call that is running' : 'Start a call from this chat';
 }
 joinCallButton.addEventListener('click', () => joinTheCall());
+$('call-start').addEventListener('click', () => joinCallButton.click()); // the large one, in the call's own area: the title bar's press, so one way in
 // Not while Home's chat shows (GitHub #326): a call belongs to a space, and Home is only a view over it.
 const joinCallWanted = () => Boolean(currentSpace) && !homeChatSpace && entered && !inCall
   && conferenceAllowed({ callService: features.callService, conferenceEnabled: features.conferenceEnabled, permitted: canDo('conference') });
+// The call's own area (its title bar, and out of the call the large Start call, plan-workspaces.md decisions 15 and 28)
+// is there all the time wherever the call could be joined, and while on it.
+const callAreaWanted = () => inCall || joinCallWanted();
 nav.register({ bar: 'secondary', zone: 'left', group: 'call', groupOrder: 1.5, id: 'join-call', order: 1, icon: 'phone', label: 'Start call', element: joinCallButton, visible: joinCallWanted });
 // Entering joins by itself where the environment says so (GitHub #199, branding.autoJoinCall): the rule is
 // shouldAutoJoin (opens-with.js, held by check-canvas), asked once by enterSpace() on each entry, and it joins only
@@ -1543,7 +1547,7 @@ placeColumnTools = () => {
     columnToolsIn = where;
     if (toColumn) {
       nav.unregister(joinCallTool.id);
-      $('chat-views')?.appendChild(joinCallButton); // the right end of the Discussion | Assistant row
+      $('call-head-tools')?.prepend(joinCallButton); // the call's title bar, before its other tools (plan-workspaces.md, decision 28)
     } else if (!nav.get(joinCallTool.id)) nav.register(joinCallTool);
   }
   // Who is here: the top bar's wider than a phone, the tab bar's on a phone (the same element, moved by the registry).
@@ -1751,6 +1755,14 @@ function syncRail() {
   const said = total ? `Chat, ${total} unread` : 'Chat';
   btn.setAttribute('aria-label', said);
   btn.dataset.tip = said;
+  // The call's icon beside it (plan-workspaces.md, decision 18): there while the call area is, a dot while on the call, and
+  // the state in its name, as the unread count is in Chat's. A press shows the call area; it never starts a call.
+  const callBtn = columnEl.querySelector('#side-column-rail-call');
+  callBtn.hidden = !callAreaWanted();
+  columnEl.querySelector('#side-column-rail-call-dot').hidden = !inCall;
+  const callSaid = inCall ? 'Show the call, you are in a call' : 'Show the call';
+  callBtn.setAttribute('aria-label', callSaid);
+  callBtn.dataset.tip = callSaid;
   const faces = columnEl.querySelector('#side-column-rail-faces');
   const people = [...tiles.values()].filter((t) => !t.classList.contains('tile-screen'));
   const key = people.map((t) => `${t.dataset.identity}:${t.querySelector('.placeholder')?.getAttribute('src') || ''}`).join('|');
@@ -1781,8 +1793,7 @@ function syncShareLift() {
 }
 
 // --- the call's place (Thomas, 2026-10-14: the call pops out again, and never squeezes the chat) ---------------------
-// Call position, in the call's own titlebar's "..." (#call-more)
-// and in Chat's "...": the top of the column (the default), its bottom (the chat above the call), the left of the chat
+// Call position, in the call's own titlebar's "..." (#call-more), a flyout: the top of the column (the default), its bottom (the chat above the call), the left of the chat
 // (beside it, the column's full height, in a column at least CALL_LEFT_MIN wide; narrower it shows at the top, the choice
 // kept, and comes back when the column is wide again), a floating window over the Workspace (canvas.liftBuiltin, the
 // person's own lift), or a window of its own (canvas.popBuiltin: the conference's element moved into the window, as it
@@ -1818,17 +1829,19 @@ function syncCallPlace() {
     pop.setAttribute('aria-label', label);
     pop.querySelector('i').className = `fa-solid fa-${outside ? 'arrow-left' : 'up-right-from-square'} fa-fw`;
   }
-  // A phone has no window to pop into (a pop-up is a new tab there): only the way back shows.
+  // A phone has no window to pop into (a pop-up is a new tab there): only the way back shows. Out of the call the
+  // title bar's own Pop out is not drawn (Start call and the "..." are): the menu still has it.
   const noPop = phoneWidth() && where !== 'window';
-  for (const pop of [columnEl?.querySelector('#call-head-popout'), $('conf-popout')]) if (pop) pop.hidden = noPop;
+  const idle = !inCall && !outside;
+  const headPop = columnEl?.querySelector('#call-head-popout');
+  if (headPop) headPop.hidden = noPop || idle;
+  if ($('conf-popout')) $('conf-popout').hidden = noPop;
   if (!columnEl) return;
-  // No call area out of the call (Thomas, 2026-10-14: "when not in a call we should not show the call area"): no
-  // titlebar, no Left column beside the chat, whatever Call position is saved (kept for the next call); the chat fills
-  // the column with the slim Join the call row above it, or below it with the call at the bottom, as before the
-  // titlebar. The call area comes with the call, and stays while the call is floating or in its own window.
-  const callArea = inCall || outside;
-  const chosen = callPlaceNow();
-  const place = !callArea && chosen === 'left' ? 'top' : chosen;
+  // The call area is there all the time (plan-workspaces.md, decision 15; it was drawn only on a call before, Thomas,
+  // 2026-10-14): the title bar with Start call and its menu, and the large Start call under it (decision 28), in the
+  // position that is saved, Left included. It stays while the call is floating or in its own window.
+  const callArea = callAreaWanted() || outside;
+  const place = callPlaceNow();
   const left = place === 'left';
   columnEl.classList.toggle('call-area', callArea);
   columnEl.classList.toggle('call-bottom', place === 'bottom');
@@ -1837,7 +1850,16 @@ function syncCallPlace() {
   if (sideLine) sideLine.hidden = !left;
   // The call's titlebar: wherever the conference is open from this column (in it, floating or in its own window).
   const head = columnEl.querySelector('#call-head');
-  if (head) head.hidden = !callArea || where === 'closed' || where === 'dock';
+  if (head) head.hidden = !callArea || where === 'dock';
+  // The large Start call: in the call's own area while it is empty (not on the call, not out of the column), Join call while a call runs.
+  const empty = callArea && idle && where !== 'dock' && joinCallWanted();
+  const start = columnEl.querySelector('#call-empty');
+  if (start) {
+    start.hidden = !empty;
+    const verb = liveOthersOnCall().length > 0 ? 'Join' : 'Start';
+    start.querySelector('#call-start-label').textContent = `${verb} call`;
+    start.querySelector('#call-start').setAttribute('aria-label', `${verb} call`);
+  }
   const away = canvas.columnMode() && outside;
   columnEl.classList.toggle('call-away', away);
   if (callOutEl) {
@@ -1871,7 +1893,7 @@ function setCallPosition(pos) {
   syncCallPlace();
   applyLayout();
 }
-// The Call position entries, for the caret's menu, the call's titlebar and Chat's "...". The position marked is the one
+// The Call position entries, for the flyout on the call's titlebar menu (callMenuItems). The position marked is the one
 // chosen: Left stays marked in a column too narrow for it (the call shows at the top meanwhile), and is offered only in
 // a column wide enough, saying why otherwise.
 function callPlaceItems() {
@@ -1894,15 +1916,16 @@ function callPlaceItems() {
   items.push({ radio: true, checked: where === 'window', icon: 'up-right-from-square', label: 'Its own window', onPick: () => setCallPosition('window') });
   return items;
 }
-// The call's titlebar's "..." (#call-more): Pop out or Bring the call back (the toolbar's Pop out does the same), Call
-// position, then on the call its Settings (the toolbar's gear) and Leave the call (Hang up; the
+// The call's titlebar's "..." (#call-more), the one place for the call's own items (plan-workspaces.md, decision 16;
+// Chat's "..." keeps Save the chat and Delete the chat): Pop out or Bring the call back (the toolbar's Pop out does the
+// same), Call position as a flyout, then on the call its Settings (the toolbar's gear) and Leave the call (Hang up; the
 // titlebar's x before the column, which closed the call).
 function callMenuItems() {
   const where = callWhere();
   const items = [];
   if (['window', 'float', 'share'].includes(where)) items.push({ icon: 'arrow-left', label: 'Bring the call back', onPick: bringCallBack });
   else if (where !== 'closed' && !phoneWidth()) items.push({ icon: 'up-right-from-square', label: 'Pop out the call', onPick: popOutCall });
-  if (where !== 'closed') items.push({ divider: true }, ...callPlaceItems());
+  if (where !== 'closed') items.push({ icon: 'up-down', label: 'Call position', items: () => callPlaceItems().filter((it) => !it.heading) });
   if (inCall) {
     items.push({ divider: true });
     // The guest link's switch, for whoever can manage the space. After the menu has closed, so the click that picked
@@ -1971,6 +1994,8 @@ function setCallHead(def) {
   if (name) name.textContent = callTitle(def.name);
   const icon = columnEl?.querySelector('#call-head-icon');
   if (icon && def.icon) icon.className = `fa-solid fa-${def.icon} fa-fw`;
+  const railIcon = columnEl?.querySelector('#side-column-rail-call-icon');
+  if (railIcon && def.icon) railIcon.className = `fa-solid fa-${def.icon} fa-fw`;
 }
 // Pop out on the titlebar (and on the conference's own when it floats): the same as the "..." entry.
 for (const pop of [columnEl?.querySelector('#call-head-popout'), $('conf-popout')]) {
@@ -2006,6 +2031,13 @@ if (columnEl) {
   columnEl.querySelector('#side-column-rail-chat').addEventListener('click', () => {
     setColumnCollapsed(false);
     if (canvas.builtinOpen('chat')) $('chat-input')?.focus();
+  });
+  // The call's icon: opens the column onto the call area, never starts a call. The button goes with the collapse, so the
+  // focus moves to the call's "..." (nothing a stray Enter or Space could start).
+  columnEl.querySelector('#side-column-rail-call').addEventListener('click', () => {
+    setColumnCollapsed(false);
+    const more = columnEl.querySelector('#call-more');
+    if (!more?.closest('[hidden]')) more?.focus();
   });
   wireSplitter(columnEl.querySelector('#side-column-splitter'), { which: 'width', axis: 'x', def: DEFAULT_PREFS.chatWidth, min: COLUMN_MIN, max: columnMaxWidth, grow: 'ArrowRight', shrink: 'ArrowLeft' });
   wireSplitter(columnEl.querySelector('#side-column-strip-splitter'), { which: 'strip', axis: 'y', def: DEFAULT_PREFS.stripHeight, min: STRIP_MIN, max: columnMaxStrip, grow: 'ArrowDown', shrink: 'ArrowUp' });
@@ -6465,12 +6497,7 @@ $('chat-more').addEventListener('click', (event) => {
       },
     }) });
   }
-  // The call's place, here too (the column's "..."): Pop out or Bring the call back, and Call position as a flyout.
-  const where = callWhere();
-  const outside = ['window', 'float', 'share'].includes(where);
-  if (outside) items.push({ divider: true }, { icon: 'arrow-left', label: 'Bring the call back', onPick: bringCallBack });
-  else if (where !== 'closed' && !phoneWidth()) items.push({ divider: true }, { icon: 'up-right-from-square', label: 'Pop out the call', onPick: popOutCall });
-  if (canvas.columnMode() && where !== 'closed') items.push({ icon: 'up-down', label: 'Call position', items: () => callPlaceItems().filter((it) => !it.heading) });
+  // Only the chat's items; the call's own are on the call's title bar menu (callMenuItems).
   openHostMenu(button, items);
 });
 $('chat-pic').addEventListener('click', () => { $('chat-file').click(); });

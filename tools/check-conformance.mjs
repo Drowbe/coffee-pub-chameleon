@@ -116,6 +116,8 @@ const COLLECT = String.raw`(() => {
     const right = k.length ? px(br - Math.max(...k.map((x) => R(x).right))) : null;
     const out = { band: kind, h: px(r.height), left, right, buttons: [], strips: [] };
     if (kind === 'title') { const t = el.querySelector('.mf-titlebar-title'); if (t) out.font = parseFloat(getComputedStyle(t).fontSize); }
+    // Is the side column's own toggle laid over this bar's end? (The column's top bar: the call's, now drawn all the time, or the chat's when it is on top.)
+    if (kind === 'title') { const tg = document.getElementById('side-column-toggle'); if (tg && tg.getClientRects().length) { const g = R(tg); out.underToggle = g.left < r.right && g.right > r.left && g.top < r.bottom && g.bottom > r.top; } }
     // Its end group (the frame's search, then its Filters button): where it ends, from the band's end (its padding counted).
     if (kind === 'toolbar') {
       const ends = [...el.children].filter((k) => shown(k) && k.matches('.mf-search, .mf-search-open, .mf-filters'));
@@ -493,9 +495,10 @@ function judge(context, phone, windows) {
       if (b.band === 'title') {
         if (b.font && b.font !== want.titleFont) bad('title words', `${b.font}px`, `${want.titleFont}px`);
         if (b.left !== null && Math.abs(b.left - want.titleLeft) > 0.5) bad('title bar inset, start', b.left, want.titleLeft);
-        // EXCEPTION: the Chat's title bar ends under the side column's own toggle (#side-column-toggle, laid over the bar's end,
-        // style.css), so its tools stop 40 px from the end: 4 px, the 28 px toggle and the 8 px around it.
-        const endWant = w.kind === 'chat' ? 40 : want.titleRight;
+        // EXCEPTION: the Chat's title bar, when it ends under the side column's own toggle (#side-column-toggle, laid over the bar's
+        // end, style.css), stops its tools 40 px from the end: 4 px, the 28 px toggle and the 8 px around it. With the call's title
+        // bar above it (drawn all the time, plan-workspaces.md decision 15) the toggle is over that bar's end instead, and the chat's is the frame's.
+        const endWant = w.kind === 'chat' && b.underToggle ? 40 : want.titleRight;
         if (b.right !== null && Math.abs(b.right - endWant) > 0.5) bad('title bar inset, end', b.right, endWant);
       }
       if (b.band === 'toolbar') {

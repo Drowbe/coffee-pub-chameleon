@@ -1692,11 +1692,12 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/label: 'Left of the chat', hint: wide \? undefined : 'Needs a wider column', disabled: !wide, onPick: \(\) => setCallPosition\('left'\)/.test(spaceJs) || !/const wide = columnWidthNow\(\) >= CALL_LEFT_MIN;/.test(spaceJs)) fail(F, 'Left of the chat is offered in a column at least CALL_LEFT_MIN wide, else disabled with "Needs a wider column"');
   if (!/const callPlaceNow = \(\) => \(columnCollapsed\(\) \|\| inAside\(\) \? \(callAtBottom\(\) \? 'bottom' : 'top'\) : callPlaceFor\(prefs\.callPosition, columnWidthNow\(\)\)\);/.test(spaceJs)) fail(F, 'where the call shows follows the chosen position and the column\'s width now (callPlaceNow, callPlaceFor), never rewriting the choice');
   if (!/columnEl\.classList\.toggle\('call-left', left\);/.test(spaceJs)) fail(F, 'Left draws as .call-left on the column');
-  // No call area out of the call (Thomas, 2026-10-14): no titlebar and no Left column whatever position is saved (the
-  // choice kept); the chat fills the column with the Join the call row. The area comes with the call (or a call out of
-  // the column, floating or in its own window).
-  if (!/const callArea = inCall \|\| outside;\n  const chosen = callPlaceNow\(\);\n  const place = !callArea && chosen === 'left' \? 'top' : chosen;/.test(spaceJs)) fail(F, 'out of the call the column shows no Left call area (callArea), the saved position kept');
-  if (!/if \(head\) head\.hidden = !callArea \|\| where === 'closed' \|\| where === 'dock';/.test(spaceJs)) fail(F, 'out of the call the column shows no call titlebar');
+  // The call area is shown all the time (plan-workspaces.md, decision 15, replacing Thomas's 2026-10-14 "no call area out of
+  // the call"): the title bar and the saved position, Left included, with or without a call. It is there while a call could
+  // be joined here (joinCallWanted) or is on (callAreaWanted), and while the call is out of the column.
+  if (!/const callAreaWanted = \(\) => inCall \|\| joinCallWanted\(\);/.test(spaceJs)) fail(F, 'callAreaWanted(): on the call, or wherever the call could be joined');
+  if (!/const callArea = callAreaWanted\(\) \|\| outside;\n  const place = callPlaceNow\(\);/.test(spaceJs) || /const place = !callArea/.test(spaceJs)) fail(F, 'the column shows the call area out of the call too, in the saved position (no Left demoted to Top out of the call)');
+  if (!/if \(head\) head\.hidden = !callArea \|\| where === 'dock';/.test(spaceJs)) fail(F, 'the call titlebar shows whenever the call area does (decision 15), whether or not a call is on');
   // The call's titlebar (Thomas, 2026-10-14: "why does the conf not have a titlebar like Discussion?"): a header above
   // the call in the column, named by callTitle(), with a "..." on the shared menu holding Pop out or Bring the call back,
   // Call position, Settings and Leave the call.
@@ -1710,15 +1711,19 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (html.indexOf('id="call-head"') > html.indexOf('id="side-column-strip"')) fail('public/space.html', 'the call\'s titlebar sits above the call (before #side-column-strip)');
   if (!/openHostMenu\(event\.currentTarget, callMenuItems\)/.test(spaceJs)) fail(F, 'the call\'s "..." opens on the shared menu (openHostMenu, callMenuItems)');
   const callMenu = spaceJs.slice(spaceJs.indexOf('function callMenuItems() {'), spaceJs.indexOf('\n}\n', spaceJs.indexOf('function callMenuItems() {')));
-  for (const [re, what] of [[/label: 'Bring the call back', onPick: bringCallBack/, 'Bring the call back'], [/label: 'Pop out the call', onPick: popOutCall/, 'Pop out the call'], [/\.\.\.callPlaceItems\(\)/, 'Call position'], [/label: 'Settings', onPick: \(\) => setTimeout\(\(\) => openSettings\('more'\), 0\)/, 'Settings (the toolbar\'s gear)'], [/label: 'Leave the call', danger: true, onPick: \(\) => \$\('hangup'\)\.click\(\)/, 'Leave the call (Hang up)']]) if (!re.test(callMenu)) fail(F, `the call's "..." offers ${what}`);
+  for (const [re, what] of [[/label: 'Bring the call back', onPick: bringCallBack/, 'Bring the call back'], [/label: 'Pop out the call', onPick: popOutCall/, 'Pop out the call'], [/label: 'Call position', items: \(\) => callPlaceItems\(\)\.filter\(\(it\) => !it\.heading\)/, 'Call position (a flyout)'], [/label: 'Settings', onPick: \(\) => setTimeout\(\(\) => openSettings\('more'\), 0\)/, 'Settings (the toolbar\'s gear)'], [/label: 'Leave the call', danger: true, onPick: \(\) => \$\('hangup'\)\.click\(\)/, 'Leave the call (Hang up)']]) if (!re.test(callMenu)) fail(F, `the call's "..." offers ${what}`);
   if (!/onShown: \(def\) => \{ showBuiltinName\(def\); setCallHead\(def\); \}/.test(spaceJs) || !/name\.textContent = callTitle\(def\.name\);/.test(spaceJs)) fail(F, 'the call\'s titlebar follows the environment\'s name for the conference (setCallHead, callTitle)');
   if (!/<header class="mf-titlebar chat-head">/.test(html)) fail('public/space.html', 'the chat\'s title bar is the frame\'s band too');
   const callHeadCss = /\n\.side-column-call-head \{([^}]*)\}/.exec(css);
   if (!callHeadCss || /height|border|background/.test(callHeadCss[1])) fail('public/style.css', 'the call\'s title bar is drawn as the chat\'s (the frame\'s band: its height, edge and surface are the moduleframe block\'s alone)');
   if (!/heading: 'Call position'/.test(spaceJs)) fail(F, 'Call position is the menu\'s heading');
-  if (!/\.\.\.callPlaceItems\(\)/.test(spaceJs)) fail(F, 'Call position is in the titlebar\'s "..." (callPlaceItems)');
-  if (!/label: 'Call position', items: \(\) => callPlaceItems\(\)/.test(spaceJs)) fail(F, 'Chat\'s "..." has Call position too');
-  if (!/label: 'Pop out the call', onPick: popOutCall/.test(spaceJs) || !/label: 'Bring the call back', onPick: bringCallBack/.test(spaceJs)) fail(F, 'Chat\'s "..." pops the call out and brings it back');
+  if (!/label: 'Call position', items: \(\) => callPlaceItems\(\)/.test(spaceJs)) fail(F, 'Call position is in the call titlebar\'s "..." (callPlaceItems, a flyout)');
+  if (!/label: 'Pop out the call', onPick: popOutCall/.test(spaceJs) || !/label: 'Bring the call back', onPick: bringCallBack/.test(spaceJs)) fail(F, 'the call\'s "..." pops the call out and brings it back');
+  // Plan-workspaces.md, decision 16: the call's items are on the call's own menu; Chat's "..." keeps the chat's: Save the
+  // chat (and Clear, for whoever can) and Delete the chat. Nothing of the call there.
+  const chatMore = spaceJs.slice(spaceJs.indexOf("$('chat-more').addEventListener('click'"), spaceJs.indexOf("$('chat-pic').addEventListener('click'"));
+  if (!/label: 'Save the chat'/.test(chatMore) || !/label: 'Delete the chat'/.test(chatMore)) fail(F, 'Chat\'s "..." keeps Save the chat and Delete the chat');
+  if (/callPlaceItems|callWhere|popOutCall|bringCallBack|Call position|Pop out the call|Bring the call back/.test(chatMore)) fail(F, 'Chat\'s "..." has nothing of the call (Pop out, Call position and the rest are on the call\'s own menu)');
   if (!/function popOutCall\(\) \{\n  if \(canvas\.columnMode\(\)\) \{\n    if \(!canvas\.popBuiltin\('conference'\)\)/.test(spaceJs)) fail(F, 'Pop out moves the conference into its own window (canvas.popBuiltin), never a second join');
   if (!/callOutEl\.querySelector\('#call-back'\)\.addEventListener\('click', bringCallBack\)/.test(spaceJs)) fail(F, '#call-back brings the call back (bringCallBack)');
   if (!/function hangUp\(\) \{[\s\S]{0,400}canvas\.returnBuiltin\('conference'\)/.test(spaceJs)) fail(F, 'Hang up brings a call out of the column back to it');
@@ -1730,6 +1735,57 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/function returnBuiltin\(id\) \{[\s\S]*?openBuiltinIn\(mod\.def, 'column', \{ moving: true \}\)/.test(canvasJs)) fail('public/canvas.js', 'returnBuiltin() puts it back in the column, moving (the call keeps going)');
   if (!/const back = columnMode\(\) \? 'column'/.test(canvasJs)) fail('public/canvas.js', 'closing the call\'s window brings it back to the column');
   if (!/if \(!on && mod\.lifted && \(why === 'person' \|\| mod\.lifted !== 'person'\)\)/.test(canvasJs)) fail('public/canvas.js', 'a screen share ending never puts back a call the person floated');
+  // The call area, all the time (plan-workspaces.md, decisions 15 and 28; step 8). Out of the call the title bar holds the title
+  // (Call), Start call and the call's menu, and the call's own area holds one large Start call (Join call while one runs).
+  const headHtml = html.slice(html.indexOf('id="call-head"'), html.indexOf('</header>', html.indexOf('id="call-head"')));
+  if (!/id="call-head-tools"/.test(headHtml)) fail('public/space.html', 'the call\'s title bar has a tools group (#call-head-tools) that Start call is put first in');
+  if (!/\$\('call-head-tools'\)\?\.prepend\(joinCallButton\)/.test(spaceJs)) fail(F, 'wider than a phone Start call (Join call) is the call title bar\'s first tool, no longer in the chat\'s row');
+  const emptyAt = html.indexOf('id="call-empty"');
+  const emptyHtml = emptyAt < 0 ? '' : html.slice(html.lastIndexOf('<div', emptyAt), html.indexOf('</div>', emptyAt));
+  if (!emptyHtml || !/id="call-start" type="button" aria-label="Start call"/.test(emptyHtml) || !/btn btn-primary/.test(emptyHtml)) fail('public/space.html', 'the call\'s own area has the large Start call (#call-start in #call-empty, the accent button)');
+  if (emptyAt < html.indexOf('id="call-head"') || emptyAt > html.indexOf('id="side-column-strip"')) fail('public/space.html', '#call-empty sits between the call\'s title bar and the call (#side-column-strip)');
+  if (!/\$\('call-start'\)\.addEventListener\('click', \(\) => joinCallButton\.click\(\)\)/.test(spaceJs)) fail(F, 'the large Start call presses the title bar\'s (one way into joinTheCall)');
+  if (!/const empty = callArea && idle && where !== 'dock' && joinCallWanted\(\);/.test(spaceJs) || !/start\.hidden = !empty;/.test(spaceJs)) fail(F, 'the large Start call shows while the call area is empty (out of the call, the call in the column), never on a call');
+  if (!/const verb = liveOthersOnCall\(\)\.length > 0 \? 'Join' : 'Start';\n    start\.querySelector\('#call-start-label'\)\.textContent = `\$\{verb\} call`;/.test(spaceJs)) fail(F, 'the large button reads Join call while a call runs, Start call while none does, as the title bar\'s');
+  if (!/if \(headPop\) headPop\.hidden = noPop \|\| idle;/.test(spaceJs)) fail(F, 'out of the call the title bar shows Start call and the menu, not Pop out (the menu still has it)');
+  if (!/\.side-column-call-empty \{[^}]*display: flex;/.test(css) || !/\.side-column-call-empty\[hidden\] \{\s*display: none;/.test(css) || !/body\.in-aside \.side-column-call-empty \{\s*display: none;/.test(css)) fail('public/style.css', 'the large Start call is a block of the column, hidden when hidden and in an aside (the aside has its own)');
+  if (!/\.side-column\.call-bottom \.side-column-call-empty,/.test(css) || !/\.side-column\.call-left > \.side-column-call-empty \{\s*grid-column: 1;\s*grid-row: 2 \/ 6;/.test(css)) fail('public/style.css', 'the large Start call follows the call: at the bottom of the column after its title bar, Left in the call\'s column');
+  if (!/\n\.side-column > \.side-column-call-head \{\s*padding-right: 40px;/.test(css)) fail('public/style.css', 'the call title bar clears the column\'s handle past system.css\'s own title bar padding (else the "..." sits under the handle)');
+  if (!/\.side-column-call-head \.join-call \{[^}]*color: var\(--text-on-accent\);/.test(css) || !/@container \(max-width: \d+px\) \{\s*\.side-column-call-head \.join-call-label \{\s*display: none;/.test(css) || !/\.side-column-call-head \{\s*container-type: inline-size;/.test(css)) fail('public/style.css', 'Start call in the title bar: the accent ink, and in a narrow column its phone alone (its name stays in aria-label)');
+  if (/#chat-views \.join-call/.test(css)) fail('public/style.css', 'no rule for Start call in the chat\'s view row any more');
+  // The collapsed rail (decision 18, step 10): the call's icon beside the chat's, a real button in the tab order with a name
+  // that says the call state as the unread count is said in Chat's, a dot (not the time) while on the call, and a press that
+  // shows the call area, never starts a call.
+  const railAt = html.indexOf('id="side-column-rail-call"');
+  const railBtn = railAt < 0 ? '' : html.slice(html.lastIndexOf('<button', railAt), html.indexOf('</button>', railAt));
+  if (!railBtn || !/type="button"/.test(railBtn) || !/aria-label="Show the call"/.test(railBtn) || /tabindex="-1"/.test(railBtn)) fail('public/space.html', 'the rail has the call\'s icon as a real button (#side-column-rail-call, "Show the call", in the tab order)');
+  if (!/id="side-column-rail-call-dot" aria-hidden="true" hidden/.test(railBtn) || !/class="sdk-dot"/.test(railBtn)) fail('public/space.html', 'the rail\'s call button carries a dot (.sdk-dot, hidden, said in the button\'s name instead)');
+  if (html.indexOf('id="side-column-rail-chat"') > railAt || railAt > html.indexOf('id="side-column-rail-faces"')) fail('public/space.html', 'the rail\'s call icon sits beside the chat\'s, before the faces');
+  const railClick = spaceJs.slice(spaceJs.indexOf("columnEl.querySelector('#side-column-rail-call').addEventListener('click'"), spaceJs.indexOf('wireSplitter(columnEl.querySelector(\'#side-column-splitter\')'));
+  if (!/setColumnCollapsed\(false\);/.test(railClick) || /joinTheCall|joinCallButton|startCall|call-start/.test(railClick)) fail(F, 'a press on the rail\'s call icon opens the column onto the call area; it never starts or joins a call');
+  if (!/#call-more'\);\n\s*if \(!more\?\.closest\('\[hidden\]'\)\) more\?\.focus\(\);/.test(railClick)) fail(F, 'after the rail\'s call icon opens the column the focus goes to the call\'s "..." (the icon is gone; nothing a stray Enter starts)');
+  if (!/\.side-column-rail-chat,\n\.side-column-rail-call \{\s*position: relative;\s*width: 32px;\s*height: 32px;/.test(css) || !/\.side-column-rail-call:focus-visible/.test(css) || !/\.side-column-rail-call \.sdk-dot\[hidden\] \{\s*display: none;/.test(css)) fail('public/style.css', 'the rail\'s call icon is drawn as the chat\'s (32px), shows its focus, and its hidden dot is hidden (.sdk-dot sets display)');
+  // Run syncRail() against stand-ins: the button is there while the call area is, the dot only on the call (a dot, never the
+  // elapsed time), and the name says the state.
+  {
+    const start = spaceJs.indexOf('function syncRail() {');
+    const src = spaceJs.slice(start, spaceJs.indexOf('\n}\n', start) + 2);
+    const el = () => ({ hidden: false, textContent: '', attrs: {}, dataset: {}, setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, replaceChildren() {} });
+    const parts = { '#side-column-rail-unread': el(), '#side-column-rail-chat': el(), '#side-column-rail-call': el(), '#side-column-rail-call-dot': el(), '#side-column-rail-faces': el() };
+    const run = (state) => {
+      const columnEl = { querySelector: (q) => parts[q] };
+      const doc = { body: { classList: { contains: () => true } } };
+      new Function('columnEl', 'document', 'unread', 'assistantNew', 'tiles', 'inCall', 'callAreaWanted', `${src}\nsyncRail();`)(columnEl, doc, 0, 0, new Map(), state.inCall, () => state.area);
+      return { hidden: parts['#side-column-rail-call'].hidden, dot: parts['#side-column-rail-call-dot'].hidden, name: parts['#side-column-rail-call'].attrs['aria-label'], tip: parts['#side-column-rail-call'].dataset.tip, time: parts['#side-column-rail-call-dot'].textContent };
+    };
+    const idleRail = run({ inCall: false, area: true });
+    const liveRail = run({ inCall: true, area: true });
+    const noneRail = run({ inCall: false, area: false });
+    if (idleRail.hidden || !idleRail.dot || idleRail.name !== 'Show the call') fail(F, `the rail's call icon, no call: shown, no dot, named "Show the call" (got ${JSON.stringify(idleRail)})`);
+    if (liveRail.hidden || liveRail.dot || liveRail.name !== 'Show the call, you are in a call' || liveRail.tip !== liveRail.name) fail(F, `the rail's call icon, on the call: shown, the dot on, and the name says so (got ${JSON.stringify(liveRail)})`);
+    if (!noneRail.hidden) fail(F, 'the rail has no call icon where there is no call area (no conference here, Home\'s chat)');
+    if (liveRail.time) fail(F, 'the rail shows a dot on the call, not the elapsed time (Thomas, 2026-11-13)');
+  }
   // The call at the bottom: the chat first; the strip's line turns round (up grows it).
   if (!/\.side-column\.call-bottom \.side-column-chat \{\s*order: 1;/.test(css)) fail('public/style.css', 'at the bottom of the column the chat comes first');
   if (!/const flipped = \(\) => which === 'strip' && columnEl\.classList\.contains\('call-bottom'\);/.test(spaceJs)) fail(F, 'with the call at the bottom the strip\'s splitter turns round');
