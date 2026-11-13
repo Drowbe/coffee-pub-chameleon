@@ -59,6 +59,18 @@ test('a manifest\'s scopes are environment, space and person', () => {
   assert.throws(() => cleanManifest({ ...base(), settings: [{ key: 'f', label: 'F', type: 'file', scope: 'space' }] }, files), /its scope must be "environment"/);
 });
 
+test('a secret setting is the environment\'s alone, bounded, and has no default', () => {
+  const m = cleanManifest({ ...base(), settings: [{ key: 'apiKey', label: 'Key', type: 'secret', default: 'sk-fake-default', maxLength: 9999 }, { key: 'b', label: 'B', type: 'secret', scope: 'environment', maxLength: 1 }] }, files);
+  assert.equal(m.settings[0].type, 'secret');
+  assert.equal(m.settings[0].scope, 'environment', 'no scope given is the environment\'s');
+  assert.equal(m.settings[0].maxLength, 500, 'the bound is kept to 500');
+  assert.equal(m.settings[1].maxLength, 8, 'and to at least 8');
+  assert.ok(!('default' in m.settings[0]), 'a secret has no default to hand out');
+  for (const scope of ['space', 'person']) {
+    assert.throws(() => cleanManifest({ ...base(), scope: ['environment', 'space'], surfaces: { page: { entry: 'page.html' }, canvas: { entry: 'canvas.html' } }, settings: [{ key: 'apiKey', label: 'Key', type: 'secret', scope }] }, files), /setting "apiKey" is a secret, so its scope must be "environment"/, scope);
+  }
+});
+
 // Plan-names step 5c, the hard break: each old name in a manifest is refused with its one sentence, naming the field
 // and what to use instead.
 const OLD_SURFACE = 'panel'; // surfaces.canvas before plan-names step 6
