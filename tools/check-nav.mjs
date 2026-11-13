@@ -535,7 +535,7 @@ test('the Layout menu (plan-layout-menu.md; Thomas, 2026-10-13): the page\'s sha
   assert.match(canvasJs, /import \{ mountHostMenu \} from '\/host-menu\.js';/);
   assert.match(canvasJs, /mountHostMenu\(container, layoutMenuItems\);/);
   const items = canvasJs.slice(canvasJs.indexOf('  function layoutMenuItems() {'), canvasJs.indexOf('  let menuView = null;'));
-  assert.ok(items.indexOf("{ heading: 'Show' }") < items.indexOf("{ heading: 'Arrange' }") && items.indexOf("{ heading: 'Arrange' }") < items.indexOf('const extra = typeof menuItems') && items.indexOf('const extra') < items.indexOf('if (noteEl) items.push({ element: noteEl });'), 'Show, Arrange, the page\'s entries, the note');
+  assert.ok(items.indexOf("{ heading: 'Open for you' }") < items.indexOf("{ heading: 'Arrange' }") && items.indexOf("{ heading: 'Arrange' }") < items.indexOf('const extra = typeof menuItems') && items.indexOf('const extra') < items.indexOf('if (noteEl) items.push({ element: noteEl });'), 'Show, Arrange, the page\'s entries, the note');
   // Show: a switch per module (toggle items, the shared switch look), on while the module is shown, flipping it.
   assert.match(items, /items\.push\(\{ toggle: true, checked: shown\(m\.id\), icon: m\.icon, tint: colorOf\(m\.id\), label: m\.name, \.\.\.\(m\.description \? \{ hint: m\.description, clamp: true \} : \{\}\), badge: unreadOf\(m\.id\), onPick: \(\) => flipShown\(m\.id\) \}\);/);
   // Arrange (not on a narrow canvas): Panel Mode and Window Mode as a set (radio items, the chosen one checked, the
@@ -701,7 +701,7 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   assert.match(settings, /system\.filter\(\(l\) => l\.id === 'calendar' \|\| l\.id === 'map'\)\.map\(\(l\) => \(\{ id: l\.id, name: l\.name,/, 'Calendar and Map are named choices');
   // Changed on purpose: the page PATCHed defaultLayout and opensWith at once; the panel keeps both as drafts for Save.
   assert.match(settings, /function stopUsingLayout\(\) \{\n\s*state\.draft\.defaultLayout = null;/, 'Stop using it is a draft change, saved with Save');
-  assert.match(settings, /state\.draft\.opensWith = ticked\.length \? ticked : null; \/\/ the first visit's choice stays as it is/, 'a list set by hand leaves the first visit alone');
+  assert.match(settings, /state\.draft\.opensWith = setSwitch\(state\.draft\.opensWith, event\.target\.dataset\.opens, event\.target\.checked\); \/\/ the first visit's choice stays as it is/, 'a list set by hand leaves the first visit alone');
 });
 
 test('favorite layouts, step 2 (plan-favorite-layouts.md): a ... on every row for anyone signed in, Favorite or Unfavorite first with its heart, the row\'s heart, the notes; a guest gets none', () => {
@@ -996,7 +996,7 @@ test('the space bar in two zones: Layout (the module chooser), then Online, on t
   assert.match(space, /id: 'module-chooser', order: 1, fold: false, icon: 'object-group', label: word\('module', \{ many: true, cap: true \}\), element: moduleChooser, visible: \(\) => phoneWidth\(\), workspace: 'only' \}\);/);
   assert.match(space, /function nameModuleChooser\(\) \{\n  moduleChooser\.querySelector\('#modules-menu'\)\.setAttribute\('aria-label', word\('module', \{ many: true, cap: true \}\)\);/);
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
-  assert.match(canvasJs, /const items = \[\{ heading: 'Show' \}\];/);
+  assert.match(canvasJs, /const items = \[\{ heading: 'Open for you' \}\];/);
   assert.match(space, /nav\.register\(\{ bar: 'secondary', zone: 'left', group: 'people', groupOrder: 2, id: 'who-here', order: 1, fold: false,[^\n]*fit: whoHere\.fit,/, 'Online after Modules, never folding, with fit');
   // In drawing order, Modules then Online, two groups (a divider between).
   const left = arrange([{ id: 'who-here', group: 'people', groupOrder: 2, order: 1, seq: 1 }, { id: 'module-chooser', group: 'modules', order: 1, seq: 2 }]);
@@ -2459,7 +2459,7 @@ test('Set up: a right-zone tool after your picture, before the window controls, 
   assert.match(setup, /system\.filter\(\(l\) => l\.id === 'calendar' \|\| l\.id === 'map'\)/, 'Calendar and Map only while the payload lists them');
   assert.match(setup, /\.\.\.shared\.map\(\(l\) => \(\{ id: l\.id, name: l\.name,/, 'the shared layouts by name');
   assert.match(setup, /state\.draft\.defaultLayout = event\.target\.value === 'workspace' \? null : event\.target\.value; \/\/ Opens with stays as it is/);
-  assert.match(setup, /state\.draft\.opensWith = ticked\.length \? ticked : null; \/\/ the first visit's choice stays as it is\n\s*paintOpensWith\(\);/, 'a switch never touches the layout');
+  assert.match(setup, /state\.draft\.opensWith = setSwitch\([^\n]*\); \/\/ the first visit's choice stays as it is\n\s*paintOpensWith\(\);/, 'a switch never touches the layout');
   assert.ok(!/Picking one sets Opens with|id="setup-layout"|picked\.modules\.map/.test(setup), 'the old drop-the-list wording and behaviour are gone');
   assert.ok(!/state\.draft\.opensWith = [^;\n]*modules/.test(setup), 'picking a layout never writes Opens with');
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');

@@ -84,3 +84,29 @@ export function composeList(modules, shown = []) {
   }
   return out;
 }
+
+// Opens with, grouped as the canvas groups (Set up's First visit): the Maps switch stands for Places too, the Calendar
+// switch for To-do. The stored list is never reshaped except by a switch being turned: a list naming the main or any of
+// its parts reads as the main being on; turning it on stores the main; turning it off takes the main and the parts out,
+// so nothing is left that no switch can turn off.
+const partsOf = (id) => COMPOSITES.find((c) => c.main === id)?.parts || null;
+// The id a row stands under: a part reads as its main, any other id as itself.
+export const groupOf = (id) => COMPOSITES.find((c) => c.parts.includes(id))?.main || id;
+// Whether the switch for `id` is on given the stored list.
+export function switchOn(list, id) {
+  const l = Array.isArray(list) ? list : [];
+  return (partsOf(id) || [id]).some((p) => l.includes(p));
+}
+// The parts that get no row of their own, given the ids that do have one: each part of a composite whose main has a row.
+export function groupedParts(rowIds) {
+  const ids = Array.isArray(rowIds) ? rowIds : [];
+  return COMPOSITES.filter((c) => ids.includes(c.main)).flatMap((c) => c.parts.filter((p) => p !== c.main));
+}
+// The stored list after the switch for `id` is turned `on` or off; null when it ends empty. A new list; the old one is kept.
+export function setSwitch(list, id, on) {
+  const l = Array.isArray(list) ? list : [];
+  const gone = partsOf(id) || [id];
+  const next = l.filter((x) => !gone.includes(x));
+  if (on) next.push(id);
+  return next.length ? next : null;
+}
