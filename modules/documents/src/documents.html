@@ -10,7 +10,7 @@
 </head>
 <body>
 <!--
-  Three states in one window: #list (the documents, or the trash), #read (one document, rendered) and #editor (the text box, or the rich editor in #edit-rich, and its bar). The script fills them;
+  Three states in one window: #list (the documents, or the trash), #read (one document, rendered) and #editor (the text box, or the rich editor in #edit-rich, and its bar). The title is not drawn in the page: it is the title bar's select (host.header.set); #edit-title is the editor's hidden copy of it. The script fills them;
   nothing a person wrote is ever set as HTML. #note is a short line for a refusal or a notice.
 -->
 <div id="app" class="app sdk-slot" hidden>
@@ -26,13 +26,7 @@
     <p id="size" class="meta size"></p>
   </section>
   <section id="read" class="view" aria-label="Document" hidden>
-    <form id="renamer" class="bar make col" hidden>
-      <input id="rename-title" type="text" maxlength="120" aria-label="New title" autocomplete="off">
-      <button type="submit" class="btn btn-primary btn-small">Save</button>
-      <button type="button" class="btn btn-quiet btn-small" id="rename-cancel">Cancel</button>
-    </form>
     <div class="sheet">
-      <h1 id="read-title" class="doc-title"></h1>
       <p id="read-meta" class="meta"></p>
       <div id="read-tags" class="read-tags" hidden></div>
       <article id="page" class="page" tabindex="0"></article>
@@ -54,7 +48,7 @@
       </div>
     </div>
     <div class="sheet sheet-edit">
-      <input id="edit-title" class="doc-title edit-title" type="text" maxlength="120" aria-label="Title" autocomplete="off">
+      <input id="edit-title" type="hidden">
       <textarea id="edit-text" class="edit-text" aria-label="Text" spellcheck="true"></textarea>
       <div id="edit-rich" class="rich" hidden></div>
     </div>
