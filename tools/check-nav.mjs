@@ -787,7 +787,7 @@ test('the layout tabs (plan-layout-views.md, steps 2 and 3): after the switcher 
   // The fit: tabOverflow, the keyboard on a tab that leaves to the "..."; the "..." menu on the shared menu.
   const fit = space.slice(space.indexOf('function fitLayoutTabs('), space.indexOf('function pressLayoutTab('));
   assert.match(fit, /const current = tabs\.findIndex\(\(b\) => b\.dataset\.layoutTab === shownLayoutTab\(\)\);/, 'the tab shown is told to the fit');
-  assert.match(fit, /tabOverflow\(\{ avail: Math\.floor\(avail\) - 1, gap, widths: tabs\.map\(w\), more, current \}\)/);
+  assert.match(fit, /tabOverflow\(\{ avail: Math\.floor\(avail\) - 1, gap, widths: tabs\.map\(w\), more, current, workspace: [^\n]*\}\)/);
   assert.match(fit, /b\.classList\.toggle\('layout-tab-out', out\.includes\(i\)\)/);
   assert.match(fit, /focused\.closest\('\.layout-tab-out'\)\) layoutTabsMore\.focus\(\);/);
   assert.match(space, /openHostMenu\(layoutTabsMore, items\);/);
@@ -2570,6 +2570,9 @@ test('Set up Layouts (plan-workspaces.md, step 3): the owner\'s order and hide a
   const bar = layoutTabs({ space: 's', system: [{ id: 'workspace' }, { id: 'conference', tab: true, shown: true }, { id: 'map', tab: false, shown: false }, { id: 'documents', tab: true, shown: true }, { id: 'calendar', tab: true, shown: true }] });
   assert.deepEqual(bar.map((t) => t.layout), ['workspace', 'conference', 'documents', 'calendar'], 'the server\'s order, the owner\'s hide (tab false) left out');
   assert.deepEqual(layoutTabs({ space: 's', guest: true, system: [] }).map((t) => t.layout), ['workspace'], 'a guest has no fixed tabs');
+  const moved1 = layoutTabs({ space: 's', system: [{ id: 'conference', tab: true }, { id: 'workspace' }, { id: 'calendar', tab: true }] });
+  assert.deepEqual(moved1.map((t) => t.layout), ['conference', 'workspace', 'calendar'], 'the owner may put another layout before the Workspace: the bar follows');
+  assert.deepEqual(tabOverflow({ avail: 100 + 2 + 30, gap: 2, widths: [80, 100, 60], more: 30, workspace: 1 }), { out: [0, 2], count: 1, more: true }, 'the Workspace stays wherever it sits');
   const shownHidden = layoutTabs({ space: 's', current: 'map', system: [{ id: 'workspace' }, { id: 'map', tab: false, shown: false }] });
   assert.deepEqual(shownHidden.map((t) => [t.layout, t.temp === true]), [['workspace', false], ['map', true]], 'chosen from the Layout menu, a hidden layout gets a temporary tab while it is shown');
   const spacejs = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');

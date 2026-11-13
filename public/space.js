@@ -3529,7 +3529,7 @@ function fitLayoutTabs(avail) {
   layoutTabsMore.hidden = true;
   // A pixel spare: the bar counts the left zone in whole pixels (rounded up) when it decides what folds.
   const current = tabs.findIndex((b) => b.dataset.layoutTab === shownLayoutTab());
-  const { out, more: showMore } = tabOverflow({ avail: Math.floor(avail) - 1, gap, widths: tabs.map(w), more, current });
+  const { out, more: showMore } = tabOverflow({ avail: Math.floor(avail) - 1, gap, widths: tabs.map(w), more, current, workspace: Math.max(0, tabs.findIndex((b) => b.dataset.layoutTab === 'workspace')) });
   tabs.forEach((b, i) => b.classList.toggle('layout-tab-out', out.includes(i)));
   layoutTabsMore.hidden = !showMore;
   markLayoutTabs();

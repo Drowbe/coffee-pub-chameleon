@@ -272,9 +272,15 @@ export function layoutTabs({ system = [], favorites = [], layouts = [], current 
   const icon = (s, fallback) => (s && TAB_ICON.test(s.icon || '') ? s.icon : fallback);
   const list = Array.isArray(system) ? system.filter((s) => s && SYSTEM_TAB_DEFAULTS[s.id]) : [];
   const ws = list.find((s) => s.id === 'workspace') || null;
-  const out = [{ layout: 'workspace', kind: 'system', icon: icon(ws, 'columns'), label: name(ws, 'Workspace') }];
+  // The fixed layouts in the order the server lists them (the owner's order, plan-workspaces.md decision 13: the owner may put
+  // any first, the Workspace too); the Workspace is there whatever the list says, first when the list leaves it out.
+  const out = [];
+  const workspaceTab = { layout: 'workspace', kind: 'system', icon: icon(ws, 'columns'), label: name(ws, 'Workspace') };
+  if (!ws) out.push(workspaceTab);
   for (const s of list) {
-    if (s.id === 'workspace' || s.tab === false || out.some((t) => t.layout === s.id)) continue;
+    if (out.some((t) => t.layout === s.id)) continue;
+    if (s.id === 'workspace') { out.push(workspaceTab); continue; }
+    if (s.tab === false) continue;
     const [word, glyph] = SYSTEM_TAB_DEFAULTS[s.id];
     out.push({ layout: s.id, kind: 'system', icon: icon(s, glyph), label: name(s, word) });
   }
@@ -299,18 +305,18 @@ export function layoutTabs({ system = [], favorites = [], layouts = [], current 
 
 // Which layout tabs stay in the bar when it is tight (plan-layout-views.md, decisions 11, 14 and 17): all of them while
 // they fit side by side in `avail`; else the tabs leave from the right, one at a time, into a "..." after the last one
-// shown, as many staying as fit with the "..." (`more`, its width) beside them. The Workspace (the first tab) and the
+// shown, as many staying as fit with the "..." (`more`, its width) beside them. The Workspace and the
 // tab shown now (`current`, its index; -1 for none) never leave (Thomas, 2026-10-13): they stay even where nothing
 // else fits, and the bar's other tools give way after them. Tabs are never shortened. `widths` are the tabs' widths in
-// order, `gap` the space between two neighbours. Gives { out, count, more }: the indexes of the tabs in the "...", in
+// order, `workspace` the Workspace's index (0, first, unless the owner put another layout before it), `gap` the space between two neighbours. Gives { out, count, more }: the indexes of the tabs in the "...", in
 // order, how many tabs show, and whether the "..." shows. Pure, for check-nav.
-export function tabOverflow({ avail, gap = 0, widths = [], more = 0, current = -1 } = {}) {
+export function tabOverflow({ avail, gap = 0, widths = [], more = 0, current = -1, workspace = 0 } = {}) {
   const limit = Number.isFinite(avail) ? avail : Infinity;
   const n = widths.length;
   const row = (list) => list.reduce((sum, i) => sum + widths[i], 0) + gap * Math.max(0, list.length - 1);
   const all = widths.map((_, i) => i);
   if (row(all) <= limit + 0.5) return { out: [], count: n, more: false };
-  const pinned = (i) => i === 0 || i === current;
+  const pinned = (i) => i === workspace || i === current; // `workspace`: the Workspace's index (first unless the owner moved it)
   const others = all.filter((i) => !pinned(i));
   if (!others.length) return { out: [], count: n, more: false }; // nothing that may leave
   let keep = others.length - 1;
