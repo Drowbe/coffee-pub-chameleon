@@ -1790,6 +1790,12 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     if (!win) return false;
     const mod = { id: def.id, kind: 'builtin', mode: 'window', def, el: def.el, win, modes: def.modes || ['dock', 'float'], order: def.order, parts: () => [] };
     opened.set(def.id, mod);
+    // Takes the element out of the window's page into this page's canvas, hidden (see the pagehide note in setup).
+    const park = () => {
+      if (opened.get(def.id) !== mod || def.el.ownerDocument === document) return;
+      canvas.appendChild(def.el);
+      def.el.hidden = true;
+    };
     const setup = () => {
       win.document.title = def.name;
       for (const sheet of document.querySelectorAll('link[rel="stylesheet"]')) win.document.head.appendChild(sheet.cloneNode(true));
@@ -1802,6 +1808,11 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       }
       win.document.body.appendChild(grid);
       def.el.hidden = false;
+      // The moment the window's page is going away (it is closed, or reloads), the module's element is taken back into this page,
+      // hidden, synchronously. Later is too late: once the browser has shut the window's page down every event listener on its
+      // nodes is gone, so a module returned after the window closed (watchPopup, a moment later) came back with buttons that did
+      // nothing. The call's controls were dead after a closed pop-out (GitHub, 2026-11-13).
+      win.addEventListener('pagehide', park);
       def.onWindow?.(win);
       // Popups the chat opens (emoji, formatting help) close on a click elsewhere.
       win.document.addEventListener('click', (e) => {
@@ -1838,6 +1849,14 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
         def.onChange?.({ open: false, mode: 'window' });
       } else if (at !== back && !quiet()) note(`${def.name} came back as a ${at === 'float' ? 'floating window' : 'panel'} because its column could not take it.`);
       update();
+    }, () => {
+      // The window loaded a new page (a reload): the module was parked in this page at its pagehide, so it is put into the new page
+      // again (setup), once that page is ready. The first load is setup's own: the element is already in that page then.
+      if (opened.get(def.id) !== mod || win.closed) return;
+      try {
+        const d = win.document;
+        if (d.readyState === 'complete' && d.body && d.location.pathname.endsWith('/popout.html') && def.el.ownerDocument !== d) setup();
+      } catch { /* not ours to read now */ }
     });
     return true;
   }
@@ -2067,7 +2086,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   // puts it on the page the window shows now.
   const POP_POLL_MS = 1000;
   const POP_SETTLE_MS = 250;
-  function watchPopup(win, gone) {
+  function watchPopup(win, gone, onPage = null) {
     let done = false;
     let seen = null;
     const stop = () => {
@@ -2086,6 +2105,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
           win.addEventListener('pagehide', () => setTimeout(check, POP_SETTLE_MS));
         }
       } catch { /* not ours to read now */ }
+      onPage?.(); // a window that reloaded: the caller puts its module into the new page (it acts only when that page is ready and empty)
     };
     const timer = setInterval(tick, POP_POLL_MS);
     document.addEventListener('visibilitychange', tick);
