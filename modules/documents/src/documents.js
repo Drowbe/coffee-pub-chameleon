@@ -520,12 +520,11 @@
       return null;
     }).filter(Boolean)];
     if (ed.co) { // the lock: any editor can lock; the person who locked and an owner or admin can unlock (a courtesy guard in this page, not a server rule)
-      // The Document section also holds Rename and Delete: the title bar's menu is full (the toolbar takes 16 items, and the editing row uses them all).
+      // (Rename and Delete are in the title bar's select, with the same rules.)
       const rules = coLockRules();
       const doc = [];
       if (rules.lock) doc.push({ id: 'lock', label: 'Lock', icon: 'lock', tip: 'Nobody can type until it is unlocked.', onClick: () => coToggleLock(true) });
       else if (coLocked()) doc.push(rules.unlock ? { id: 'unlock', label: 'Unlock', icon: 'lock-open', onClick: () => coToggleLock(false) } : { id: 'unlock', label: 'Unlock', icon: 'lock-open', disabled: true, hint: rules.reason, tip: rules.reason, ariaLabel: `Unlock, not available. ${rules.reason}` });
-      if (canEdit && !ed.co.dead && ed.co.editor) doc.push(...coEntries(coLockNow()).map((e) => ({ ...e, onClick: () => (e.id === 'rename' ? coRename() : coRemove()) })));
       if (doc.length) items.push({ heading: 'Document' }, ...doc);
     }
     host.menu.show({ id: 'page', at, items });
@@ -542,7 +541,7 @@
   const PAGES_MAX = 6000;
   let flow = null; // { root, entries }: the document shown, its top-level nodes in order
   let paginateFrame = 0;
-  const HEAD_IDS = ['read-title', 'read-meta', 'read-tags'];
+  const HEAD_IDS = ['read-meta', 'read-tags'];
   function restoreHead() {
     const sheet = $('read').querySelector('.sheet');
     for (const id of HEAD_IDS) sheet.insertBefore($(id), $('page'));
@@ -584,7 +583,7 @@
     }
     const t0 = performance.now();
     const g = dlPageGeometry(sheet.dataset.size);
-    const all = [...HEAD_IDS.map($).filter((n) => !n.hidden).map((n) => ({ node: n, kind: n.id === 'read-title' ? 'heading' : 'block' })), ...flow.entries];
+    const all = [...HEAD_IDS.map($).filter((n) => !n.hidden).map((n) => ({ node: n, kind: 'block' })), ...flow.entries];
     const measure = el('div', 'page dl-flow dl-measure');
     measure.setAttribute('aria-hidden', 'true');
     measure.style.width = `${g.textW}px`;
@@ -653,7 +652,7 @@
     shownRev = got.rec.rev;
     paintPaper($('read').querySelector('.sheet'), got.rec.paper);
     paintPage($('read').querySelector('.sheet'), got.rec);
-    $('read-title').textContent = got.rec.title;
+    paintHeader();
     $('read-meta').textContent = `Edited by ${got.rec.editedByName}, ${when(got.rec.editedAt)}`;
     paintTags();
     restoreHead();
@@ -668,10 +667,8 @@
     openId = id; shownRev = 0;
     otherWindow = other ? id : null;
     $('list').hidden = true; $('read').hidden = false;
-    $('renamer').hidden = true;
     updateEditButton();
     clearPage();
-    $('read-title').textContent = docs.get(id).title;
     paintTags();
     paintPaper($('read').querySelector('.sheet'), docs.get(id).paper);
     paintPage($('read').querySelector('.sheet'), docs.get(id));
@@ -688,16 +685,13 @@
     try { const id = await create($('make-title').value, ''); $('make').hidden = true; render(); openDoc(id); } catch (err) { note(err.message); }
   });
   const heldByOther = (id) => { const l = liveLock(id); return l && l.rec.holder !== me ? l : null; };
+  // Rename, from the title bar's menu: the shared prompt (as the Whiteboard's rename); the new title is drawn there, not in the page.
   const startRename = () => {
     const l = heldByOther(openId);
     if (l) { note(`${l.rec.name} is editing this. Try again when they are done.`); return; }
-    $('renamer').hidden = false; $('rename-title').value = docs.get(openId).title; $('rename-title').focus();
+    const id = openId;
+    coRenameTo(id, docs.get(id).title, async (t) => { await rename(id, t); if (openId === id) draw(id).catch(() => {}); paintHeader(); });
   };
-  $('rename-cancel').addEventListener('click', () => { $('renamer').hidden = true; });
-  $('renamer').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try { await rename(openId, $('rename-title').value); $('renamer').hidden = true; draw(openId); } catch (err) { note(err.status === 409 ? 'Someone else changed this first. Try again.' : err.message); }
-  });
   const startRemove = async () => {
     const rec = docs.get(openId);
     const l = heldByOther(openId);
@@ -717,6 +711,7 @@
     return true;
   }
   function afterChange() {
+    paintHeader(); // the documents in the title bar's select may have changed
     if (tagPicker && (openId || ed)) tagPicker.set(shownTags(ed ? ed.id : openId));
     if (ed) { if (ed.co) coRecord(); else hearLock(); return; }
     if (openId) {
@@ -1186,6 +1181,7 @@
     coApplyRO();
     coLockBanner();
     renderChrome();
+    paintHeader(); // Rename and Delete in the title bar's select follow the lock
     coEditorsPaint();
   }
   function coLockBanner() {
@@ -1273,6 +1269,7 @@
       if (ed !== mine || c.dead) return;
       $('edit-title').value = t;
       dlMetaSet(c.session.doc(), { title: t }, 'dl-meta');
+      paintHeader();
       typed();
     });
   }
@@ -1343,8 +1340,8 @@
     const sheet = $('editor').querySelector('.sheet');
     if (m.paper !== ed.paper) { ed.paper = m.paper; paintPaper(sheet, ed.paper); }
     if (!dlSamePage(m.page, ed.page)) { ed.page = m.page; paintPage(sheet, ed.page); renderChrome(); }
-    const t = $('edit-title');
-    if (m.title !== t.value && (force || (root.activeElement || doc.activeElement) !== t)) t.value = m.title;
+    const t = $('edit-title'); // the editor's hidden copy of the title; the title bar's select shows it
+    if (m.title !== t.value) { t.value = m.title; paintHeader(); }
     coLockSync();
   }
   function coMetaPush(fields) {
@@ -1617,7 +1614,6 @@
     $('read').hidden = false;
     openId = mine.id; shownRev = 0;
     clearPage();
-    $('read-title').textContent = docs.get(mine.id) ? docs.get(mine.id).title : '';
     updateEditButton();
     draw(mine.id).catch(() => {});
     renderChrome();
@@ -1774,6 +1770,7 @@
   let layoutSwitch = null;
   let paperButton = null;
   let tagButton = null;
+  let chromeMade = ''; // which shared buttons and switches are made (renderChrome)
   let backButton = null;
   function formatWith(f, e) {
     if (!ed || ed.lost || joining()) return;
@@ -1808,6 +1805,71 @@
     { id: 'zoom-in', title: withKey('Zoom in', '+'), icon: 'magnifying-glass-plus' },
     { id: 'zoom', title: 'Zoom', icon: 'up-right-and-down-left-from-center' },
   ];
+  // ---- the title bar: the open document's title as a select (host.header.set, kind 'select'), as the Whiteboard's boards ----------
+  // The title is not drawn in the page. The select shows it (the live one in a shared document), its menu lists the space's documents
+  // (a pick opens it) and, for a person who may edit, holds New document, Rename and Delete. Zoom stays beside it as icons.
+  const SELECT_DOCS = 40; // the header menu holds 50 entries: 40 documents, the "more" line, a divider and three actions
+  const titleNow = () => {
+    if (ed) { const m = metaNow(); return (m && m.title) || $('edit-title').value || ed.saved.title || ''; }
+    const rec = openId ? docs.get(openId) : null;
+    return rec ? rec.title : '';
+  };
+  function docsSelect() {
+    const here = ed ? ed.id : openId;
+    const all = [...docs.values()].sort((a, b) => b.editedAt.localeCompare(a.editedAt));
+    let shown = all.slice(0, SELECT_DOCS);
+    if (here && docs.has(here) && !shown.some((r) => r.id === here)) shown = [...shown.slice(0, SELECT_DOCS - 1), docs.get(here)];
+    const items = [];
+    if (!ed || ed.co) { // a document being edited in this window (not shared) is left with Done, so the others are not offered then
+      for (const r of shown) items.push({ id: `d.${r.id}`, label: r.id === here ? titleNow() || r.title : r.title, ...(r.id === here ? { current: true } : {}) });
+      if (all.length > shown.length) { const n = all.length - shown.length; items.push({ id: 'more', label: n === 1 ? '1 more document exists' : `${n} more documents exist`, disabled: true }); }
+    } else items.push({ id: `d.${here}`, label: titleNow(), current: true });
+    const acts = [];
+    if (canEdit && !joining()) {
+      const shared = Boolean(ed && ed.co);
+      const rules = shared ? coRemoveRules(coLockNow()) : { off: false }; // a locked shared document: Rename and Delete are off, with the reason (New document is about other documents)
+      const off = () => (rules.off ? { disabled: true, hint: rules.reason } : {});
+      if (!ed || ed.co) acts.push({ id: 'new', label: 'New document' });
+      if (!ed || (ed.co && ed.co.ready && !ed.co.dead && ed.co.editor)) { acts.push({ id: 'rename', label: 'Rename', ...off() }); acts.push({ id: 'delete', label: 'Delete', ...off() }); }
+      else if (ed && !ed.co) acts.push({ id: 'rename', label: 'Rename' });
+    }
+    if (acts.length) items.push({ divider: true }, ...acts);
+    return items;
+  }
+  let headerKey = '';
+  function paintHeader() {
+    if (!host.header) return;
+    const open = Boolean(openId || (ed && !ed.lost));
+    const select = open ? [{ kind: 'select', id: 'doc-select', label: titleNow() || 'Document', title: 'Documents', items: docsSelect() }] : [];
+    const items = open ? [...select, ...zoomItems()] : [];
+    const key = JSON.stringify(items);
+    if (key === headerKey) return;
+    headerKey = key;
+    host.header.set(items).catch(() => {});
+  }
+  // From the title bar's select: a pick of a document, New document, Rename, Delete.
+  async function newDoc() { // asks for the title first, so a Cancel leaves the open document as it is
+    let title = null;
+    try { title = await host.ui.prompt({ title: 'New document', label: 'Title', action: 'Create', maxLength: DL.titleMax }); } catch (err) { note(cleanMsg(err)); return; }
+    if (title === null) return;
+    await leaveThen(async () => { const id = await create(title, ''); render(); if (openId) closeDoc(); openDoc(id); });
+  }
+  async function editRename() { // a document being edited here alone: the title goes with the next save
+    const mine = ed;
+    if (!mine || mine.lost || mine.co) return;
+    await coRenameTo(mine.id, $('edit-title').value, async (t) => { if (ed !== mine) return; $('edit-title').value = t; typed(); paintHeader(); });
+  }
+  const leaveThen = async (fn) => { if (ed && ed.co) { await leaveCo(); if (ed) return; } await fn(); }; // a shared document is left first (it saves), then the next opens
+  host.on('header', (e) => {
+    if (!e || e.id !== 'doc-select') return;
+    const v = String(e.value || '');
+    if (v === 'new') { if (canEdit && (!ed || ed.co)) newDoc().catch((err) => note(cleanMsg(err))); return; }
+    if (v === 'rename') { if (!canEdit) return; if (ed && ed.co) coRename(); else if (ed) editRename(); else if (openId) startRename(); return; }
+    if (v === 'delete') { if (!canEdit) return; if (ed && ed.co) coRemove(); else if (!ed && openId) startRemove(); return; }
+    const m = /^d\.([a-z0-9]+)$/.exec(v);
+    if (!m || !docs.has(m[1]) || m[1] === (ed ? ed.id : openId)) return;
+    leaveThen(() => { closeTagPicker(); if (openId) closeDoc(); openDoc(m[1]); }).catch((err) => note(cleanMsg(err)));
+  });
   function renderChrome() {
     let items;
     if (ed && ed.co) {
@@ -1823,8 +1885,6 @@
       items = [{ type: 'button', id: 'save-md', label: 'Save as Markdown file', icon: 'file-arrow-down', placement: 'menu' }];
       if (canEdit) items.push(
         { type: 'button', id: 'edit', label: 'Edit', icon: 'pen', primary: true, zone: 'end', ...(editOff ? { disabled: true } : {}) },
-        { type: 'button', id: 'rename', label: 'Rename', icon: 'pen-to-square', placement: 'menu' },
-        { type: 'button', id: 'remove', label: 'Delete', icon: 'trash', placement: 'menu' },
       );
     } else {
       items = [{ type: 'search', id: 'search', value: query, placeholder: 'Search documents', label: 'Search documents' }];
@@ -1836,19 +1896,43 @@
       }
       if (canEdit) items.push({ type: 'button', id: 'trash', title: showTrash ? 'Back to the documents' : `Trash${trash.size ? ` (${trash.size})` : ''}`, icon: showTrash ? 'file-lines' : 'trash', on: showTrash });
     }
-    // The formatting buttons are the shared icon-only toolbar buttons (host.ui.toolbarButton), made while a person is editing.
-    // A shared document shows them only to a person who can type in it: not a reader (the ninth person), not while it is locked (step 4c).
+    // The shared buttons and switches draw in the order they were made, so they are made together, in the row's order, whenever the
+    // set of them changes: [Back] [Tags] then the formatting buttons and Insert on the left; on the right the Page button, the
+    // Fluid | Paper switch and the Markdown | Rich text switch (then Done or Edit, the module's own items).
+    // A shared document shows the formatting to a person who can type in it: not a reader (the ninth person), not while it is locked (step 4c).
     const wantFmt = Boolean(ed && !ed.lost && (!ed.co || joining() || !coReadOnly()));
-    // The shared buttons draw in the order they were made: when the editing ones come back, Back and Tags are made again after them (as when the document opened).
-    if (wantFmt && !fmtButtons.length && ed.co) { if (backButton) { backButton.destroy(); backButton = null; } if (tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); } }
-    if (wantFmt && !fmtButtons.length) fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
-    else if (!wantFmt && fmtButtons.length) { for (const b of fmtButtons) b.destroy(); fmtButtons = []; }
-    if (wantFmt && !insertButton) insertButton = host.ui.toolbarButton({ id: 'insert', label: 'Insert', icon: 'circle-plus', iconOnly: true, onClick: (e) => insertMenu(e) });
-    else if (!wantFmt && insertButton) { insertButton.destroy(); insertButton = null; }
+    // (A locked shared document keeps the Page button for a person who can type: its menu holds Unlock.)
+    const wantPage = wantFmt || Boolean(ed && ed.co && ed.co.ready && !ed.lost && ed.co.editor && coLocked());
+    const wantBack = Boolean((openId && !ed) || (ed && ed.co));
+    const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost && (!ed.co || joining() || !coReadOnly()))));
+    const wantSwitch = !ed && !openId; // the list's look switch is there only while the list is
+    const made = [wantBack, wantTags, wantFmt, wantPage, wantSwitch].join();
+    if (made !== chromeMade) {
+      chromeMade = made;
+      for (const b of [backButton, tagButton, insertButton, paperButton, richSwitch, layoutSwitch, listSwitch, ...fmtButtons]) if (b) b.destroy();
+      backButton = tagButton = insertButton = paperButton = richSwitch = layoutSwitch = listSwitch = null; fmtButtons = []; fmtFor = null; fmtOn = [];
+      if (!wantTags) closeTagPicker();
+      if (wantBack) backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); else if (ed.co) leaveCo(); } });
+      if (wantTags) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
+      if (wantFmt) {
+        fmtButtons = FORMATS.map((f) => host.ui.toolbarButton({ id: `fmt-${f.id}`, label: f.title, icon: f.icon, iconOnly: true, onClick: (e) => formatWith(f, e) }));
+        insertButton = host.ui.toolbarButton({ id: 'insert', label: 'Insert', icon: 'circle-plus', iconOnly: true, onClick: (e) => insertMenu(e) });
+      }
+      // The Page button's menu holds the colour, the size and the numbers (and the lock).
+      if (wantPage) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
+      // The layout (Fluid or Paper) is the document's own, set while editing; then the choice between the Markdown text box and the rich editor.
+      if (wantFmt) {
+        layoutSwitch = host.ui.viewSwitch({ id: 'layout', label: 'Layout', options: DL_LAYOUTS.map((o) => ({ ...o })), value: ed.page.layout, zone: 'end', onChange: chooseLayout });
+        richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
+      }
+      if (wantSwitch) listSwitch = host.ui.viewSwitch({ id: 'listview', label: 'View', options: DL_LISTVIEWS.map((o) => ({ ...o })), value: listView, onChange: setListView });
+    }
+    if (richSwitch) richSwitch.set(dlEditViewId(rich));
+    if (layoutSwitch) layoutSwitch.set(ed.page.layout);
+    if (listSwitch) listSwitch.set(listView);
     // In the rich editor an entry with no action there yet (Grid, Formula) is off; Heading's levels are all there.
     // There Bold, Italic, Code and Link name their keys, and Checklist the key that ticks a row.
-    if (!fmtButtons.length) { fmtFor = null; fmtOn = []; }
-    else if (fmtFor !== `${rich}${joining()}`) {
+    if (fmtButtons.length && fmtFor !== `${rich}${joining()}`) {
       fmtFor = `${rich}${joining()}`;
       fmtButtons.forEach((b, i) => {
         const f = FORMATS[i];
@@ -1856,40 +1940,10 @@
       });
       paintActive();
     }
-    // The choice between the Markdown text box and the rich editor: the shared view switch (as the list's List and Thumbnails),
-    // in the bar's end zone before Page colour, there while a person is editing.
-    if (wantFmt && !richSwitch) richSwitch = host.ui.viewSwitch({ id: 'editview', label: 'Editor', options: DL_EDITVIEWS.map((o) => ({ ...o })), value: dlEditViewId(rich), zone: 'end', onChange: (v) => setRich(dlEditViewIsRich(v)) });
-    else if (!wantFmt && richSwitch) { richSwitch.destroy(); richSwitch = null; }
-    else if (richSwitch) richSwitch.set(dlEditViewId(rich));
-    // The layout (Fluid or Paper) is the document's own, set while editing: the same shared switch, beside the editor's.
-    if (wantFmt && !layoutSwitch) layoutSwitch = host.ui.viewSwitch({ id: 'layout', label: 'Layout', options: DL_LAYOUTS.map((o) => ({ ...o })), value: ed.page.layout, zone: 'end', onChange: chooseLayout });
-    else if (!wantFmt && layoutSwitch) { layoutSwitch.destroy(); layoutSwitch = null; }
-    else if (layoutSwitch) layoutSwitch.set(ed.page.layout);
-    // The Page button's menu holds the colour, the size and the numbers.
-    // (A locked shared document keeps the Page button for a person who can type: its menu holds Unlock.)
-    const wantPage = wantFmt || Boolean(ed && ed.co && ed.co.ready && !ed.lost && ed.co.editor && coLocked());
-    if (wantPage && !paperButton) paperButton = host.ui.toolbarButton({ id: 'paper', label: 'Page', icon: 'ruler-combined', iconOnly: true, zone: 'end', onClick: (e) => pageMenu(e) });
-    else if (!wantPage && paperButton) { paperButton.destroy(); paperButton = null; }
-    // The Tags button (the shared icon-only toolbar button) is there for an editor with a document open, reading or editing.
-    // Back is the first button (the shared buttons draw in the order they were made), so Tags is made after it.
-    const wantBack = Boolean((openId && !ed) || (ed && ed.co));
-    const wantTags = Boolean(tagsOn && canEdit && (openId || (ed && !ed.lost && (!ed.co || joining() || !coReadOnly()))));
-    if (wantBack && !backButton) {
-      if (tagButton) { tagButton.destroy(); tagButton = null; }
-      backButton = host.ui.toolbarButton({ id: 'back', label: 'Back to the documents', icon: 'arrow-left', iconOnly: true, onClick: () => { if (!ed) closeDoc(); else if (ed.co) leaveCo(); } });
-    } else if (!wantBack && backButton) { backButton.destroy(); backButton = null; }
-    if (wantTags && !tagButton) tagButton = host.ui.toolbarButton({ id: 'tags', label: 'Tags', icon: 'tags', iconOnly: true, onClick: (e) => tagsMenu(e) });
-    else if (!wantTags && tagButton) { tagButton.destroy(); tagButton = null; closeTagPicker(); }
     // While a shared document is still joining there is no editor: what edits is off until coReady draws the bar again.
-    // After every button is made, so none stays on (Page and Tags are made above).
     for (const b of [insertButton, paperButton, tagButton]) if (b) b.set({ disabled: joining() });
-    // The list's look switch is there only while the list is.
-    const wantSwitch = !ed && !openId;
-    if (wantSwitch && !listSwitch) listSwitch = host.ui.viewSwitch({ id: 'listview', label: 'View', options: DL_LISTVIEWS.map((o) => ({ ...o })), value: listView, onChange: setListView });
-    else if (!wantSwitch && listSwitch) { listSwitch.destroy(); listSwitch = null; }
-    else if (listSwitch) listSwitch.set(listView);
     host.toolbar.set(items).catch(() => {});
-    if (host.header) host.header.set(openId || (ed && !ed.lost) ? zoomItems() : []).catch(() => {});
+    paintHeader();
     if (host.add) host.add.set(!ed && !openId && canEdit && !showTrash ? [{ id: 'new', label: 'New document', icon: 'plus' }, { id: 'open', label: 'Open Markdown file', icon: 'file-import' }] : []).catch(() => {});
     output.offerPrint(viewShown());
     renderStatus();
@@ -1909,8 +1963,6 @@
     if (id === 'trash') { showTrash = !showTrash; render(); return; }
     if (id === 'back') { if (!ed) closeDoc(); else if (ed.co) leaveCo(); return; }
     if (id === 'edit') { startEdit(); return; }
-    if (id === 'rename') { if (openId && !ed && canEdit) startRename(); return; }
-    if (id === 'remove') { if (openId && !ed && canEdit) startRemove(); return; }
     if (id === 'done') { finish(); return; }
     if (id === 'save-md') { output.save(); return; }
   });
@@ -1921,8 +1973,6 @@
     if (id === 'zoom') { zoomMenu(e); return; }
   });
   host.on('add', (e) => { if (e.id === 'open') { if (!ed && !openId) output.pick(); return; } if (e.id === 'new' && !ed && !openId) { $('make').hidden = false; $('make-title').value = ''; $('make-title').focus(); } });
-  $('edit-title').addEventListener('input', () => { if (ed && ed.co) coMetaPush({ title: $('edit-title').value }); typed(); });
-  $('edit-title').addEventListener('blur', () => { if (ed && ed.co) coMetaPaint(true); }); // a remote title that waited for the caret to leave
 
   $('co-unlock').addEventListener('click', () => coToggleLock(false));
   $('lost-copy').addEventListener('click', async () => {
