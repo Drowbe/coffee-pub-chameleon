@@ -4,7 +4,8 @@
 // data folder, carry it):
 //
 //   { "spaces": { "<space id>": { "shared": [layout], "people": { "<user key>": [layout] },
-//                                  "favorites": { "<user key>": [layout id] } } } }
+//                                  "favorites": { "<user key>": [layout id] },
+//                                  "last": { "<user key>": { "layout": "<layout id>", "at": <ms> } } } } }
 //
 // favorites (documentation/plans/plan-favorite-layouts.md, step 1): each person's own favorites in a space, layout ids
 // in the order they were favorited. Only a layout the person can see can be one, each id once, and there is no limit
@@ -14,6 +15,12 @@
 // system (documentation/plans/plan-layout-views.md, step 1): the system layouts `workspace`, `calendar`, `map`,
 // `conference`, `whiteboard` and `documents` are never stored; server/index.js makes them per space from what is on. What is stored is each person's own choices for
 // them, per space, like favorites: "system": { "<user key>": { "<system id>": { "name"?, "icon"?, "tab"?: false } } }.
+// last (documentation/plans/plan-workspaces.md, decision 20, step 11): the layout each signed-in person last used in a
+// space, so entering the space can open it: "last": { "<user key>": { "layout": "<layout id>", "at": <ms> } }. One entry per
+// person per space, about 100 bytes, no history; the server writes `at`. `layout` is a system id or a saved layout the
+// person can see. remove() clears the entries that name a deleted layout; forgetPerson() and forgetSpace() clear the rest;
+// the key is left out of a space's entry while nobody there has one. A guest has none. It is personal state, so an owner's
+// environment copy leaves it out (server/environment-export.js).
 // A user layout may carry an `icon`; one stored without reads as kind `user` with the default icon.
 //
 // A layout is { id, name, by, at, modules: [{ id, mode, dockW?, box?, snap?, stack?, at?, h?, folded? }] (empty: a blank layout), snap?: { all, pitch }, arrange?: 'dock' | 'window' }. cleanLayout()
@@ -63,6 +70,7 @@ const ARRANGES = ['dock', 'window'];
 const MODULE_KEYS = ['id', 'mode', 'dockW', 'box', 'snap', 'stack', 'at', 'h', 'folded'];
 const BOX_KEYS = ['x', 'y', 'w', 'h'];
 const SNAP_KEYS = ['all', 'pitch'];
+const LAST_ID_MAX = 64; // a layout id as `last` keeps it
 const ID_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -358,7 +366,7 @@ class Layouts {
       const sharedIds = new Set(shared.map((l) => l.id));
       const favorites = {};
       for (const [key, list] of Object.entries(isObject(entry.favorites) ? entry.favorites : {})) {
-        const own = new Set((people[key] || []).map((l) => l.id));
+        const own = new Set((Object.hasOwn(people, key) ? people[key] : []).map((l) => l.id));
         const ids = Array.isArray(list)
           ? [...new Set(list.filter((id) => typeof id === 'string' && id && (sharedIds.has(id) || own.has(id))))]
           : [];
@@ -369,8 +377,18 @@ class Layouts {
         const kept = storedSystem(record);
         if (Object.keys(kept).length) system[key] = kept;
       }
-      if (shared.length || Object.keys(people).length || Object.keys(favorites).length || Object.keys(system).length) {
-        this.spaces[spaceId] = { shared, people, ...(Object.keys(favorites).length ? { favorites } : {}), ...(Object.keys(system).length ? { system } : {}) };
+      // Each person's last layout: one { layout, at } per person, kept only while it names a fixed layout or a saved layout
+      // that person can see (a gone one, a malformed one or a hand-edited one is dropped), the id at most 64 characters.
+      const last = {};
+      for (const [key, record] of Object.entries(isObject(entry.last) ? entry.last : {})) {
+        if (key === '__proto__' || !isObject(record)) continue;
+        const { layout, at } = record;
+        if (typeof layout !== 'string' || !layout || layout.length > LAST_ID_MAX || typeof at !== 'number' || !Number.isFinite(at)) continue;
+        const own = (Object.hasOwn(people, key) ? people[key] : []).some((l) => l.id === layout);
+        if (SYSTEM_IDS.includes(layout) || sharedIds.has(layout) || own) last[key] = { layout, at };
+      }
+      if (shared.length || Object.keys(people).length || Object.keys(favorites).length || Object.keys(system).length || Object.keys(last).length) {
+        this.spaces[spaceId] = { shared, people, ...(Object.keys(favorites).length ? { favorites } : {}), ...(Object.keys(system).length ? { system } : {}), ...(Object.keys(last).length ? { last } : {}) };
       }
     }
   }
@@ -415,7 +433,8 @@ class Layouts {
       for (const [key, record] of Object.entries(entry.system)) if (!Object.keys(record).length) delete entry.system[key];
       if (!Object.keys(entry.system).length) delete entry.system;
     }
-    if (!entry.shared.length && !Object.keys(entry.people).length && !entry.favorites && !entry.system) delete this.spaces[spaceId];
+    if (entry.last && !Object.keys(entry.last).length) delete entry.last;
+    if (!entry.shared.length && !Object.keys(entry.people).length && !entry.favorites && !entry.system && !entry.last) delete this.spaces[spaceId];
   }
 
   // { mine, shared } in a space: `userKey` null (a guest) has none of their own. Each is a copy with `kind: 'user'` and
@@ -455,6 +474,31 @@ class Layouts {
     this.tidy(spaceId);
     this.save();
     return next;
+  }
+
+  // The layout id `userKey` last used in a space, as stored (null for a guest, or when there is none). Whether it is still
+  // available is the route's (a fixed layout may be off, or hidden by the owner): the record is not rewritten for that.
+  lastOf(spaceId, userKey) {
+    return userKey ? this.spaces[spaceId]?.last?.[userKey]?.layout || null : null;
+  }
+
+  // Whether `layoutId` can be a person's last layout: a fixed layout's id, or a saved layout they can see. The caller
+  // decides whether a fixed one is on here.
+  knows(spaceId, layoutId, userKey) {
+    return typeof layoutId === 'string' && layoutId.length > 0 && layoutId.length <= LAST_ID_MAX
+      && (SYSTEM_IDS.includes(layoutId) || Boolean(this.find(spaceId, layoutId, userKey)));
+  }
+
+  // Sets `userKey`'s last layout in a space; the server writes `at`. The same layout again changes nothing (no write).
+  // The caller has checked the id (knows(), and that a fixed one is on) and that this is a signed-in person.
+  setLast(spaceId, userKey, layoutId) {
+    this.mustWrite();
+    if (this.lastOf(spaceId, userKey) === layoutId) return layoutId;
+    const entry = this.spaces[spaceId] || (this.spaces[spaceId] = { shared: [], people: {} });
+    entry.last = entry.last || {};
+    entry.last[userKey] = { layout: layoutId, at: Date.now() };
+    this.save();
+    return layoutId;
   }
 
   // `userKey`'s favorites in a space: the ids, in the order favorited, of the saved layouts that still exist and that
@@ -547,7 +591,7 @@ class Layouts {
     return copy(layout);
   }
 
-  // Deletes a layout `userKey` can see, and takes it out of every person's favorites in the space. true when there
+  // Deletes a layout `userKey` can see, and takes it out of every person's favorites and last layouts in the space. true when there
   // was one.
   remove(spaceId, layoutId, userKey) {
     this.mustWrite();
@@ -558,6 +602,8 @@ class Layouts {
     list.splice(list.findIndex((l) => l.id === layoutId), 1);
     const favorites = this.spaces[spaceId].favorites || {};
     for (const key of Object.keys(favorites)) favorites[key] = favorites[key].filter((id) => id !== layoutId);
+    const last = this.spaces[spaceId].last || {};
+    for (const key of Object.keys(last)) if (last[key].layout === layoutId) delete last[key];
     this.tidy(spaceId);
     this.save();
     return true;
@@ -570,15 +616,16 @@ class Layouts {
     this.save();
   }
 
-  // A removed person takes their own layouts and their favorites in every space. Shared layouts they saved stay: they
+  // A removed person takes their own layouts, their favorites and their last layout in every space. Shared layouts they saved stay: they
   // are the space's.
   forgetPerson(userKey) {
     if (this.unreadable) return;
     let changed = false;
     for (const spaceId of Object.keys(this.spaces)) {
       const entry = this.spaces[spaceId];
-      if (entry.people[userKey] || entry.favorites?.[userKey] || entry.system?.[userKey]) {
+      if (entry.people[userKey] || entry.favorites?.[userKey] || entry.system?.[userKey] || entry.last?.[userKey]) {
         delete entry.people[userKey];
+        if (entry.last) delete entry.last[userKey];
         if (entry.favorites) delete entry.favorites[userKey];
         if (entry.system) delete entry.system[userKey];
         this.tidy(spaceId);
