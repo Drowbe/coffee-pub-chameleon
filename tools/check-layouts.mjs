@@ -477,7 +477,7 @@ const refused = (input, pattern, label, options) => {
   assert.match(setFn, /const \{ favorites, layout: answered \} = await layoutRequest\(/);
   assert.match(setFn, /if \(system\) system\.tab = answered && typeof answered\.tab === 'boolean' \? answered\.tab : on;/, 'Calendar and Map: the answer says whether their tab shows (plan-layout-views.md, step 2)');
   assert.match(setFn, /layoutList\.favorites = Array\.isArray\(favorites\) \? favorites : \[\];/);
-  assert.match(server, /res\.json\(\{ mine, shared, system: systemLayoutsFor\(found\), defaultLayout: [^}]*favorites, canShare: found\.canShare, canSetDefault: found\.canSetDefault, \.\.\.\(found\.canSetDefault \? \{ tabs: tabsOf\(found\.space\.tabs\) \} : \{\}\) \}\);/);
+  assert.match(server, /res\.json\(\{ mine, shared, system, defaultLayout: [^}]*favorites, canShare: found\.canShare, canSetDefault: found\.canSetDefault, \.\.\.\(found\.canSetDefault \? \{ tabs: tabsOf\(found\.space\.tabs\) \} : \{\}\), \.\.\.\(last \? \{ last \} : \{\}\) \}\);/);
   assert.match(space, /favorites: Array\.isArray\(got\.favorites\) \? got\.favorites : \[\]/);
   // A guest never asks: no ... entry, no favorite tabs (the server's 403 is the backstop).
   assert.match(space, /const mayFavorite = \(\) => !guestToken && Boolean\(me\?\.key\) && me\.role !== 'guest';/);
@@ -1123,7 +1123,7 @@ try {
   // Turn the Calendar on (installed, enabled, in every space): the system layout appears for everyone in the space.
   await expect('install the Calendar', 201, 'POST', '/api/modules/bundled/calendar/install', { cookie: owner2 });
   await expect('enable the Calendar', 200, 'PATCH', '/api/modules/calendar', { cookie: owner2, body: { enabled: true, allSpaces: true } });
-  const calendar = { id: 'calendar', kind: 'system', name: 'Calendar', icon: 'calendar-days', tab: true, shown: true, defaultName: 'Calendar', defaultIcon: 'calendar-days', modules: [{ id: 'calendar', mode: 'dock' }] };
+  const calendar = { id: 'calendar', kind: 'system', name: 'Calendar', icon: 'calendar-days', tab: true, shown: true, defaultName: 'Calendar', defaultIcon: 'calendar-days', modules: [{ id: 'calendar', mode: 'dock' }], settings: [] };
   assert.deepEqual((await call('GET', L, { cookie: pat3 })).json.system, [workspace, calendar], 'Workspace then Calendar; Calendar is a tab from the start');
   assert.deepEqual(await idsOf(sam2), ['workspace', 'calendar'], 'everyone in the space');
   assert.deepEqual((await call('GET', `${L}${asGuest}`)).json.system, [], 'a guest still has none');

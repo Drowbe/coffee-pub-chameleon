@@ -31,6 +31,7 @@ const { ENVIRONMENT_COPY_DIR, LEGACY_ENVIRONMENT_RECORD } = require('./migrate-n
 
 const APP_FILE = 'app.json';
 const AI_FILE = 'ai.json';
+const LAYOUTS_FILE = 'layouts.json';
 
 // --- app.json ------------------------------------------------------------------------------------------------------
 
@@ -113,6 +114,19 @@ function exportAi(buffer) {
   return ai;
 }
 
+// --- layouts.json ----------------------------------------------------------------------------------------------------
+
+// layouts.json for the copy: the same file without each person's last layout (`last`, plan-workspaces.md decision 20).
+// It is personal state, the layout a person last opened in a space, so it stays with the environment that kept it and
+// does not travel in an owner's copy. A file that is not JSON in the shape of the layouts file is passed on as it is.
+function exportLayouts(buffer) {
+  let file;
+  try { file = JSON.parse(Buffer.from(buffer).toString('utf8')); } catch { return buffer; }
+  if (!isObject(file) || !isObject(file.spaces)) return buffer;
+  for (const entry of Object.values(file.spaces)) if (isObject(entry)) delete entry.last;
+  return Buffer.from(`${JSON.stringify(file, null, 2)}\n`);
+}
+
 // --- files ---------------------------------------------------------------------------------------------------------
 
 const MODULE_ID = '[a-z][a-z0-9-]{1,31}';
@@ -169,6 +183,7 @@ function exportEntries(files, appData, { declared } = {}) {
       if (ai) out.push([name, Buffer.from(`${JSON.stringify(ai, null, 2)}\n`)]);
       continue;
     }
+    if (name === LAYOUTS_FILE && fileAllowed(name, declared)) { out.push([name, exportLayouts(data)]); continue; }
     if (fileAllowed(name, declared)) out.push([name, data]);
   }
   out.unshift([APP_FILE, Buffer.from(`${JSON.stringify(exportApp(appData), null, 2)}\n`)]);
@@ -205,7 +220,7 @@ function restoreEntries(files, { backup = false } = {}) {
 }
 
 module.exports = {
-  exportEntries, restoreEntries, exportApp, exportAi, fileAllowed, fileLeftOut, unclassifiedFields,
+  exportEntries, restoreEntries, exportApp, exportAi, exportLayouts, fileAllowed, fileLeftOut, unclassifiedFields,
   APP_FIELDS, APP_LEFT_OUT, USER_FIELDS, USER_LEFT_OUT, USER_SPACE_FIELDS, USER_SPACE_LEFT_OUT,
   SPACE_FIELDS, SPACE_LEFT_OUT, ASIDE_FIELDS, SETTINGS_FIELDS, SETTINGS_LEFT_OUT,
 };

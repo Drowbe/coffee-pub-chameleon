@@ -24,6 +24,7 @@ const { ChatHistory } = require('./chat-history');
 const { cleanReport: cleanAttention } = require('./attention');
 const { cleanFacts, iconKnown } = require('./facts');
 const { TagError } = require('./tags');
+const { FIXED_WORKSPACE_SETTINGS } = require('./fixed-workspaces');
 const { LayoutError, cleanLayout, cleanSystemPatch, tabsOf, SYSTEM_IDS, SYSTEM_ICONS } = require('./layouts');
 const { ModuleLimits } = require('./module-limits');
 const { ModuleSettings, SettingError } = require('./module-settings');
@@ -5562,7 +5563,9 @@ function sendLayoutError(err, res) {
 // readable by this person. Each carries this person's own name, icon and tab choices (store.layouts.systemOf), else its
 // defaults. `shown` is false when the owner hid it (`tabs.hide`); the owner's hide wins, so `tab` is false then whatever the
 // person chose. A guest has none.
-//   { id, kind: 'system', name, icon, tab, shown, defaultName, defaultIcon, modules }
+//   { id, kind: 'system', name, icon, tab, shown, defaultName, defaultIcon, modules, settings? }
+// `settings` (the Fixed Workspaces only, never the Workspace): the switches its Modules tab offers, from the schema in
+// server/fixed-workspaces.js (fixedSettingsFor); [] when there is nothing to configure.
 function systemLayoutsFor(found) {
   if (!found.who.user) return [];
   const mine = store.layouts.systemOf(found.space.id, found.who.user.key);
@@ -5570,7 +5573,7 @@ function systemLayoutsFor(found) {
   const make = (id, defaultName, defaultIcon, modulesOf) => {
     const own = mine[id] || {};
     const shown = !hidden.hide.includes(id);
-    return { id, kind: 'system', name: own.name || defaultName, icon: own.icon || defaultIcon, tab: shown && (id === 'workspace' ? true : own.tab !== false), shown, defaultName, defaultIcon, modules: modulesOf };
+    return { id, kind: 'system', name: own.name || defaultName, icon: own.icon || defaultIcon, tab: shown && (id === 'workspace' ? true : own.tab !== false), shown, defaultName, defaultIcon, modules: modulesOf, ...(id === 'workspace' ? {} : { settings: fixedSettingsFor(found, id) }) };
   };
   const made = new Map([['workspace', make('workspace', 'Workspace', SYSTEM_ICONS.workspace, [])]]);
   for (const [id, dest, moduleId] of [['calendar', 'calendar', 'calendar'], ['map', 'map', 'maps']]) {
@@ -5594,6 +5597,41 @@ function systemLayoutsFor(found) {
     made.set(id, make(id, shown.name, shown.icon || SYSTEM_ICONS[id], [{ id, mode: 'dock' }]));
   }
   return hidden.order.map((id) => made.get(id)).filter(Boolean);
+}
+// The switches on one Fixed Workspace's Modules tab for this viewer (plan-workspaces.md, decisions 34 and 35): the
+// schema's { module, setting } entries (server/fixed-workspaces.js), kept only while the setting exists in the module's
+// manifest and is a boolean, the module is on in this space and in this person's reach (the same rules as its own
+// canvas entry: space scope, not refused in the Lobby, in the space, read allowed) and the setting is offered (its
+// `needsModule` is on). Each is { module, moduleName, key, label, type: 'boolean', scope, value, canChange, help? }; `value` is what
+// GET /api/modules/:id/settings/values answers for this viewer, `canChange` whether this viewer may write it through
+// PUT /api/modules/:id/settings/:scope (the environment's: owners and the admin; a space's: also its moderators; a
+// person's: anyone). The schema only decides where a switch is offered; the setting is read and written as always.
+function fixedSettingsFor(found, id) {
+  const perms = modulePerms(found.who, found.space.id);
+  const out = [];
+  for (const { module: moduleId, setting } of FIXED_WORKSPACE_SETTINGS[id] || []) {
+    const here = modules.enabledAll().find(({ manifest }) => manifest.id === moduleId);
+    if (!here) continue;
+    const { manifest, entry } = here;
+    const def = (manifest.settings || []).find((d) => d.key === setting);
+    if (!def || def.type !== 'boolean') continue;
+    if (!manifest.scope.includes('space') || refusedInLobby(manifest, found.space.id) || !moduleSpaceAccess(entry, found.who, found.space) || !moduleCan(manifest, perms, 'read')) continue;
+    if (!settingOffered(def, def.scope === 'space' ? found.space.id : null)) continue;
+    const values = moduleSettings.effective(manifest, { spaceId: found.space.id, userKey: found.who.user?.key || null });
+    const canChange = def.scope === 'person' ? Boolean(found.who.user) : def.scope === 'space' ? found.canShare : Boolean(found.who.user) && hasOwnerRights(found.who.user);
+    out.push({ module: moduleId, moduleName: shownModule(manifest).name, key: setting, label: def.label, type: 'boolean', scope: def.scope, value: typeof values[setting] === 'boolean' ? values[setting] : Boolean(def.default), canChange, ...(def.help ? { help: def.help } : {}) });
+  }
+  return out;
+}
+// The layout this person last used in the space (store.layouts, plan-workspaces.md decision 20), when it can still be
+// opened: a fixed layout while it is on here for them and the owner has not hidden it (the owner's hide wins), a saved
+// layout while they can still see it. Else null, and the stored record stays, so it comes back with the layout. A guest has none.
+function lastLayoutFor(found, system) {
+  if (!found.who.user) return null;
+  const id = store.layouts.lastOf(found.space.id, found.who.user.key);
+  if (!id) return null;
+  if (SYSTEM_IDS.includes(id)) return system.some((l) => l.id === id && l.shown) ? id : null;
+  return store.layouts.find(found.space.id, id, found.who.user.key) ? id : null;
 }
 // What a first visit to a space shows for this viewer, resolved from the stored fields so the page does not re-derive it
 // (plan-layout-views.md, step 5): { layout: 'workspace' | another fixed layout's id | <shared layout id>, opensWith: [ids] | null }.
@@ -5628,8 +5666,33 @@ app.get('/api/spaces/:id/layouts', (req, res) => {
   const favorites = store.layouts.favorites(found.space.id, me);
   // tabs: the owner's order and hide, whole ({ order: [every id], hide: [ids] }), for the owner's controls: only for those who
   // may set them (canSetDefault: owners, the admin and this space's moderators); the key is left out for anyone else.
-  res.json({ mine, shared, system: systemLayoutsFor(found), defaultLayout: fallback ? fallback.id : null, firstVisit: firstVisitFor(found), favorites, canShare: found.canShare, canSetDefault: found.canSetDefault, ...(found.canSetDefault ? { tabs: tabsOf(found.space.tabs) } : {}) });
+  // last: the person's own last layout, only while it can still be opened (lastLayoutFor); left out for a guest and when none.
+  const system = systemLayoutsFor(found);
+  const last = lastLayoutFor(found, system);
+  res.json({ mine, shared, system, defaultLayout: fallback ? fallback.id : null, firstVisit: firstVisitFor(found), favorites, canShare: found.canShare, canSetDefault: found.canSetDefault, ...(found.canSetDefault ? { tabs: tabsOf(found.space.tabs) } : {}), ...(last ? { last } : {}) });
 });
+
+// The layout a person last used in a space (plan-workspaces.md, decision 20): PUT { layout } writes the signed-in person's
+// own record, 200 { layout }. The person comes from the session, never from the request; the server writes `at`; a
+// guest has none (403: they follow the owner's default); 400 for a missing, too long or unknown id (a fixed layout that is
+// on here, hidden by the owner or not, or a saved layout this person can see); 404 for an Aside or a space that is not
+// there, 403 for a space the person is not in, as the other layouts routes. There is no DELETE and no way to read anyone else's.
+app.put('/api/spaces/:id/last-layout', (req, res) => {
+  const found = layoutSpaceFor(req, res);
+  if (!found) return;
+  if (!found.who.user) return res.status(403).json({ error: `${word('guest', { many: true, cap: true })} follow the ${word('owner')}'s default layout, so nothing is remembered for them.` });
+  const id = isPlainBody(req.body) ? req.body.layout : undefined;
+  const me = found.who.user.key;
+  const known = typeof id === 'string' && store.layouts.knows(found.space.id, id, me) && (!SYSTEM_IDS.includes(id) || systemLayoutsFor(found).some((l) => l.id === id));
+  if (!known) return res.status(400).json({ error: 'There is no such layout here.' });
+  try {
+    store.layouts.setLast(found.space.id, me, id);
+    res.json({ layout: id });
+  } catch (err) {
+    sendLayoutError(err, res);
+  }
+});
+function isPlainBody(v) { return Boolean(v) && typeof v === 'object' && !Array.isArray(v); }
 
 app.post('/api/spaces/:id/layouts', (req, res) => {
   const found = layoutSpaceFor(req, res);
