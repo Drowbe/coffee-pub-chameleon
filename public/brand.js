@@ -5,12 +5,12 @@ import '/tooltip.js';
 import '/agreement-redirect.js';
 import { topBarTabs } from '/page-tabs.js';
 import { sameSiteNext } from '/next-address.js';
-import { word, setWords, setVerbs } from '/words.js';
+import { word, envWord, setWords, setVerbs } from '/words.js';
 import { themeSwitch, setEnvironmentMode, setAccountMode, themeChanged, watchThemeWithoutStream, forgetThemeMode, toggleThemeMode, useDefaultMode, themeMode as modeNow } from '/theme-mode.js';
 import { profileEntries, profileDestinationLabel, seesUpdates, hostConsoleUrl, switcherEntries, switchPick, bellState, destinationTools, pageAnchor } from '/primary-nav.js';
 
 // The words a person reads for each level and role (public/words.js), for every page that already imports from here.
-export { word, words, fill, applyWords, setWords, verb, verbs, setVerbs } from '/words.js';
+export { word, envWord, words, fill, applyWords, setWords, setSpaceLook, clearSpaceLook, hasSpaceLook, verb, verbs, setVerbs } from '/words.js';
 // Light and dark (GitHub #62): the mode showing now, and a popped-out window following this page's look.
 export { themeMode, followTheme } from '/theme-mode.js';
 
@@ -373,12 +373,12 @@ function refreshWords() {
   if (link) link.textContent = word('home');
   const caret = byId('spaces-switch');
   if (caret) {
-    const text = `Switch ${word('space')}`;
+    const text = `Switch ${envWord('space')}`;
     caret.dataset.tip = text;
     caret.setAttribute('aria-label', text);
   }
   if (nav.get('menu-home')) nav.register({ ...nav.get('menu-home'), label: word('home') });
-  if (nav.get('menu-new-space')) nav.register({ ...nav.get('menu-new-space'), label: `New ${word('space')}` });
+  if (nav.get('menu-new-space')) nav.register({ ...nav.get('menu-new-space'), label: `New ${envWord('space')}` });
 }
 
 // The system's own tools. The left zone, after the branding (the logo and the name): the destinations (loadDestinations,
@@ -401,7 +401,7 @@ function registerSystemTools(header) {
     slot.innerHTML = '<a class="core-link nav-slot" id="spaces-link" href="/" target="_top"></a><button type="button" class="core-link nav-slot-caret" id="spaces-switch" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-caret-down fa-fw" aria-hidden="true"></i></button>';
     slot.querySelector('#spaces-link').textContent = word('home');
     const caret = slot.querySelector('#spaces-switch');
-    caret.dataset.tip = `Switch ${word('space')}`;
+    caret.dataset.tip = `Switch ${envWord('space')}`;
     caret.setAttribute('aria-label', caret.dataset.tip);
     caret.addEventListener('click', () => openSwitcher(caret));
     nav.register({ id: 'spaces-slot', bar: 'primary', zone: 'left', group: 'where', groupOrder: 1, order: 9, element: slot, visible: () => wide() && signedIn() && !inSpace && !pageTabsInBar });
@@ -426,7 +426,7 @@ function registerSystemTools(header) {
   envName.textContent = byId('brand-home-link')?.querySelector('[data-brand="environmentName"]')?.textContent || '';
   nav.register({ id: 'menu-environment', bar: 'primary', zone: 'right', group: 'menu-where', groupOrder: 1, order: 1, element: envName, visible: inMenuOnly });
   nav.register({ id: 'menu-home', bar: 'primary', zone: 'right', group: 'menu-where', order: 2, icon: 'house', label: word('home'), href: '/', target: '_top', visible: inMenuOnly });
-  nav.register({ id: 'menu-new-space', bar: 'primary', zone: 'right', group: 'menu-new', groupOrder: 2, order: 1, icon: 'plus', label: `New ${word('space')}`, visible: () => inMenuOnly() && seesUpdates(account?.role), onClick: newSpace });
+  nav.register({ id: 'menu-new-space', bar: 'primary', zone: 'right', group: 'menu-new', groupOrder: 2, order: 1, icon: 'plus', label: `New ${envWord('space')}`, visible: () => inMenuOnly() && seesUpdates(account?.role), onClick: newSpace });
   loadDestinations({ wide: () => wide() && signedIn(), inMenuOnly });
   // The bell: the unread module notices, and the module updates for owners and the admin (decisions 9 and 18).
   const bell = doc.createElement('button');
@@ -618,7 +618,7 @@ export async function openSwitcher(trigger) {
     : { icon: e.here ? 'location-dot' : 'door-open', label: e.name, hint: hereHint(e), onPick: () => pickSpace(e.id) }));
   items.push(...askRows(data).map(askItem));
   if (!data) items.push({ label: "Couldn't load the list. Try again.", disabled: true });
-  if (seesUpdates(account?.role)) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'plus', label: `New ${word('space')}`, onPick: newSpace });
+  if (seesUpdates(account?.role)) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'plus', label: `New ${envWord('space')}`, onPick: newSpace });
   if (leave) items.push(...(items.length ? [{ divider: true }] : []), { icon: 'right-from-bracket', label: `Leave ${word('space')}`, onPick: () => pickSpace(leave.id, 'leave') });
   openHostMenu(trigger, items);
 }
@@ -858,7 +858,7 @@ function paintUnread() {
 // primary-nav.js).
 function bellNow() {
   const unread = Object.values(unreadByModule).reduce((sum, n) => sum + (Number(n) || 0), 0);
-  return bellState({ unread, updates: updatesWaiting, role: account?.role, moduleWord: word('module') });
+  return bellState({ unread, updates: updatesWaiting, role: account?.role, moduleWord: envWord('module') });
 }
 function paintBell() {
   const bell = byId('notifications-bell');
@@ -1005,7 +1005,7 @@ async function toggleNotices(bell) {
   const { updates } = bellNow();
   const parts = ['<div class="bell-head">Notifications</div>'];
   if (updates) {
-    parts.push(`<a class="bell-updates" href="${escapeHtml(keepingQuery('/admin#modules'))}"><i class="fa-solid fa-puzzle-piece fa-fw" aria-hidden="true"></i><span>${updates} ${escapeHtml(word('module'))} update${updates === 1 ? '' : 's'} available</span></a>`);
+    parts.push(`<a class="bell-updates" href="${escapeHtml(keepingQuery('/admin#modules'))}"><i class="fa-solid fa-puzzle-piece fa-fw" aria-hidden="true"></i><span>${updates} ${escapeHtml(envWord('module'))} update${updates === 1 ? '' : 's'} available</span></a>`);
   }
   const sorted = [...notices].sort((a, b) => (Number(new Date(b.at)) || 0) - (Number(new Date(a.at)) || 0));
   if (sorted.length) {

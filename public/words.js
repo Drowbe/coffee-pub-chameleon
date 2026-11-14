@@ -20,6 +20,12 @@
 // The words come from /api/branding's `words` (loadBranding() in brand.js calls setWords), and are kept in the browser
 // so the next page reads them before its own fetch answers. Until then, and when a key is missing, the defaults below:
 // today's words. The code names never change; only what a person reads does.
+//
+// A space may read another template's words (plan-space-templates.md, step 2). Inside one space a page calls
+// setSpaceLook(look) with the `look` the server sent for it, and clearSpaceLook() when the person goes Home, to another
+// space or out; in between, word(), words(), verb() and fill() read the space's words for SPACE_WORDS and SPACE_VERBS and
+// the environment's for every other key. The scoped set is never written to localStorage: the kept set stays the
+// environment's. envWord() always reads the environment's (the switcher, the bell, Home).
 
 export const KEYS = ['host', 'environment', 'space', 'home', 'aside', 'canvas', 'module', 'object', 'admin', 'owner', 'moderator', 'member', 'guest'];
 // The two the host keeps: neither an owner nor a template changes them.
@@ -79,6 +85,19 @@ try {
   // no storage, or nothing kept: the defaults
 }
 
+// --- one space's own words (plan-space-templates.md, decisions 1 and 2b) ---------------------------------------------------
+// The keys a space's template changes. `environment`, `owner`, `home` and the `enter` verb name things above a space and
+// stay the environment's. Held in memory only.
+export const SPACE_WORDS = ['space', 'aside', 'canvas', 'module', 'object', 'moderator', 'member', 'guest'];
+export const SPACE_VERBS = ['layout'];
+let scoped = null; // { words: { <key>: { one, many, a } }, verbs: { layout } } while inside a space whose look was read
+let mixed = null; // `current` with the scoped keys over it, kept until either changes
+const reading = () => {
+  if (!scoped) return current;
+  if (!mixed) mixed = { ...current, ...scoped.words };
+  return mixed;
+};
+
 // --- verbs (plan-environment-templates.md, addendum 4) ----------------------------------------------------------------
 // The actions a person reads on a button, beside the words: one string each, as it reads at the start of a label
 // ("Enter", "Go to"), never lower-cased or conjugated. From /api/branding's `verbs` (loadBranding() calls setVerbs),
@@ -105,12 +124,12 @@ try {
   // no storage, or nothing kept: the defaults
 }
 
-// The whole resolved set of verbs.
-export const verbs = () => currentVerbs;
+// The whole resolved set of verbs, as this page reads them now (the space's `layout` while inside one).
+export const verbs = () => (scoped ? { ...currentVerbs, ...scoped.verbs } : currentVerbs);
 
 // One verb, as it reads at the start of a button. An unknown key is a mistake in the code, so it throws.
 export function verb(key) {
-  const v = currentVerbs[key];
+  const v = verbs()[key];
   if (!v) throw new Error(`There is no verb called ${key}.`);
   return v;
 }
@@ -132,8 +151,40 @@ export function setVerbs(set) {
   return changed;
 }
 
-// The whole resolved set, for a page that hands it on (a module's frame gets it through its context).
-export const words = () => current;
+// The whole resolved set as this page reads it now, for a page that hands it on (a module's frame gets it through its
+// context, which the server answers for the frame's own space).
+export const words = () => reading();
+
+// The words of one space, from the `look` the server sent for it ({ words, verbs }). Only SPACE_WORDS and SPACE_VERBS are
+// taken; nothing is kept in the browser. Every data-word and data-fill is filled again.
+export function setSpaceLook(look) {
+  const given = look && typeof look === 'object' ? look : {};
+  const set = resolve(given.words);
+  const own = resolveVerbs(given.verbs);
+  scoped = { words: Object.fromEntries(SPACE_WORDS.map((k) => [k, set[k]])), verbs: Object.fromEntries(SPACE_VERBS.map((k) => [k, own[k]])) };
+  mixed = null;
+  if (typeof document !== 'undefined') applyWords(document);
+}
+
+// Back to the environment's words (Home, another space, out of a space).
+export function clearSpaceLook() {
+  if (!scoped) return;
+  scoped = null;
+  mixed = null;
+  if (typeof document !== 'undefined') applyWords(document);
+}
+
+// Whether a space's words are in force.
+export const hasSpaceLook = () => scoped !== null;
+
+// One key's word in the environment's own set, whatever space the page is in: for what is above a space (the switcher's
+// heading, the bell, Home, New space).
+export function envWord(key, { many = false, cap = false, a = false } = {}) {
+  const w = current[key];
+  if (!w) throw new Error(`There is no word called ${key}.`);
+  const text = a ? w.a : many ? w.many : w.one;
+  return cap ? capital(text) : text;
+}
 
 // This environment's words, from /api/branding. Kept for the next page, then every data-word and data-fill in the
 // document is filled again. Answers whether anything changed.
@@ -141,6 +192,7 @@ export function setWords(set) {
   const next = resolve(set);
   const changed = JSON.stringify(next) !== JSON.stringify(current);
   current = next;
+  mixed = null;
   try {
     // Kept: each word that is not what it reads with nothing set (home's, from the space word kept beside it).
     const base = (k) => (k === 'home' ? homeDefault(next.space) : DEFAULTS[k]);
@@ -157,7 +209,7 @@ export function setWords(set) {
 // One key's word: the singular, `many` the plural, `a` the singular with its article; `cap` gives it a capital first
 // letter. An unknown key is a mistake in the code, so it throws.
 export function word(key, { many = false, cap = false, a = false } = {}) {
-  const w = current[key];
+  const w = reading()[key];
   if (!w) throw new Error(`There is no word called ${key}.`);
   const text = a ? w.a : many ? w.many : w.one;
   return cap ? capital(text) : text;
@@ -223,7 +275,7 @@ export function applyWords(root) {
     if (el.textContent !== text) el.textContent = text;
   }
   for (const el of all('[data-verb]')) {
-    const text = currentVerbs[el.dataset.verb];
+    const text = verbs()[el.dataset.verb];
     if (text && el.textContent !== text) el.textContent = text;
   }
   for (const el of all('[data-fill]')) {

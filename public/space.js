@@ -1,6 +1,6 @@
 // The call page: players see and hear each other.
 import { Room, RoomEvent, Track, createLocalTracks } from '/lib/livekit-client.esm.mjs';
-import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPresentSpace, setInSpace, openSwitcher as openSpaceSwitcher, refreshNotices, iconClasses, spaceCrumbIcon, hasOwnerRights, word, verb, applyWords, followTheme, getIcons } from '/brand.js';
+import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPresentSpace, setInSpace, openSwitcher as openSpaceSwitcher, refreshNotices, iconClasses, spaceCrumbIcon, hasOwnerRights, word, verb, applyWords, followTheme, getIcons, setSpaceLook, clearSpaceLook } from '/brand.js';
 import { anchorSegments, layoutTabs, tabOverflow, layoutIconChoices, iconMatches, gridStep, pageOpens, isHere, hereCount, asidePlaceholder, whereWords, offStream } from '/primary-nav.js';
 import { openPhaseSheet, FACT_CHIPS_HIDDEN_AT } from '/phase-sheet.js';
 import { createSpaceSetup, setupAddress, configurationLabel, fixedWorkspaceOf } from '/space-setup.js';
@@ -2375,9 +2375,70 @@ statusAttention.appendChild(attentionButton);
 statusStrip.append(statusSaid, statusTrack, statusToGo, statusFacts, statusAttention);
 let attention = { spaceId: null, modules: [], total: 0 }; // what needs my action here, from GET /api/spaces/:id/attention
 let attentionSeen = false; // a count above zero has arrived in this space: the strip stays for the visit
-let templatePhases = []; // the template's phases, from /api/branding, cleaned by the rule
+let templatePhases = []; // the phases the page reads now: the space's own once its look is in (spaceLook), else the environment's
 let phaseIcons = {}; // phase id -> its icon, when the template gives one
+let envPhases = []; // the environment's phases, from /api/branding, cleaned by the rule: what Home and a space with no look of its own read
+let envPhaseIcons = {};
+// The look (words, verbs, phases) of the space I am in, as the server sent it for that space (plan-space-templates.md, step 2):
+// { id, look } or null. Held in memory only; the words go to words.js's scoped set, which never reaches localStorage.
+let spaceLook = null;
 const phaseRule = () => window.Phases || null;
+// The phases of a look, cleaned by the rule, and their icons.
+const phasesOf = (list) => (phaseRule() ? phaseRule().cleanPhases(list) : []);
+const iconsOf = (list) => Object.fromEntries((Array.isArray(list) ? list : []).filter((p) => p && typeof p.id === 'string' && typeof p.icon === 'string' && /^[a-z0-9-]+$/.test(p.icon)).map((p) => [p.id, p.icon]));
+// The page's words and phases come back to the environment's (Home, a move to another space, out of a space, and at the
+// start of every entry, so one space's words never show in another while its own are read).
+function useEnvironmentLook() {
+  const had = spaceLook !== null;
+  spaceLook = null;
+  templatePhases = envPhases;
+  phaseIcons = envPhaseIcons;
+  clearSpaceLook();
+  if (had) paintLook();
+}
+// The words and phases of `look` for space `id`: the page takes them and draws again what names a level.
+function adoptLook(id, look) {
+  if (!look || typeof look !== 'object') { useEnvironmentLook(); return; }
+  spaceLook = { id, look };
+  templatePhases = phasesOf(look.phases);
+  phaseIcons = iconsOf(look.phases);
+  setSpaceLook(look);
+  paintLook();
+}
+// What is drawn with a word at draw time and not by a data-word: the bar's tools, the crumb, the cards, the chip.
+function paintLook() {
+  registerWordTools();
+  updateCrumb();
+  renderSpaces();
+  if (typeof updatePhaseChip === 'function') updatePhaseChip();
+}
+// Home is the environment's: its words while Home shows over a space, the space's again on Back.
+function lookForHome() { heldLook = spaceLook; useEnvironmentLook(); }
+function lookBack() { if (heldLook && currentSpace && lookSpaceOf(currentSpace, currentSpace.id) === heldLook.id) adoptLook(heldLook.id, heldLook.look); heldLook = null; }
+let heldLook = null;
+// The look the server holds for a space (GET /api/spaces/:id/look), for anyone who may enter it: a member, a moderator, an
+// owner, the admin, a link guest (the link's token rides on the read) and a door guest (the cookie). Any refusal is a 404
+// and the page keeps the environment's words, with nothing said.
+async function fetchSpaceLook(id) {
+  if (!id || isHomeRecord(id)) return null;
+  try {
+    const query = guestToken ? `?guest=${encodeURIComponent(guestToken)}` : '';
+    const answer = await api('GET', `/api/spaces/${encodeURIComponent(id)}/look${query}`, undefined, undefined, AbortSignal.timeout(4000));
+    return answer && answer.look && typeof answer.look === 'object' ? answer.look : null;
+  } catch {
+    return null;
+  }
+}
+// The space a record reads: an aside reads the space it was pulled out of; the Lobby none.
+const lookSpaceOf = (record, id) => (record && record.isAside ? record.origin || null : isHomeRecord(id) ? null : id);
+// Read again for the space I am in (a change of its template in Set up).
+async function refreshSpaceLook() {
+  const here = currentSpace;
+  if (!here || here.pending) return;
+  const id = lookSpaceOf(here, here.id);
+  const look = await fetchSpaceLook(id);
+  if (currentSpace === here && !viewingHome) adoptLook(id, look);
+}
 const phaseSpaceRecord = () => (currentSpace && !currentSpace.isAside ? presenceSpaces.find((r) => r.id === currentSpace.id) || currentSpace : null);
 const phasesWanted = () => templatePhases.length > 0 && Boolean(phaseRule());
 // The strip shows in a space with phases; in one without, once a count above zero has arrived, for the rest of the visit.
@@ -2825,7 +2886,10 @@ function updatePhaseChip() {
   fitFacts(); // the sentence or the bar may have changed the room
 }
 async function savePhases(dates) {
-  const { space } = await api('PATCH', `/api/spaces/${encodeURIComponent(currentSpace.id)}`, { phases: dates });
+  // Only the phases this space shows: dates held for a phase its template no longer has are not sent (the server keeps them).
+  const shown = templatePhases.map((p) => p.id);
+  const sent = Object.fromEntries(Object.entries(dates && typeof dates === 'object' ? dates : {}).filter(([id]) => shown.includes(id)));
+  const { space } = await api('PATCH', `/api/spaces/${encodeURIComponent(currentSpace.id)}`, { phases: sent });
   const record = presenceSpaces.find((r) => r.id === currentSpace.id);
   if (record) record.phases = space.phases || {};
   if (currentSpace) currentSpace.phases = space.phases || {};
@@ -3059,6 +3123,7 @@ function setupSaved(space, said, saved = []) {
   }
   loadPresence();
   updateCrumb();
+  if (saved.includes('template')) refreshSpaceLook(); // a change of the space's template: its words and phases follow at once
   if (saved.includes('defaultLayout') || saved.includes('tabs')) refreshLayouts(); // the Layout menu's Default mark follows the first visit, the bar the owner's tabs
   if (said) saySetup(said);
 }
@@ -5863,6 +5928,8 @@ function leaveSpaceNow(said = `left the ${word('space')}`) {
   setStatus(said);
   forgetSpace();
   currentSpace = null;
+  heldLook = null;
+  useEnvironmentLook(); // Home's words and phases are the environment's
   currentLayoutTab = 'workspace'; // the tab is remembered for the visit only
   syncConferenceView();
   canvas.refresh(null);
@@ -6181,11 +6248,15 @@ async function join(spaceId = 'lobby', { joinCall = false, pull = false } = {}) 
     if (entry !== entries) return; // another entry began meanwhile
     // The space as the page already lists it; presence fills the rest in when it answers and does not hold the entry
     // (GitHub #71).
+    heldLook = null;
+    useEnvironmentLook(); // the last space's words and phases never show in this one while its own are read
     const known = presenceSpaces.find((r) => r.id === spaceId);
     currentSpace = known || { id: spaceId, name: spaceName, members: [], pending: true };
     paintSetupLabel();
     if (!currentSpace.pending) spaceName = spaceDisplayName(currentSpace);
     placed = true;
+    const lookTarget = known ? lookSpaceOf(known, spaceId) : undefined;
+    let lookRead = lookTarget === undefined ? null : fetchSpaceLook(lookTarget); // alongside the live stream
     await liveOpened(openLive(spaceId));
     if (entry !== entries) return;
     // One the page does not list yet (an aside made a moment ago, an invitation's): presence first, so an aside is
@@ -6193,6 +6264,12 @@ async function join(spaceId = 'lobby', { joinCall = false, pull = false } = {}) 
     if (currentSpace.pending) await loadPresence();
     else loadPresence();
     if (entry !== entries) return;
+    // This space's words and phases are in before the canvas and the chat draw text that names a level.
+    const lookId = lookSpaceOf(currentSpace, spaceId);
+    if (lookTarget === undefined) lookRead = fetchSpaceLook(lookId);
+    const lookIn = await lookRead;
+    if (entry !== entries) return;
+    adoptLook(lookId, lookIn);
     await canvas.refresh(currentSpace.isAside ? null : currentSpace.id); // asides have no modules
     if (entry !== entries) return;
     if (!currentSpace.isAside && !guestMode) await refreshLayouts(); // the person's last layout (workspaces step 6) is known before the canvas opens
@@ -6242,12 +6319,16 @@ async function joinAsGuest(joinedId, joinedName) {
     spaceName = joinedName;
     // Same as a member's join: the live stream, and presence fills in the members when it answers.
     const known = presenceSpaces.find((r) => r.id === joinedId);
+    heldLook = null;
+    useEnvironmentLook();
     currentSpace = known || { id: joinedId, name: joinedName, members: [], pending: true };
     paintSetupLabel();
     placed = true;
     await liveOpened(openLive(joinedId));
     if (entry !== entries) return;
     loadPresence();
+    adoptLook(joinedId, await fetchSpaceLook(joinedId)); // a link guest's token or a door guest's cookie rides on the read
+    if (entry !== entries) return;
     await canvas.refresh(currentSpace.isAside ? null : currentSpace.id);
     if (entry !== entries) return;
     applyPermissions();
@@ -7729,6 +7810,7 @@ function showSpaceList() {
   if (!document.body.classList.contains('in-space')) return;
   setAway(true);
   viewingHome = true;
+  lookForHome(); // Home is the environment's words; the space's come back with it (returnToCanvas)
   updateCrumb();
   document.body.classList.remove('in-space');
   $('canvas').hidden = true;
@@ -7752,6 +7834,7 @@ function returnToCanvas() {
   canvas.showFloating(true); // a floating module lives beside the canvas, shown again with it
   document.body.classList.add('in-space');
   viewingHome = false;
+  lookBack();
   syncHomeChat(); // the space's chat back in its column, Home's put away (plan-home-lobby.md, step 4)
   updateCrumb();
   setAway(false);
@@ -8306,9 +8389,11 @@ async function init() {
   };
   applyFeatureFlags();
   // The template's phases (plan-one-bar.md, step 3) come with the branding; none, no status strip.
-  templatePhases = phaseRule() ? phaseRule().cleanPhases(branding.phases) : [];
+  envPhases = phasesOf(branding.phases);
+  templatePhases = envPhases;
   // A phase's icon, when the template gives one (a Font Awesome Free solid name); none, no icon in its band.
-  phaseIcons = Object.fromEntries((Array.isArray(branding.phases) ? branding.phases : []).filter((p) => p && typeof p.id === 'string' && typeof p.icon === 'string' && /^[a-z0-9-]+$/.test(p.icon)).map((p) => [p.id, p.icon]));
+  envPhaseIcons = iconsOf(branding.phases);
+  phaseIcons = envPhaseIcons;
   // The topbar dropped its own version readout -- too cramped alongside
   // everything else there. It's in the title bar instead, which reads as
   // the space's real native window title once installed as an app.

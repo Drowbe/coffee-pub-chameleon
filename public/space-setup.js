@@ -261,7 +261,14 @@ export function withOpensFirst(draft = {}, id) {
 // members are a set (their order is no change). {} when nothing changed.
 const sameAiSees = (a, b) => (a ? (b ? sameSees(a, b) : false) : !b);
 const layoutOrNull = (v) => (typeof v === 'string' && v && v !== 'workspace' ? v : null);
-export function setupPatch(before = {}, after = {}) {
+// `phaseIds`, when given, are the phases the panel shows (the space's template's): the dates go only for those. A date the
+// space holds for a phase its template no longer has (the template was changed) is neither sent nor a change, so a save
+// never carries it and the server keeps it (plan-space-templates.md, "Phase dates after a change").
+const datesFor = (dates, ids) => {
+  const all = datesCopy(dates);
+  return Array.isArray(ids) ? Object.fromEntries(Object.entries(all).filter(([id]) => ids.includes(id))) : all;
+};
+export function setupPatch(before = {}, after = {}, { phaseIds = null } = {}) {
   const patch = {};
   const name = typeof after.name === 'string' ? after.name.trim() : '';
   if (name && name !== (before.name || '')) patch.name = name;
@@ -276,7 +283,7 @@ export function setupPatch(before = {}, after = {}) {
   if (typeof after.requestAccess === 'boolean' && after.requestAccess !== (before.requestAccess === true)) patch.requestAccess = after.requestAccess;
   if (typeof after.allowGuests === 'boolean' && after.allowGuests !== (before.allowGuests !== false)) patch.allowGuests = after.allowGuests;
   if (typeof after.guestsSeeHidden === 'boolean' && after.guestsSeeHidden !== (before.guestsSeeHidden === true)) patch.guestsSeeHidden = after.guestsSeeHidden;
-  if (after.phases && typeof after.phases === 'object' && !sameDates(after.phases, datesCopy(before.phases))) patch.phases = datesCopy(after.phases);
+  if (after.phases && typeof after.phases === 'object' && !sameDates(datesFor(after.phases, phaseIds), datesFor(before.phases, phaseIds))) patch.phases = datesFor(after.phases, phaseIds);
   if (typeof after.aiOff === 'boolean' && after.aiOff !== (before.aiOff === true)) patch.aiOff = after.aiOff;
   // What AI may see: null follows the environment's choice; else the space's own, whole.
   if (after.aiSees !== undefined && !sameAiSees(after.aiSees, before.aiSees)) patch.aiSees = after.aiSees ? fullSees(after.aiSees) : null;
@@ -1551,7 +1558,7 @@ export function createSpaceSetup(deps) {
   function patchNow() {
     const { draft, before, opts } = state;
     const name = opts.nameInput && state.owner ? opts.nameInput.value : draft.name;
-    const patch = setupPatch(before, { ...draft, name });
+    const patch = setupPatch(before, { ...draft, name }, { phaseIds: state.phaseList.map((p) => p.id) });
     if (!state.owner) for (const k of Object.keys(patch)) if (!MODERATOR_FIELDS.includes(k)) delete patch[k];
     return patch;
   }
