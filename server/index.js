@@ -4617,6 +4617,18 @@ app.use('/api/spaces/:id', (req, res, next) => {
   if (!space || !viewer || !spaceAccess.mayEnter(viewer, space)) return next();
   return spaceContext.run({ env: envContext.getStore(), spaceId: space.id }, next);
 });
+// GET /api/spaces/:id/look: what a space reads, { look: { words, verbs, phases } }, for anyone who may enter it: a member, a
+// moderator, an owner, the admin, a link guest of that space, a door guest who may enter it. No template id is told. Anyone
+// else gets what an id that does not exist gets: 404 and the same sentence, in the environment's words, whatever the reason
+// (an outsider, a closed space, an aside, the Lobby, an unknown id, no session, the access key). The Lobby has no template of
+// its own, so it is refused here like an unknown id and the page keeps the environment's words there.
+app.get('/api/spaces/:id/look', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const space = store.spaceById(req.params.id);
+  const viewer = space && !space.isLobby && space.id !== LOBBY ? presenceViewer(req) : null;
+  if (!space || !viewer || viewer.all || !spaceAccess.mayEnter(viewer, space)) return res.status(404).json({ error: spaceContext.exit(() => `no such ${word('space')}`) }); // outside the space's own words: the access key is let into the context
+  res.json({ look: lookView(space.id) });
+});
 app.get('/api/spaces', (req, res) => {
   const viewer = presenceViewer(req);
   if (!viewer || viewer.guestSpace) return res.status(401).json({ error: 'sign in first' });

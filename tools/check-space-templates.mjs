@@ -280,7 +280,7 @@ let child = null;
 function startServer(dataDir, env = {}) {
   child = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')], {
     cwd: ROOT,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: dataDir, TZ: 'UTC', PRODUCT_NAME: PRODUCT, ADMIN_PASSWORD: 'admin-password-1', TEMPLATE: 'travel', ...env },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: '0', DATA_DIR: dataDir, TZ: 'UTC', PRODUCT_NAME: PRODUCT, ADMIN_PASSWORD: 'admin-password-1', TEMPLATE: 'travel', ENABLE_GUEST_DOOR: 'true', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '';
@@ -495,6 +495,89 @@ try {
     assert.equal(closed.json.look, undefined, 'a closed space tells a guest nothing of its words');
     await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { closed: false });
     assert.equal((await call(server, 'GET', '/api/guest-link/nosuchtokennosuchtoken')).status, 404);
+  });
+
+  await test('GET /api/spaces/:id/look: whoever may enter reads the space\'s look and no template id; everyone else reads what an unknown id reads', async () => {
+    const lookOf = (who, id) => who('GET', `/api/spaces/${id}/look`);
+    const anon = (id, cookie, query = '') => call(server, 'GET', `/api/spaces/${id}/look${query}`, { cookie });
+    const branding = (await asAdmin('GET', '/api/branding')).json;
+    const nothing = await out.as('GET', '/api/spaces/zzzzzzzz/look');
+    assert.deepEqual([nothing.status, nothing.json], [404, { error: 'no such trip' }], "an unknown id, in the environment's words");
+    const keys = (r) => Object.keys(r.json || {}).join();
+    for (const [who, label] of [[mia.as, 'a member'], [mo.as, 'a moderator'], [owner.as, 'an owner'], [asAdmin, 'the admin']]) {
+      const r = await lookOf(who, campaign.id);
+      assert.equal(r.status, 200, `${label}: ${r.text}`);
+      assert.equal(keys(r), 'look');
+      assert.equal(keys({ json: r.json.look }), 'words,verbs,phases');
+      assert.equal(r.json.look.words.space.one, 'campaign', label);
+      assert.equal(r.json.look.words.owner.one, 'owner', label);
+      assert.deepEqual(r.json.look.phases, [], label);
+      assert.equal(/games|template/.test(r.text), false, `${label}: no template id in the body`);
+      const t = await lookOf(who, trip.id);
+      assert.equal(t.json.look.words.space.one, 'trip');
+      assert.equal(t.json.look.phases.length, 6);
+      assert.equal(/"template"/.test(t.text), false);
+    }
+    // With no template key the look is the environment's, as /api/branding tells it.
+    const plain = (await lookOf(mia.as, trip.id)).json.look;
+    assert.deepEqual(plain, { words: branding.words, verbs: branding.verbs, phases: branding.phases });
+    // An outsider (in no space, the space invited-only), no session, the access key, an unknown id, the Lobby and a made-up aside id.
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { entry: 'invited' })).status, 200);
+    const hidden = await lookOf(out.as, campaign.id);
+    assert.deepEqual([hidden.status, hidden.json], [nothing.status, nothing.json], 'an outsider');
+    assert.equal(hidden.text, nothing.text);
+    for (const [label, r] of [['no session', await anon(campaign.id)], ['no session, unknown id', await anon('zzzzzzzz')], ['the Lobby (a member)', await lookOf(mia.as, 'lobby')], ['the Lobby (the admin)', await lookOf(asAdmin, 'lobby')], ['an aside id', await lookOf(mia.as, 'aside-abc123')], ['a prototype id', await lookOf(mia.as, '__proto__')], ['an odd id', await lookOf(mia.as, 'a%2Fb')]]) {
+      assert.deepEqual([r.status, r.json], [nothing.status, nothing.json], label);
+    }
+    const key = (await asAdmin('GET', '/api/settings')).json.streamKey;
+    const keyed = await anon(campaign.id, undefined, `?s=${encodeURIComponent(key)}`);
+    assert.deepEqual([keyed.status, keyed.json], [404, nothing.json], 'the access key');
+    // Closed for set up: a member (told it is closed elsewhere) and an outsider read what an unknown id reads; the owner and a moderator still read it.
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { closed: true })).status, 200);
+    assert.deepEqual([(await lookOf(mia.as, campaign.id)).status, (await lookOf(mia.as, campaign.id)).json], [404, nothing.json], 'a closed space, a member');
+    assert.deepEqual([(await lookOf(out.as, campaign.id)).status, (await lookOf(out.as, campaign.id)).json], [404, nothing.json], 'a closed space, an outsider');
+    assert.equal((await lookOf(owner.as, campaign.id)).status, 200, 'a closed space, an owner');
+    assert.equal((await lookOf(mo.as, campaign.id)).json.look.words.space.one, 'campaign', 'a closed space, its moderator');
+    // A link guest reads their own space's look only; a closed space turns their link off.
+    const link = (await asAdmin('POST', `/api/spaces/${campaign.id}/guest-link`, { body: {} })).json.space.guestToken;
+    const tripLink = (await asAdmin('POST', `/api/spaces/${trip.id}/guest-link`, { body: {} })).json.space.guestToken;
+    assert.deepEqual([(await anon(campaign.id, undefined, `?guest=${link}`)).status], [404], 'a link into a closed space');
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { closed: false })).status, 200);
+    const viaLink = await anon(campaign.id, undefined, `?guest=${link}`);
+    assert.equal(viaLink.status, 200, viaLink.text);
+    assert.equal(viaLink.json.look.words.space.one, 'campaign');
+    assert.equal(/games|template/.test(viaLink.text), false);
+    const otherLink = await anon(campaign.id, undefined, `?guest=${tripLink}`);
+    assert.deepEqual([otherLink.status, otherLink.json], [404, nothing.json], "another space's link");
+    assert.deepEqual((await anon(trip.id, undefined, `?guest=${link}`)).json, nothing.json, "the campaign's link on the trip");
+    assert.equal((await anon(campaign.id, undefined, '?guest=nosuchtokennosuchtoken')).status, 404, 'a wrong link');
+    assert.equal((await anon('lobby', undefined, `?guest=${link}`)).status, 404, 'a link guest on the Lobby');
+    // A door guest reads the look of a space they may enter, and nothing of one they may not.
+    const door = await call(server, 'POST', '/api/guest-door', { body: { name: 'Dora' } });
+    assert.equal(door.status, 201, door.text);
+    const dg = cookieOf(door);
+    assert.deepEqual([(await anon(campaign.id, dg)).status, (await anon(campaign.id, dg)).json], [404, nothing.json], 'a door guest, the space not open to guests');
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { entry: 'guests' })).status, 200);
+    const viaDoor = await anon(campaign.id, dg);
+    assert.equal(viaDoor.status, 200, viaDoor.text);
+    assert.equal(viaDoor.json.look.words.space.one, 'campaign');
+    assert.equal(/games|template/.test(viaDoor.text), false);
+    assert.deepEqual([(await anon(trip.id, dg)).status, (await anon('lobby', dg)).status], [404, 404], 'a door guest, a space not open and the Lobby');
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { closed: true })).status, 200);
+    assert.deepEqual((await anon(campaign.id, dg)).json, nothing.json, 'a door guest, closed');
+    assert.equal((await asAdmin('PATCH', `/api/spaces/${campaign.id}`, { closed: false, entry: 'invited' })).status, 200);
+    assert.deepEqual((await anon(campaign.id, dg)).json, nothing.json, 'a door guest, the space no longer open');
+    // The switch off: every space reads the environment's.
+    assert.equal((await asAdmin('PATCH', '/api/settings', { spaceTemplates: false })).status, 200);
+    const off = (await lookOf(mia.as, campaign.id)).json.look;
+    assert.deepEqual(off, { words: branding.words, verbs: branding.verbs, phases: branding.phases }, 'the switch off');
+    assert.equal((await asAdmin('PATCH', '/api/settings', { spaceTemplates: true })).status, 200);
+    assert.equal((await lookOf(mia.as, campaign.id)).json.look.words.space.one, 'campaign', 'on again');
+    // An aside has no record among the spaces: it reads as an unknown id (the store, since an aside needs a call to make).
+    const asideStore = fresh('aside');
+    const sp = asideStore.addSpace({ name: 'A' });
+    const aside = asideStore.addAside(['x', 'y'], sp.id);
+    assert.equal(asideStore.spaceById(aside.id), null);
   });
 
   await test('the module context: words, phases and the module name are the space\'s; no template id reaches a module', async () => {
