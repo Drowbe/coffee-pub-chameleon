@@ -375,10 +375,24 @@ try {
     const mod = (await mo.as('GET', `/api/spaces/${campaign.id}`)).json;
     assert.equal(mod.space.template, 'games', 'a moderator reads it');
     assert.equal(mod.look.words.space.one, 'campaign');
-    assert.deepEqual(Object.keys(mod.space).filter((k) => !['id', 'template', 'phases', 'opensWith', 'defaultLayout', 'tabs', 'budget', 'closed'].includes(k)), [], 'and nothing more than before');
+    assert.deepEqual(Object.keys(mod.space).filter((k) => !['id', 'template', 'templateName', 'phases', 'opensWith', 'defaultLayout', 'tabs', 'budget', 'closed'].includes(k)), [], 'and nothing more than the name of that template');
+    assert.equal(mod.space.templateName, templates.get('games').name, "a moderator reads the name of that same template, the one the owner's list shows");
+    assert.equal('templateName' in (await asAdmin('GET', `/api/spaces/${campaign.id}`)).json.space, false, "the admin's answer is unchanged");
+    assert.equal('templateName' in (await owner.as('GET', `/api/spaces/${campaign.id}`)).json.space, false, "an owner's answer is unchanged");
     const member = await mia.as('GET', `/api/spaces/${campaign.id}`);
     assert.deepEqual([member.status, member.json], [403, { error: 'owners only' }], 'a member is told nothing of it');
     assert.equal(member.text.includes('games'), false);
+    assert.equal(member.text.includes('Games'), false, "a member is told no name");
+    const stranger = await out.as('GET', `/api/spaces/${campaign.id}`);
+    assert.equal(stranger.text.includes('Games') || stranger.text.includes('games'), false, 'an outsider reads what an unseen space reads');
+    const plain = (await asAdmin('POST', '/api/spaces', { name: 'Plain', members: [mo.key] })).json.space;
+    assert.equal((await asAdmin('PATCH', `/api/users/${mo.key}/spaces/${plain.id}`, { permissions: { moderator: true } })).status, 200);
+    const none = (await mo.as('GET', `/api/spaces/${plain.id}`)).json.space;
+    assert.equal(none.template, null, 'a space with no template still reads null');
+    assert.equal('templateName' in none, false, 'and adds no name');
+    assert.equal(JSON.stringify(none).includes('Games'), false, 'nor the environment template');
+    // Another space's template is never named: the moderator of the plain space cannot read the campaign.
+    assert.equal((await mo.as('GET', `/api/spaces/${campaign.id}`)).json.space.templateName, templates.get('games').name, 'the campaign names its own template only');
   });
 
   await test('who may set a template: owners and the admin; a moderator, a member, an outsider and no one signed in are refused', async () => {
