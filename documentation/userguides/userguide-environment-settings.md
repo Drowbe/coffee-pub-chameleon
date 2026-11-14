@@ -47,6 +47,7 @@ The **Template** tab gathers what a template gives an environment. From the top:
 - **Template.** Which template the environment uses ("Uses the Travel template.", or "No template."), and a
   **Switch to** choice for switching to another or to none. See "Switch a template" in
   [Templates](userguide-templates.md). While a switch has more to offer, the tab shows a small badge.
+- **Let a space use its own template.** A switch, on by default, saved as you flip it. On, an owner or the admin can pick a template for a space (see "A space's own template" in [Spaces](userguide-spaces.md)). Off, every space reads this environment's template; what each space chose is kept and comes back when it is turned on again. The switch is in a section of its own, headed with the environment's word for a space and "templates".
 - **Words** (below).
 - **Module names and icons.** Every module, the built-in Conference and Chat first, with what it is shown as here.
   See "Show a module under another name" in [Modules](userguide-modules.md).
@@ -159,3 +160,5 @@ world map with your own picture (see "Picture map" in [Maps](userguide-maps.md))
 ## About
 
 The version, the licence, and the credits for the open-source software Chameleon is built on. The product's name is printed once.
+
+Under **Open-source software** the tab lists, in groups, the software and open data the product uses, each with what it is for, its version, its licence and a **Website** link. Open **Licence text** on a line to read the notice its licence asks us to show and where the full text is kept. Our own artwork, such as the background pictures, is listed too, with the plain line "Made by Coffee Pub." and no licence or link. The list loads the first time the tab opens; if it does not, a line says so and opening the tab again retries.

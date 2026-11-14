@@ -2,7 +2,7 @@
 
 **Audience:** members, moderators and owners who write shared notes in a space (session notes, handouts, lesson plans), and anyone who only reads them.
 
-Documents holds written notes for a space. Each space has its own list. One person writes a document at a time, and everyone else reads it as it changes. It works only in a space. This guide was written from the code and the plans, not by using the module; the Documents module's versions 0.1.0 to 0.11.12 are covered.
+Documents holds written notes for a space. Each space has its own list. One person writes a document at a time, and everyone else reads it as it changes. It works only in a space. This guide was written from the code and the plans, not by using the module; the Documents module's versions 0.1.0 to 0.11.12 are covered, and the two notes on pasting and a first page break come from 0.11.31.
 
 **Who can:** set on the **Roles** tab under Documents ([Accounts, roles and permissions](userguide-accounts.md)):
 
@@ -40,11 +40,13 @@ The edit bar has more at its right end: **Editor**, **Layout** and **Page**, des
 
 **Editor** switches between **Markdown** (the text with its marks, the usual) and **Rich text** (you see headings, bold and lists as you type, with the usual shortcuts such as Ctrl or Cmd with B and I). The text goes from one to the other as Markdown; what is not saved yet stays unsaved. The choice is yours, kept in your browser. A block that Markdown cannot keep exactly is saved as typed, and the editor says so: "This block has formatting Markdown cannot keep exactly; switch to Markdown to check."
 
+**Pasting in Rich text.** The editor reads only the plain text of what you paste, as Markdown: a line starting with `#` becomes a heading, `- ` a list row, and so on. The formatting of what you copied (its fonts, colours, tables and pictures) is never read, so pasting from a web page or a word processor brings the words and not the look. If the clipboard holds only formatted content with no plain text, its words alone are taken. Lines indented by four spaces or a tab become one code block, as in any Markdown. Dropping text onto the editor works the same way; dropped files are ignored.
+
 In **Rich text**, grids are tables you edit in place. Press **Tab** in the last cell to add a row, up to 200 rows; a grid has at most 200 rows and 20 columns. While the cursor is in a grid, **Insert** shows the **Grid** group (rows, columns and alignment) first.
 
 ### Paper and Fluid
 
-**Layout** is the document's own, for everyone: **Fluid** (the usual: one page the width of the window) or **Paper** (separate pages of a real size). With **Paper**, the **Page** button's menu has **Page colour...**, a **Page size** (**Letter** or **A4**, with a 1 inch margin) and **Page numbers**. Pages show the same in reading and in the Rich text editor, which adds space where a page ends. **Page break** starts a new page at that line.
+**Layout** is the document's own, for everyone: **Fluid** (the usual: one page the width of the window) or **Paper** (separate pages of a real size). With **Paper**, the **Page** button's menu has **Page colour...**, a **Page size** (**Letter** or **A4**, with a 1 inch margin) and **Page numbers**. Pages show the same in reading and in the Rich text editor, which adds space where a page ends. **Page break** starts a new page at that line. A page break at the very start of the text makes no blank first page: the text begins on page one. In Rich text, Backspace at the start of the block after a page break, or Delete at the end of the block before it, removes the break.
 
 - The Markdown box is one sheet: it is not split into pages while you type.
 - In a window narrower than 60 percent of the page's width, a Paper document is drawn as Fluid until the window is wide again.

@@ -116,7 +116,10 @@ framework: the pages are plain HTML, CSS and JavaScript served as they are.
   "... can be at most 30 characters.", "... can use only letters, spaces, hyphens and apostrophes.", "... with its
   article must be its singular with the article in front, such as "a `<word>`"."); for `home`
   they read "The word for the home page …"). The server's own sentences go
-  through the same words.
+  through the same words. A space that reads a template of its own has a second context: inside `/api/spaces/:id`
+  routes the server's words are that space's for the keys `space`, `aside`, `canvas`, `module`, `object`,
+  `moderator`, `member`, `guest` and the `layout` verb, and the page's `word()` reads the same set once it has called
+  `setSpaceLook()`, while `envWord()` always reads the environment's (see [architecture-environments](architecture-environments.md), "A space's own template").
   In the pages, `public/words.js` gives `word(key, { many, cap, a })`, `fill(text)` for placeholders such as
   `{space}`, `{Spaces}` and `{a space}`, and `applyWords(root)`, which fills `data-word` elements (with
   `data-word-form="many cap a"`) and `data-fill` text and attributes (`title`, `placeholder`, `aria-label`, `alt`,
