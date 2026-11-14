@@ -3,7 +3,7 @@ import { Room, RoomEvent, Track, createLocalTracks } from '/lib/livekit-client.e
 import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPresentSpace, setInSpace, openSwitcher as openSpaceSwitcher, refreshNotices, iconClasses, spaceCrumbIcon, hasOwnerRights, word, verb, applyWords, followTheme, getIcons } from '/brand.js';
 import { anchorSegments, layoutTabs, tabOverflow, layoutIconChoices, iconMatches, gridStep, pageOpens, isHere, hereCount, asidePlaceholder, whereWords, offStream } from '/primary-nav.js';
 import { openPhaseSheet, FACT_CHIPS_HIDDEN_AT } from '/phase-sheet.js';
-import { createSpaceSetup, setupAddress, configurationLabel } from '/space-setup.js';
+import { createSpaceSetup, setupAddress, configurationLabel, fixedWorkspaceOf } from '/space-setup.js';
 import { renderModuleSettings } from '/module-settings.js';
 import { actionBar } from '/action-bar.js';
 import { createCanvas } from '/canvas.js';
@@ -2796,6 +2796,8 @@ function enterSetup({ tab = location.hash } = {}) {
     owner: canSetUp() && hasOwnerRights(me),
     moderator: canSetUp() && isModeratorHere(),
     show: canShowTab() ? (holder) => canvas.mountMenu(holder) : null,
+    fixedWorkspace: () => fixedWorkspaceOf(layoutList.system, currentLayoutTab), // a Fixed Workspace shown: its own switches replace the canvas menu
+    onFixedSaved: () => refreshLayouts(), // the values the page holds follow the switch
     phases: templatePhases, // drawn inline in the phases tab, a draft saved with Save (the chip's sheet is its own)
     rule: phaseRule(),
     today: phaseToday(),
@@ -3526,6 +3528,7 @@ function layoutTabList() {
 const layoutTabsWanted = () => oneBar() && !inAside() && !phoneWidth() && layoutTabList().length > 0;
 let layoutTabsDrawn = ''; // what the tabs show now, so an unchanged list keeps its buttons (and the keyboard on one)
 function renderLayoutTabs() {
+  if (spaceSetup.isOpen()) spaceSetup.redrawShow(); // the Modules tab follows the layout shown (a Fixed Workspace's switches, or the canvas menu)
   const list = layoutTabList();
   const key = JSON.stringify(list.map((t) => [t.id, t.icon, t.label, t.temp === true]));
   if (key !== layoutTabsDrawn) {
