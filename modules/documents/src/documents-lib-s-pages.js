@@ -4,12 +4,14 @@
 // page's text area (DL_PAGE_SIZES through dlPageGeometry: 864 px Letter, 931 px A4). Nothing returned is stored: it is worked out
 // again from the text each time. Whole blocks move to the next page (decision 10); nothing is split inside a line.
 //
-// A block is { height, kind, rows? }, kind 'block' | 'grid' | 'code' | 'formula' | 'heading' | 'pagebreak'. A grid's rows are its row
+// A block is { height, kind, rows? }, kind 'block' | 'grid' | 'code' | 'formula' | 'heading' | 'head' | 'pagebreak'. A 'head' is what stands
+// above the text on the first page (the line under the title, the tags; in the editor the height of both): it is kept with what follows,
+// as a heading is, and it is not text, so a break straight after it is still a break at the very start. A grid's rows are its row
 // heights (the head row first); its total is `height` (whatever the rows do not add up to, the margin, goes to the last row).
 //
 // Rules, in the order they matter:
 //  - A manual break (kind 'pagebreak') ends the page it is on. It has no height and is in no page's items; the page it ends lists it in
-//    `breaks` (so the reader can keep a "Page break" separator for a screen reader). A break at the very start makes no empty page and is
+//    `breaks` (so the reader can keep a "Page break" separator for a screen reader). A break at the very start (after nothing but a 'head') makes no empty page and is
 //    returned in `before`; a break at the very end makes none either (it ends the last page). Each further consecutive break makes one
 //    empty page: a, break, break, b is [a] [] [b]; break, break, a is [] [a].
 //  - A block that fits the space left goes there; otherwise it starts the next page. A block taller than a whole page gets a page of its
@@ -45,26 +47,26 @@ function dlPageBreaks(blocks, textH) {
   const before = [];
   let cur = null;
   let leadingUsed = false;
+  let text = false; // a block that is not a 'head' has come
   const start = () => { cur = { items: [], breaks: [], tall: false, used: 0, body: false, closed: false }; pages.push(cur); return cur; };
   const fresh = () => { if (!cur || cur.closed) start(); return cur; };
   for (let i = 0; i < list.length; i += 1) {
     const b = list[i];
     if (isBreak(b)) {
-      if (!cur) {
-        if (!pages.length && !leadingUsed) { before.push(i); leadingUsed = true; continue; }
-        start();
-      }
+      if (!text && !leadingUsed) { before.push(i); leadingUsed = true; continue; }
+      if (!cur) start();
       cur.breaks.push(i);
       cur = null;
       continue;
     }
-    const kind = b && b.kind;
+    const kind = b && b.kind === 'head' ? 'heading' : b && b.kind;
+    if (!(b && b.kind === 'head')) text = true;
     const rows = rowsOf(b);
     const h = rows ? rows.reduce((a, x) => a + x, 0) : hOf(b);
     if (kind === 'heading') {
       let need = 0;
       let j = i;
-      while (j < list.length && list[j] && list[j].kind === 'heading') { need += hOf(list[j]); j += 1; }
+      while (j < list.length && list[j] && (list[j].kind === 'heading' || list[j].kind === 'head')) { need += hOf(list[j]); j += 1; }
       need += lead(j);
       if (cur && !cur.closed && cur.items.length && cur.used + need > pageH) cur = null;
     }
