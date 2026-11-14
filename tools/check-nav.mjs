@@ -2785,11 +2785,12 @@ test('Add <space> on Home: owners and the admin, the existing request, then into
   const space = fs.readFileSync(path.join(ROOT, 'public/space.js'), 'utf8');
   assert.match(space, /const label = `Add \$\{word\('space', \{ cap: true \}\)\}`;/, 'the button reads Add <Space> in the template\'s word');
   assert.match(space, /button\.hidden = Boolean\(guestMode\) \|\| !hasOwnerRights\(me\);/, 'owners and the admin only, never a guest');
-  assert.match(space, /await api\('POST', '\/api\/spaces', \{ name: `\$\{word\('space', \{ cap: true \}\)\} \$\{count\}`, description: '', members: \[\] \}\)/, 'the request Manage\'s Add button makes');
+  assert.match(space, /await api\('POST', '\/api\/spaces', \{ name: `\$\{word\('space', \{ cap: true \}\)\} \$\{count\}`, description: '', members: \[\], \.\.\.chosen \}\)/, 'the request Manage\'s Add button makes, with the template the person chose');
+  assert.match(space, /await addSpaceFlow\(/, 'the Template choice comes first (template-choice.js)');
   assert.match(space, /await loadPresence\(\);[^\n]*\n\s*await joinInvitedSpace\(space\.id\);\n\s*if \(entered && currentSpace\?\.id === space\.id\) enterSetup\(\);/, 'then into the new space, and Set up opens once in');
   assert.match(space, /\$\('home-add-space'\)\?\.addEventListener\('click', addSpace\);/);
   const admin = fs.readFileSync(path.join(ROOT, 'public/admin.js'), 'utf8');
-  assert.match(admin, /await api\('POST', '\/api\/spaces', \{ name: `\$\{word\('space', \{ cap: true \}\)\} \$\{spaces\.length\}`, description: '', members: \[\] \}\)/, 'Manage\'s own request is unchanged');
+  assert.match(admin, /await api\('POST', '\/api\/spaces', \{ name: `\$\{word\('space', \{ cap: true \}\)\} \$\{spaces\.length\}`, description: '', members: \[\], \.\.\.chosen \}\)/, 'Manage\'s own request, with the template the person chose');
   const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
   const sysCss = fs.readFileSync(path.join(ROOT, 'public/sdk/system.css'), 'utf8');
   assert.match(sysCss, /:where\(\.sdk-card-add, \.space-choice-add\) \{[^}]*border: 1px dashed var\(--edge-hairline\);/, 'the ghost card is a dashed hairline (the Cards family in system.css)');

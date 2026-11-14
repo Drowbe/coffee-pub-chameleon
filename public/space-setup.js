@@ -39,6 +39,7 @@ import { actionBar } from './action-bar.js';
 import { groupOf, switchOn, groupedParts, setSwitch } from './composites.js';
 import { confirmDialog } from './confirm.js';
 import { mountSees, fullSees, sameSees } from './ai-sees.js';
+import { loadTemplateChoices, spaceTemplatesOn, fillSelect, optionList, changeQuestion, SAME } from './template-choice.js';
 import { rowsOf, dayWords, plainDays, sameDates, tintOf, rowIconHtml } from './phase-sheet.js';
 
 // The name of the Set up button and of the panel's title: "<space word> Configuration" (Trip Configuration), in the
@@ -73,7 +74,7 @@ export function setupAddress(search = '', hash = '') {
 
 // Which tab each saved field lives on (the dirty dots, and the tab a refusal opens).
 export const FIELD_TAB = Object.freeze({
-  name: 'space', description: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
+  name: 'space', description: 'space', template: 'space', profile: 'space', link: 'space', linkIcon: 'space', publishCalendar: 'space', image: 'space', imageRemoved: 'space', budget: 'phases',
   members: 'members', allowGuests: 'members', entry: 'members', requestAccess: 'members', closed: 'members',
   phases: 'phases',
   opensWith: 'modules', defaultLayout: 'modules', tabs: 'modules',
@@ -273,6 +274,7 @@ export function setupPatch(before = {}, after = {}, { phaseIds = null } = {}) {
   const name = typeof after.name === 'string' ? after.name.trim() : '';
   if (name && name !== (before.name || '')) patch.name = name;
   if (typeof after.description === 'string' && text(after.description) !== text(before.description)) patch.description = text(after.description);
+  if (typeof after.template === 'string' && after.template !== (before.template || SAME)) patch.template = after.template || null; // '' is the environment's: null clears
   if (after.profile !== undefined && after.profile !== (before.profile || 'participants')) patch.profile = after.profile;
   if (typeof after.link === 'string' && text(after.link) !== text(before.link)) patch.link = text(after.link);
   if (typeof after.linkIcon === 'string' && after.linkIcon && after.linkIcon !== before.linkIcon) patch.linkIcon = after.linkIcon;
@@ -310,6 +312,7 @@ export function dirtyTabs(patch = {}, { image = false, modules = false, tabs: ha
 
 // Which field of a refused PATCH the server's sentence is about (store.updateSpace's sentences), else its first.
 const PROBLEM_FIELDS = [
+  [/template/i, 'template'],
   [/budget|currenc/i, 'budget'], [/may see/i, 'aiSees'], [/\bAI\b/, 'aiOff'], [/icon/i, 'linkIcon'], [/publish/i, 'publishCalendar'], [/link/i, 'link'], [/member/i, 'members'], [/guest/i, 'allowGuests'],
   [/opens with/i, 'opensWith'], [/tabs|order|hide|always shown|listed twice|each layout once/i, 'tabs'], [/layout|first visit/i, 'defaultLayout'], [/profile/i, 'profile'], [/phase|date|\b(starts?|ends?)\b/i, 'phases'],
 ];
@@ -324,7 +327,7 @@ export function problemField(patch = {}, problem = '') {
 // that did not with the server's sentence. `words` names a field in this environment's words: the panel always gives
 // the members ("the players") and the guest link switch, which are role words, and each module's settings by its name.
 const FIELD_WORDS = {
-  name: 'the name', description: 'the description', profile: 'the faces in the call', link: 'the launch link', linkIcon: 'the link icon',
+  name: 'the name', description: 'the description', template: 'the template', profile: 'the faces in the call', link: 'the launch link', linkIcon: 'the link icon',
   publishCalendar: 'the published calendar', opensWith: 'Opens with', phases: 'the phase dates', aiOff: 'Turn AI off', aiSees: 'What AI may see',
   defaultLayout: 'the first visit', tabs: 'the layouts', image: 'the picture', imageRemoved: 'the picture', budget: 'the budget',
 };
@@ -348,6 +351,7 @@ function beforeOf(space = {}) {
   return {
     name: space.name || '',
     description: typeof space.description === 'string' ? space.description : '',
+    template: typeof space.template === 'string' ? space.template : SAME, // the space's own template; '' follows the environment's
     // 'roleplaying' is the older name of the participants' pictures (server/store.js), so it reads as that here.
     profile: space.profile === 'characters' ? 'characters' : 'participants',
     link: typeof space.link === 'string' ? space.link : '',
@@ -431,6 +435,7 @@ export function createSpaceSetup(deps) {
         <p class="hint">Shown with its name on Home.</p>`));
     parts.push(sectionHtml('name', 'Name', '<label class="setup-field"><span class="visually-hidden">Name</span><input type="text" id="setup-name" maxlength="40" autocomplete="off"></label><p class="hint">Shown in the bar and on Home.</p>'));
     parts.push(sectionHtml('description', 'Description <span class="sdk-optional">(optional)</span>', `<label class="setup-field"><span class="visually-hidden">Description</span><textarea id="setup-description" rows="3" maxlength="300"></textarea></label><p class="hint">A line or two about this ${esc(spaceWord())}.</p>`));
+    if (!space.isLobby) parts.push(sectionHtml('template', 'Template', `<label class="setup-field"><span class="visually-hidden">Template</span><select id="setup-template"></select></label><p class="hint" id="setup-template-about"></p><p class="hint">Its words, phases and ${esc(word('module'))} names in this ${esc(spaceWord())}. Saved with Save.</p>`, { hidden: true }));
     parts.push(sectionHtml('faces', 'Faces in the call', `
         <label class="setup-field"><span class="visually-hidden">Faces in the call</span><select id="setup-profile">
           <option value="participants">People's own pictures</option>
@@ -595,6 +600,7 @@ export function createSpaceSetup(deps) {
   // module settings only. The settings are drawn by module-settings.js in its draft mode (no Save on each).
   function modulesTabHtml() {
     const parts = [layoutsSectionHtml(), firstVisitHtml()];
+    if (!state.owner && !state.space.isLobby) parts.unshift(sectionHtml('template-seen', 'Template', `<p id="setup-template-seen"></p><p class="hint">Only the ${esc(word('owner'))} can change it.</p>`, { hidden: true }));
     if (state.owner) {
       parts.push(sectionHtml('ai', '<i class="fa-solid fa-wand-magic-sparkles fa-fw" aria-hidden="true"></i> AI', `<label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label">Turn AI off in this ${esc(spaceWord())}</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-off"></label><p class="hint">${esc(modulesWord(true))} here can use the server's AI service to summarise and answer questions. Turned off, nobody here can, whatever the roles allow. Saved with Save.</p>`, { hidden: true }));
       parts.push(sectionHtml('ai-sees', 'What AI may see', `<p class="hint">What goes to the AI with a question in this ${esc(spaceWord())}. This only narrows it: the AI never sees what the person asking could not open. Saved with Save.</p><label class="sdk-choice-row"><span class="sdk-choice-text"><span class="sdk-choice-label" id="setup-ai-sees-follow-label">Same as the ${esc(word('environment'))}'s choice</span></span><input type="checkbox" class="sdk-switch" role="switch" id="setup-ai-sees-follow"></label><div id="setup-ai-sees-box"></div>`, { hidden: true }));
@@ -903,12 +909,36 @@ export function createSpaceSetup(deps) {
     paintDots();
   }
 
+  // The Template choice (owners and the admin): "Same as the <environment>", then each template offered. Hidden until the
+  // choices are in, on the Lobby, and while the switch in Manage is off.
+  function paintTemplate() {
+    const section = q('[data-section="template"]');
+    if (!section || !state) return;
+    const show = state.owner && Boolean(state.templates) && state.spaceTemplates === true;
+    section.hidden = !show;
+    if (!show) return;
+    const options = fillSelect(q('#setup-template'), state.templates, state.draft.template, word);
+    const about = q('#setup-template-about');
+    about.textContent = (options.find((o) => o.value === q('#setup-template').value) || {}).description || '';
+    about.hidden = !about.textContent;
+  }
+  // A moderator reads the template and does not choose it (decision 2): a line on Settings, named when the server says the name.
+  function paintTemplateSeen(record, on) {
+    const section = q('[data-section="template-seen"]');
+    if (!section) return;
+    const id = record && typeof record.template === 'string' ? record.template : '';
+    const name = (record && record.templateName) || id;
+    section.hidden = !on;
+    q('#setup-template-seen').textContent = id ? `This ${spaceWord()} reads the ${name} template.` : `This ${spaceWord()} reads the ${word('environment')}'s template.`;
+  }
+
   // --- filling the fields from the draft ---
   function fillFields() {
     const { draft, opts } = state;
     const set = (sel, v) => { const f = q(sel); if (f && f.value !== v) f.value = v; };
     set('#setup-name', draft.name);
     set('#setup-description', draft.description);
+    paintTemplate();
     set('#setup-profile', draft.profile);
     set('#setup-link', draft.link);
     const cal = q('#setup-publish-calendar');
@@ -1429,6 +1459,8 @@ export function createSpaceSetup(deps) {
     if (name) name.addEventListener('input', () => { state.draft.name = name.value; if (state.opts.nameInput) state.opts.nameInput.value = name.value; });
     field('#setup-description', 'description');
     field('#setup-link', 'link');
+    const template = q('#setup-template');
+    if (template) template.addEventListener('change', () => { state.draft.template = template.value; paintTemplate(); refresh(); });
     const profile = q('#setup-profile');
     if (profile) profile.addEventListener('change', () => { state.draft.profile = profile.value; });
     // A new object on each edit, so the draft never shares one with `before`.
@@ -1596,6 +1628,8 @@ export function createSpaceSetup(deps) {
     const record = await api('GET', `/api/spaces/${encodeURIComponent(space.id)}`).then((r) => r.space).catch(() => null);
     if (!state || state.space.id !== space.id) return;
     if (!record) return; // the stored target is not known: the Budget section stays hidden rather than risk replacing it
+    paintTemplateSeen(record, !space.isLobby && await spaceTemplatesOn(api));
+    if (!state || state.space.id !== space.id) return;
     const fresh = budgetText(record.budget);
     if (sameValue(state.draft.budget, state.before.budget)) { state.draft.budget = { ...fresh }; state.before.budget = fresh; }
     if (q('#setup-budget-currency')) state.currencies = await api('GET', '/api/currencies').then((r) => r.currencies || null).catch(() => null);
@@ -1682,11 +1716,12 @@ export function createSpaceSetup(deps) {
   }
   async function loadOwnerParts(space) {
     const id = encodeURIComponent(space.id);
-    const [record, users, installed, ai] = await Promise.all([
+    const [record, users, installed, ai, templates] = await Promise.all([
       api('GET', `/api/spaces/${id}`).then((r) => r.space).catch(() => null),
       space.isLobby ? Promise.resolve([]) : api('GET', '/api/users').then((r) => r.users || []).catch(() => []),
       api('GET', '/api/modules').then((r) => r.modules || []).catch(() => null),
       api('GET', '/api/ai').then((r) => r.ai || null).catch(() => null),
+      space.isLobby ? Promise.resolve(null) : loadTemplateChoices(api), // the Lobby has no template of its own
     ]);
     if (!state || state.space.id !== space.id) return;
     if (record) takeServerSpace(record);
@@ -1694,6 +1729,8 @@ export function createSpaceSetup(deps) {
     const branding = await api('GET', '/api/branding').catch(() => ({}));
     if (!state || state.space.id !== space.id) return;
     state.door = Boolean(branding.guestDoor);
+    state.templates = templates;
+    state.spaceTemplates = branding.spaceTemplates !== false; // off in Manage: the choice is hidden
     state.environmentName = typeof branding.environmentName === 'string' ? branding.environmentName.trim() : '';
     paintEntry();
     if (q('#setup-budget-currency')) state.currencies = await api('GET', '/api/currencies').then((r) => r.currencies || null).catch(() => null);
@@ -1847,7 +1884,7 @@ export function createSpaceSetup(deps) {
   // A refusal: the panel stays, on the field's tab, with the sentence and the keyboard on the field. What went through
   // before it stays saved and is said.
   const FIELD_INPUT = {
-    name: '#setup-name', description: '#setup-description', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
+    name: '#setup-name', description: '#setup-description', template: '#setup-template', profile: '#setup-profile', link: '#setup-link', linkIcon: '#setup-link-icon [aria-checked="true"]',
     publishCalendar: '#setup-publish-calendar', members: '#setup-members input', allowGuests: '#setup-allow-guests', entry: '#setup-entry-accounts', closed: '#setup-open', requestAccess: '#setup-request-access', budget: '#setup-budget-amount',
     opensWith: '#setup-opens-with input', defaultLayout: 'input[name="setup-first-visit"]:checked', tabs: '#setup-layout-rows [data-layout-show]:not(:disabled)', image: '.setup-picture-pick input', imageRemoved: '.setup-picture-pick input',
     phases: '#setup-phase-list input:not(:disabled)', aiOff: '#setup-ai-off', aiSees: '#setup-ai-sees-follow',
@@ -1882,6 +1919,12 @@ export function createSpaceSetup(deps) {
     const entry = budgetField && !q('[data-section="budget"]').hidden ? budgetEntryProblem({ ...state.draft.budget, bad: Boolean(state.draft.budget?.bad || (budgetField.validity && budgetField.validity.badInput)) }) : null;
     if (entry) return refused([], 'budget', entry);
     const patch = patchNow();
+    // A change of template asks first: what changes now and what stays (the plan's wording).
+    if ('template' in patch) {
+      const chosen = optionList(state.templates || {}, patch.template || SAME, word).find((o) => o.value === (patch.template || SAME));
+      if (!await confirmDialog(changeQuestion(patch.template ? chosen.label : '', word))) return false;
+      if (!state) return false;
+    }
     const moduleChanged = moduleChanges();
     const saved = [];
     let answered = null;

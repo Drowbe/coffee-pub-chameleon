@@ -4,6 +4,7 @@ import { loadBranding, api, noticeToast, renderTopbar, setTopbarLocation, setPre
 import { anchorSegments, layoutTabs, tabOverflow, layoutIconChoices, iconMatches, gridStep, pageOpens, isHere, hereCount, asidePlaceholder, whereWords, offStream } from '/primary-nav.js';
 import { openPhaseSheet, FACT_CHIPS_HIDDEN_AT } from '/phase-sheet.js';
 import { createSpaceSetup, setupAddress, configurationLabel, fixedWorkspaceOf } from '/space-setup.js';
+import { addSpaceFlow } from '/template-choice.js';
 import { renderModuleSettings } from '/module-settings.js';
 import { actionBar } from '/action-bar.js';
 import { createCanvas } from '/canvas.js';
@@ -656,10 +657,16 @@ async function addSpace() {
   $('join-error').hidden = true;
   try {
     const count = presenceSpaces.filter((r) => r.mine && !r.isAside).length;
-    const { space } = await api('POST', '/api/spaces', { name: `${word('space', { cap: true })} ${count}`, description: '', members: [] });
-    await loadPresence(); // the new card, and the record join() reads the name from
-    await joinInvitedSpace(space.id);
-    if (entered && currentSpace?.id === space.id) enterSetup();
+    // With the choice on, a small dialog asks for the Template first (template-choice.js); a refusal reads there.
+    await addSpaceFlow({
+      api, word,
+      run: async (chosen) => {
+        const { space } = await api('POST', '/api/spaces', { name: `${word('space', { cap: true })} ${count}`, description: '', members: [], ...chosen });
+        await loadPresence(); // the new card, and the record join() reads the name from
+        await joinInvitedSpace(space.id);
+        if (entered && currentSpace?.id === space.id) enterSetup();
+      },
+    });
   } catch (err) {
     $('join-error').textContent = err.message;
     $('join-error').hidden = false;

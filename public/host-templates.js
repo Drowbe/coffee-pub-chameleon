@@ -20,7 +20,7 @@ const SOURCE = { bundled: 'Bundled', host: 'Own', imported: 'Imported' };
 const DEFAULT_HOME_ICON = 'couch';
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-let list = []; // GET /api/host/templates: [{ id, name, description, source, version, hidden, edited, update, usedBy }]
+let list = []; // GET /api/host/templates: [{ id, name, description, source, version, hidden, edited, update, usedBy, usedBySpaces }]
 let onChange = () => {};
 let nameOf = (slug) => slug; // an environment's name, from host.js's list
 let ready = false; // the list has come from host.js
@@ -92,11 +92,15 @@ function renderList() {
     const used = t.usedBy || [];
     // Used by: the environments by name, each a link to its page; past four, "and N more".
     const names = used.slice(0, 4).map((slug) => `<a class="hc-link" href="#environments/${encodeURIComponent(slug)}">${escapeHtml(nameOf(slug))}</a>`).join('<span class="hc-sep">, </span>');
+    // And the spaces that chose it themselves (usedBySpaces, a count): "3 spaces".
+    const spaceCount = Number(t.usedBySpaces) || 0;
+    const spaces = spaceCount ? `<span class="hc-spaces">${spaceCount} ${escapeHtml(word('space', { many: spaceCount !== 1 }))}</span>` : '';
+    const usedBy = used.length ? `${names}${used.length > 4 ? `<span class="hc-more-names"> and ${used.length - 4} more</span>` : ''}${spaces ? '<span class="hc-sep">, </span>' : ''}${spaces}` : spaces || '<span class="sdk-table-dim">None</span>';
     return `<tr data-id="${id}">`
       + `<th scope="row" class="hc-name-cell">${editable ? `<a class="hc-link" href="#templates/${encodeURIComponent(t.id)}">${name}</a>` : name}<span class="sdk-table-sub">${id}</span></th>`
       + `<td class="hc-chips-cell">${chipOf(SOURCE[t.source] || t.source)}${t.edited ? chipOf('Edited', 'info') : ''}</td>`
       + `<td class="sdk-table-dim">v${escapeHtml(String(t.version || 1))}</td>`
-      + `<td class="hc-used">${used.length ? `${names}${used.length > 4 ? `<span class="hc-more-names"> and ${used.length - 4} more</span>` : ''}` : '<span class="sdk-table-dim">None</span>'}</td>`
+      + `<td class="hc-used">${usedBy}</td>`
       + `<td>${editable ? `<input class="sdk-switch" type="checkbox" role="switch" data-action="hide"${t.hidden ? ' checked' : ''} aria-label="Hide ${name} from new ${escapeHtml(word('environment', { many: true }))}">` : ''}</td>`
       + `<td class="hc-more-cell"><button class="sdk-icon-btn btn-quiet btn-small" type="button" data-action="template-menu" aria-haspopup="menu" aria-label="More for ${name}"><i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i></button></td></tr>`;
   }).join('');
@@ -124,7 +128,7 @@ $('template-list').addEventListener('click', (e) => {
 });
 function templateMenu(trigger, t) {
   const editable = t.source === 'host' || t.source === 'bundled';
-  const unused = !(t.usedBy || []).length;
+  const unused = !(t.usedBy || []).length && !t.usedBySpaces;
   openHostMenu(trigger, [
     ...(editable ? [{ label: 'Edit', icon: 'pen', onPick: () => { location.hash = `templates/${t.id}`; } }] : []),
     { label: 'Export', icon: 'file-export', onPick: () => exportTemplate(t) },
@@ -152,8 +156,12 @@ async function resetTemplate(t) {
 }
 async function deleteTemplate(t) {
   const name = t.name || t.id;
-  if ((t.usedBy || []).length) return say($('templates-status'), `In use by ${t.usedBy.map(nameOf).join(', ')}. Hide it instead.`, true);
-  if (!await confirmDialog({ title: `Delete the ${name} template?`, message: `No ${word('environment')} uses it.`, action: 'Delete', kind: 'destructive' })) return;
+  const inSpaces = Number(t.usedBySpaces) || 0;
+  if ((t.usedBy || []).length || inSpaces) {
+    const who = [...(t.usedBy || []).map(nameOf), ...(inSpaces ? [`${inSpaces} ${word('space', { many: inSpaces !== 1 })}`] : [])];
+    return say($('templates-status'), `In use by ${who.join(', ')}. Hide it instead.`, true);
+  }
+  if (!await confirmDialog({ title: `Delete the ${name} template?`, message: `No ${word('environment')} or ${word('space')} uses it.`, action: 'Delete', kind: 'destructive' })) return;
   try {
     await api('DELETE', `/api/host/templates/${encodeURIComponent(t.id)}`);
     await reload();
