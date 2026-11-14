@@ -1,14 +1,16 @@
 # Release Plan
 
-**Audience:** Thomas decides what "done" means, what is in the first release and when the freeze starts. The project
-manager runs the work once he has. product-planner writes the plans each track needs, server-development and
+**Audience:** Thomas decided what "done" means, what is in the first release and the rules of the freeze (see
+"Decisions"). The project manager runs the work. product-planner writes the plans each track needs, server-development and
 experience-design build, bug-fixes fixes, quality-assurance reads and tests (read-only), content-manager writes the
 documentation, the changelog and the first drafts of the legal texts. A lawyer, whom Thomas chooses, confirms the
 legal track.
 
-**Status:** draft for Thomas to decide, 2026-11-14, by product-planner. Nothing here is decided and nothing is built.
-Every choice is under "Open questions for Thomas", with a suggested option first. The "done" lists, the checklists and
-the order below are proposals.
+**Status:** decided in part, 2026-11-14. Thomas answered the eighteen questions of the first draft on 2026-11-14; his
+answers are under "Decisions". Nothing is built. Four new questions (19 to 22) came out of the answers and are under
+"Open questions for Thomas"; two of them (19 and 20) are about the freeze and should be answered before it starts. The
+per-module "done" lists, the checklists and the order below are still proposals that Thomas cuts or adds to, except where
+a decision says otherwise.
 
 Thomas's request, 2026-11-14: "We need to define 'done' for a 'release'. We have a series of modules, all in flight,
 core in flight, and bugs. (1) work through each module and declare a 'done' body of work; (2) nail down the core and
@@ -28,7 +30,7 @@ migrations, ids, routes, API fields and stored keys may be renamed, test data ma
 bundled modules, 103 plan files, and about 150 open issues. No written line says "this is the first release", so no
 work can be called finished and nothing can be told to wait.
 
-This plan proposes that line, and the five tracks (security, data protection, data integrity, legal, third-party
+This plan sets that line, and the five tracks (security, data protection, data integrity, legal, third-party
 modules) that must be finished before a release is safe to hand to people who are not Thomas.
 
 ### What "released" changes
@@ -36,7 +38,7 @@ modules) that must be finished before a release is safe to hand to people who ar
 Read from `CLAUDE.md` (Rules). Its rule "The product is not released" ends with the release; its own text says "Once
 the product is released this rule is removed." In practice, each a proposal until Thomas answers the questions below:
 
-- **Compatibility starts.** Routes, API fields, stored keys, element ids that other things link to, module SDK calls
+- **Compatibility starts.** (Decided: decision 9 and the replacement rule, decision 17.) Routes, API fields, stored keys, element ids that other things link to, module SDK calls
   and the module manifest become promises. A change to one needs an alias, a migration or a new version.
 - **Data stays.** Today "test data may be reset". After release a person's data is theirs, and an update must read what
   an older version wrote. The 0.4.0 names migration (`server/migrate-names.js`) is the only data migration in the code,
@@ -52,6 +54,75 @@ the product is released this rule is removed." In practice, each a proposal unti
   real environment unasked. The release check is that it stays a deliberate action.
 - **The rule's replacement.** `CLAUDE.md` needs a new rule in its place: what may change freely, what needs a version
   bump, who decides. Thomas and content-manager write it; this plan does not edit `CLAUDE.md`.
+
+## Decisions
+
+Thomas, 2026-11-14, answering the eighteen questions of the first draft. Each keeps its question and the option he
+chose. Numbers are the question numbers; the plan elsewhere cites them as "decision N". Question 5 is answered in his
+own words, not an option.
+
+1. **What is the first release, in one sentence?** Answered, a: a private, invited release to named customers on a hosted
+   server that Thomas runs. Reason: the fewest promises, a small blast radius and a lighter legal track.
+2. **Which modules are in the first release?** Answered, a: all twelve, each with its own done list. The lists under
+   "Per-module done list" are the starting point.
+3. **What makes an issue gating?** Answered, a: the seven rules under "Gating rules".
+4. **Which version number is the release?** Answered, a: `1.0.0`. The compatibility promise starts there.
+5. **How long may the freeze last, and who may allow an exception?** Answered, in his own words: no limit on the freeze.
+   Who may allow an exception was not answered and is still unset; it is a follow-up (question 20). The first draft
+   had suggested four weeks.
+6. **Is co-editing on by default at release?** Answered, b: yes, after a real two-person test. The `coediting` switch
+   stays off until that test passes.
+7. **Is the call as a module (#377) in the first release?** Answered, a: no. It ships as it is, and the SDK promise says
+   the call is not yet a module.
+8. **How is security assessed?** Answered, a: finish `plan-security-assessment`, run an independent larger-model read of
+   every core area, then a human penetration test on a hosted server before the first customer.
+9. **What is the stored-data promise after release?** Answered, a, and a wider intent. Thomas's intent is that data is
+   secure and backed up, so data protection and backups are a release requirement ("Track 2" says what that means in
+   concrete terms). For updates: every update reads every older shape since the release, each shape has a version,
+   and a copy is taken before any migration.
+10. **Third-party modules at release?** Answered, a: the module contract and the SDK promise are published, the owner
+    approves as today, there is no listing and no review by us.
+11. **Is a human penetration test and a lawyer's review in the budget?** Answered, a: both, before the first customer.
+12. **Who signs off the legal track, and which texts do we need?** Answered, a: Thomas signs after a named lawyer confirms
+    in writing, and content-manager drafts the texts for the lawyer.
+13. **What is the product's own licence at release?** Answered, a: proprietary, all rights reserved, with a `LICENSE`
+    file.
+14. **The product name (#426).** Answered, a: finish "Coffee Pub Chameleon" before the freeze, then clear the trademark.
+15. **Does the host admin's password stay able to open every environment (#422)?** Answered, b: yes, documented as the
+    hosted operator's right. This is a deliberate exception to the per-environment promise. The docs and the terms
+    must tell customers, before they put data in, that the host admin's password opens every environment, that the
+    hosted operator is the one who holds it, and what the operator will and will not do with that access.
+16. **What does "verified" need for the first release?** Answered, a: one real call with two people on each phone and
+    computer kind Thomas names, including a hosted server.
+17. **What happens to `CLAUDE.md`'s "not released" rule?** Answered, a: it is replaced with a post-release rule before
+    the tag, written by Thomas and content-manager. product-planner does not edit `CLAUDE.md`.
+18. **Is the issue list refreshed before anything is marked?** Answered, a: the project manager re-reads every open
+    issue, including #742 and up, #780, #786 and #795, before anything is marked gating.
+
+### Tensions between the decisions
+
+Ranked, worst first. None is a reason to change a decision; each says what keeps it safe.
+
+1. **All twelve modules and no limit on the freeze (decisions 2 and 5).** Twelve done lists, about 150 open issues,
+   gating bugs that each need an independent read, and nothing that ends the freeze except Thomas's own call. It can
+   drag with no one deciding that it is dragging. Suggested bound: a review date, not a limit. On that date Thomas
+   looks at what is left and chooses to continue, cut a module's list, or move a module to after the release. He is
+   not forced to do any of them (question 19).
+2. **The host admin's password against the per-environment promise and the private hosted legal track (decisions 15, 1
+   and 12).** A customer in a hosted environment is told that environments are separate, and the operator can open any
+   of them. That is honest only if the terms and the privacy notice say so, and the lawyer confirms the wording. The
+   same exception means a successful attack on the host admin's password reaches everything, so the sign-in and
+   two-step work of Track 1 matters most for that one account. It is a documentation and legal task more than a code
+   task, but it cannot be dropped, because the promise is otherwise false.
+3. **Co-editing on by default needs a test the cloud container cannot do (decision 6).** A real two-person test needs
+   two people in two browsers. Tool checks and the container can show the restore tests but not that. Until the test
+   passes the `coediting` switch stays off, so the release does not break if the test slips; it only ships without
+   co-editing on. The question is who does the test and when (question 22), and whether the release waits for it.
+   That waiting is Thomas's choice, not this plan's.
+
+Two smaller notes. Decisions 8, 11 and 12 say "before the first customer", not "before the tag", so the tag can come
+before the pen test and the lawyer's confirmation, and a customer waits for both. And decision 9 makes the baseline of
+stored shapes the release itself, so every missing version marker must go in before the tag.
 
 ## What it is today (the inventory)
 
@@ -114,7 +185,8 @@ Every issue is in one group. The groups and the reasons are my proposal; the rul
 **Gating (proposed), 32.**
 
 - Security, hostile cases or missing guards: #70 (a GET that changes state, sign-in forced by another site), #406
-  (isolation beyond #295), #422 (host password opens every environment), #441 (the console has no framing headers), #442
+  (isolation beyond #295), #422 (host password opens every environment; decided to stay as a documented exception, so what is left is the
+  documentation, the terms and a check that nothing else can do it), #441 (the console has no framing headers), #442
   (the create route adopts a leftover folder), #684 and #685 (agreement and 403 rules), #709 (the "(guest)" label
   cannot be trusted; likely done by `f61be301`), #353 (sign-up leaves an environment behind), #412 (a warning before an
   uploaded module runs in the page; also the third-party track).
@@ -195,14 +267,15 @@ The same twelve, applied to each core area in the list above, plus:
 
 ### Per-module "done list" (proposal)
 
-Each line is a suggestion for Thomas to accept, cut or add to. "Out" means after the first release.
+Decision 2: all twelve modules are in the first release, each with its own done list. The lines below are the starting
+point for each list; Thomas cuts or adds to them. "Out" means after the first release.
 
 | Module | In (proposal) | Out (proposal) |
 |---|---|---|
 | Assistant | ask and answer in Chat with a real provider tried (#393); a person's own key sealed; the What AI may see switch | pictures; merging with the AI service unless #731 is decided in |
 | Budget | what is built; step 5 and the documentation | currency conversion (#41) |
 | Calendar | what is built; the phone Day view fix (#336) | space calendar extras not built (#179) unless decided in |
-| Documents | Markdown and rich text, Paper layout, print and Markdown files, tags; co-editing only if Thomas decides it in (#665) | maths (#690), custom margins (#688), Google Drive (#566) |
+| Documents | Markdown and rich text, Paper layout, print and Markdown files, tags; co-editing on by default (decision 6) once a real two-person test has passed, and not before | maths (#690), custom margins (#688), Google Drive (#566) |
 | Maps | the map and the places in one module; the picture map; the credit line | themes and options (#388); a picture map without Python (#294) |
 | Polls | what is built | any new feature |
 | Research | what is built; an owner rule on notes, links and answers (RS-01) | research from any AI (#73) |
@@ -214,7 +287,7 @@ Each line is a suggestion for Thomas to accept, cut or add to. "Out" means after
 
 ## Gating rules
 
-Proposed. An issue is **gating** when any one of these is true:
+Decided (decision 3): all seven rules. An issue is **gating** when any one of these is true:
 
 1. It can leak or lose a person's data, or let one person act as another.
 2. It lets one environment, space or module reach what belongs to another.
@@ -227,11 +300,13 @@ Proposed. An issue is **gating** when any one of these is true:
 An issue is **not gating** when it is polish, a missing convenience, a new feature, a wording change, or a bug whose
 workaround is written in `known-issues.md` and which cannot do any of 1 to 5. A gating issue is handled inside the
 module or core "done" list it belongs to, not as a separate project, and one that blocks two lists is built once.
-The project manager marks each issue (`release: gating` or `release: after`) once Thomas has set the rule.
+The project manager marks each issue (`release: gating` or `release: after`) after re-reading every open issue
+(decision 18).
 
 ## The freeze
 
-A proposal, starting once the "done" lists are agreed.
+Decided in part (decision 5: no limit on its length). It starts once the "done" lists are agreed and the name is
+finished (decision 14).
 
 - **What it freezes:** new features, new routes, new stored keys, new manifest fields, new SDK calls, renamed ids, and
   any change to a stored format. Dependencies stay at their locked versions except for security fixes.
@@ -239,10 +314,10 @@ A proposal, starting once the "done" lists are agreed.
   documents, tests and checks, and licence fixes.
 - **Exceptions:** an exception names the issue, the reason and the "done" point it serves, in the issue. A change to the
   core, the SDK, the manifest or a stored format is held for an independent read, as today.
-- **Who may allow it:** Thomas. The project manager may allow a fix that touches no stored data, route or SDK call, and
-  tells Thomas in the next report.
-- **How long:** until the release is tagged, with a limit Thomas sets in weeks. If the limit passes, Thomas decides
-  again whether to cut a list.
+- **Who may allow it:** not decided. The first draft suggested Thomas for everything and the project manager for fixes
+  that touch no stored data, route or SDK call. Thomas did not answer that half (question 20).
+- **How long:** until the release is tagged. Thomas set no limit (decision 5). With all twelve modules in (decision 2)
+  this is the largest risk to the plan, so question 19 asks for a review date, not a limit.
 - **What the project manager does:** every pull request in the freeze names its "done" point, and a feature pull
   request waits until the tag.
 
@@ -255,13 +330,17 @@ turning its list into a plan or a report.
 
 An earlier draft, `plan-security-assessment`, exists on the branch
 `pm/plan-security-assessment` (not on main). It has fourteen areas, a threat picture
-and a method. This track reuses it and should replace it, not repeat it, if Thomas agrees (open question 8).
+and a method. Decision 8: finish it, then run an independent larger-model read of every core area, then a human
+penetration test on a hosted server before the first customer. This track reuses the draft and replaces it, not repeats it.
 
 Checklist (proposal):
 
 - **Authentication.** Sessions and their cookie flags (`HttpOnly` and `SameSite=Lax` are set in `server/auth.js`, and
   `secure` comes from `isSecure(req)`), the second step, recovery codes, the login limiter (`LoginLimiter`, also used
-  for the console and the address check), the first-password flow, #422.
+  for the console and the address check), the first-password flow, #422. Decision 15: the host admin's password may open every environment, as the hosted
+  operator's right. That is a deliberate exception, so the read checks that this is the only way across, that no
+  environment's own owner or member password reaches another, and that the exception is written in the docs and terms
+  (Track 4).
 - **Sessions.** Sign-out everywhere (`userStamp`), expiry, the console's `host_session`, personal links, how a link is
   revoked.
 - **The guest door.** Guest links, **Continue as guest**, the agreement, the 24-hour life, the "(guest)" mark (#709),
@@ -286,12 +365,33 @@ Checklist (proposal):
   `alpine:3.20`, the `pmtiles` program (pinned by version and sha256 in the `Dockerfile`), and
   `livekit/livekit-server:latest` in the compose file. I found no dependency-update or audit workflow in
   `.github/workflows`. A pinned LiveKit version and an `npm audit` step belong on the list.
-- **A human penetration test** on a hosted server, if Thomas wants one (open questions 8 and 11).
+- **A human penetration test** on a hosted server, budgeted (decisions 8 and 11), after the fixes from the reads and
+  before the first customer.
 
 ### Track 2: Data protection
 
 Checklist (proposal). It starts with an inventory (what personal data, where, why, how long); the repository has no such
 page today.
+
+**What decision 9 means here.** Thomas's intent is that data is secure and backed up, so both are release
+requirements, not extras. In concrete terms, each point a proposal until Thomas confirms it (question 21):
+
+- **Secure in transit.** Every hosted environment is reached over HTTPS, and the install guide says so without a
+  plain-HTTP option for a hosted server.
+- **Secure at rest.** Secrets stay sealed; data files stay `0600`; no secret or password hash appears in an owner's export,
+  a log or a backup meant to be shared. #36 gets one written answer: what is stored as plain JSON and why. Whether the
+  hosted server's disk is encrypted is the host's choice, outside the app, and is a part of question 21.
+- **Backed up.** A scheduled, automatic copy of the whole data folder (every environment, the host's files, and the
+  Vault's file bytes) that does not block the running server, is kept on a machine other than the one the data lives
+  on, and keeps a stated number of past copies. Today only an owner's export and an unfiltered host backup exist (#427).
+- **Backups are secret.** A backup holds password hashes and, with the secrets key, the sealed secrets. It is readable
+  only by the operator, and the plan says whether the key is kept apart from the copies.
+- **Restore proven.** A restore onto a clean machine, from a backup made by the oldest version, and the restored
+  environment starts (Track 3).
+- **A copy before every migration** (Track 3).
+- **One owner's data on its own.** An owner's export and erase cover that environment only.
+- **A way to report a flaw and a short written plan for a leak.** `SECURITY.md`, and what Thomas does and tells
+  customers; the lawyer says what the law asks (Track 4).
 
 - **What is stored, and where.** Accounts (logins, display names, password hashes, two-step secrets) in each
   environment's `app.json`; chat in `chat.json` (public) and `chat-private.json`; module data as JSON; Vault files
@@ -332,16 +432,18 @@ Checklist (proposal).
 - **Concurrency.** Known issues say "last write wins" for the Whiteboard's blocks and grids. Decide which objects need
   a version check and which accept last-write-wins on purpose.
 - **Co-editing snapshots.** Documents keeps a stored copy of the state, compaction by re-seed and an editors list
-  (`6441ab5e`, `960d545e`, `1fa81af1`). Before it is on by default it needs a restore test (damaged state, a lost
-  writer, an outage).
+  (`6441ab5e`, `960d545e`, `1fa81af1`). Decision 6 turns it on by default at release, so it needs a restore
+  test (damaged state, a lost writer, an outage) as well as the real two-person test. The `coediting` switch stays off
+  until both pass.
 - **Backup and restore.** One tested path, with a restore test on a clean machine and a check that a restored
   environment starts. (The architecture says services see data "in its current shape, including an environment
   restored from an old backup".)
 - **Repair.** A file that cannot be read stops the start with one sentence (`architecture-environments`). Decide what
   an owner does next, and whether a repair tool is needed.
-- **Versioning of stored data and the post-release migration policy.** Proposed rule: every stored shape has a version;
-  an update reads every older version since the release; a migration runs once, keeps a copy first and can be rolled
-  back; a rollback of the image must not read data it cannot understand. (`server/chat-history.js` already keeps
+- **Versioning of stored data and the post-release migration policy.** Decision 9: every update reads every older
+  shape since the release; each shape has a version; a copy is taken before any migration. The shapes as they stand at
+  the tag are the baseline, so every missing marker must be added before the tag. Still proposed on top of that: a
+  migration runs once and can be rolled back, and a rollback of the image must not read data it cannot understand. (`server/chat-history.js` already keeps
   private chat in its own file so an earlier release cannot show it, a good precedent.)
 - **A restore from a backup made by an older version** is a test, not an assumption.
 
@@ -356,8 +458,9 @@ shows and what to ask.
   `server/airports-LICENSE`), the base images `node:22-alpine` and `alpine:3.20`, and the LiveKit server image. Whether
   each needs a line in the About list is a question for the lawyer. #780 is the pre-release licence re-check named in
   the request; I have not read it.
-- **The product's own licence.** `package.json` says `UNLICENSED`, and the About tab says "Proprietary software. All
-  rights reserved." There is no `LICENSE` file in the repository. #72 (the licence lock and purchased keys) depends on it.
+- **The product's own licence.** Decision 13: proprietary, all rights reserved, with a `LICENSE` file. `package.json`
+  says `UNLICENSED`, and the About tab says "Proprietary software. All rights reserved." There is no `LICENSE` file
+  in the repository yet. #72 (the licence lock and purchased keys) depends on it. The lawyer confirms the wording.
 - **The credits page.** Built (`d61ed72a`, `40900a93`). Keep it in step at the release.
 - **Terms and privacy text.** The server can show a terms file and a beta NDA before entry (`TERMS_FILE`, `NDA_FILE`,
   `server/agreements.js`); no such texts are in the repository, and I found no privacy notice.
@@ -365,8 +468,8 @@ shows and what to ask.
   question for the lawyer.
 - **Children.** Nothing in the code asks an age. Ask whether that matters.
 - **Export controls.** The product uses TLS and a media stack (LiveKit). Ask whether any filing is needed.
-- **Trademarks.** The product name is being changed to Coffee Pub Chameleon (#426). Ask for a clearance search before
-  the release, and the same for "Coffee Pub" and the module names.
+- **Trademarks.** Decision 14: the name is finished as Coffee Pub Chameleon (#426) before the freeze, then cleared. Ask
+  for a clearance search before the first customer, and the same for "Coffee Pub" and the module names.
 - **LiveKit.** The server is a separate program the compose file pulls as `:latest`, and its client and server SDKs
   are in the credits (Apache-2.0). Ask about the terms if Thomas ever offers a hosted LiveKit.
 - **Map data and tiles.** The map shows what the admin's PMTiles file holds. Protomaps builds are made from
@@ -377,7 +480,11 @@ shows and what to ask.
 - **AI provider terms.** What each provider's terms allow (use of customer data, storage, minors). The product sends
   text to the provider the owner or admin picks.
 - **Third-party modules.** Terms for module authors, and a warning to the admin who installs one.
-- **Who signs off.** Thomas, with the lawyer's written confirmation. Nothing is "legal done" without it.
+- **The host admin's password (#422).** Decision 15 keeps it able to open every environment. Ask the lawyer how the
+  terms and the privacy notice must say so: that the hosted operator can reach every environment's data, why, and what
+  Thomas will and will not do with that access. The same text must reach an owner before they put people's data in.
+- **Who signs off.** Thomas signs after a named lawyer confirms in writing (decision 12). Nothing is "legal done"
+  without it. The lawyer is named before the freeze starts, because a lawyer's time is the slowest part of this track.
 
 ### Track 5: Third-party modules
 
@@ -389,7 +496,9 @@ frame with `sandbox="allow-scripts allow-forms"` and reaches Chameleon only thro
 holds its data to its `guards` and permissions (`server/module-guards.js`). Nothing makes an outside author go
 through us: anyone can install a zip on their own server. That is the part "outside our process".
 
-What the contract and the SDK must promise (proposal):
+What the contract and the SDK must promise (decision 10 publishes it; the list is the starting point). Decision 7: the
+call is not yet a module at release, and the SDK promise says so, so an outside author knows the call is outside the
+promise and may become a module later.
 
 - **A version of the SDK and of the manifest.** I found no such field in `module.json` or the SDK code. A manifest
   needs to say which SDK it was built for, and the server needs to refuse or warn on a mismatch.
@@ -397,8 +506,8 @@ What the contract and the SDK must promise (proposal):
   version) and which are internal (the bundled modules use some that outside modules should not).
 - **Permissions.** Each permission an outside module may ask for, in words a person reads, and a rule that nothing
   unapproved is ever granted. Modules never see secrets, except the write-only secret setting (#784).
-- **Review and approval.** Choose between the owner's approval as today, a review by us for a listing, or both (open
-  question 10). A review needs a checklist, a person and a time limit.
+- **Review and approval.** Decision 10: the owner approves as today, there is no listing and no review by us. The
+  contract tells an author this plainly, so no one expects a review.
 - **Sandbox.** What is promised and what is not: no network except what the SDK gives (to confirm; read as code), no
   cookies, `referrerpolicy="no-referrer"`, and what an in-page run gives up. The Whiteboard's "Picture not found" in a
   sandboxed run (known issues) shows the sandbox still limits real features.
@@ -408,17 +517,16 @@ What the contract and the SDK must promise (proposal):
   kit (the bundled modules' `test/` folders are the only examples), and a way to run a module against a throwaway server.
 - **What is outside our process:** the author's code, hosting, support and updates, and anything an admin installs.
   What we owe them: a stable contract and clear refusal messages. What we do not owe them: a review of their code, unless
-  Thomas decides a listing exists.
+  a listing is later decided.
 - **Terms.** Module author terms and the admin's warning (Track 4).
 
 ## Release steps
 
-A proposal. Every step is a gate.
+A proposal. Every step is a gate. The number and the rule change are decided; the rest follows the decisions.
 
 1. **Freeze** starts when the "done" lists are agreed.
 2. **Version.** `package.json` says `0.4.0` today, and the CHANGELOG's `[Unreleased]` section holds everything since
-   (the entry for #629 to #715 says it was written afterwards from the code). Decide the release number (open question
-   4). Every module keeps its own version in `tools/module-versions.json`.
+   (the entry for #629 to #715 says it was written afterwards from the code). The release number is `1.0.0` (decision 4). Every module keeps its own version in `tools/module-versions.json`.
 3. **Changelog.** content-manager writes the release entry from the commits and checks it against the code.
 4. **Checks.** `npm run check` green on a clean machine, with the known failures resolved (#686, #402, #764). The two
    root-only `check-names` cases are a known note, not a defect.
@@ -430,7 +538,12 @@ A proposal. Every step is a gate.
 8. **Wiki.** `npm run docs:build`, review, and publish when Thomas says (the rule is: do not publish unasked).
 9. **Rollback.** The previous image stays available. Data written by the new version must be readable by the old one, or
    a backup is taken first and the step says so. Tried once (Track 3).
-10. **The rule changes.** `CLAUDE.md`'s "not released" rule is replaced by the post-release rule.
+10. **The rule changes.** `CLAUDE.md`'s "not released" rule is replaced by the post-release rule (decision 17), written
+    by Thomas and content-manager before the tag. This plan does not edit `CLAUDE.md`.
+11. **Before the first customer** (not before the tag): the human penetration test on a hosted server and the lawyer's
+    written confirmation (decisions 8, 11 and 12), and the real two-person call on each kind of device Thomas names
+    (decision 16). The first release is private, invited and hosted by Thomas (decision 1), so the tag may come first and
+    a customer waits for these.
 
 ## Risks, ranked
 
@@ -439,28 +552,40 @@ A proposal. Every step is a gate.
 2. **No version on most stored data, and no migration policy.** After release this is data loss on an update.
 3. **A real call has never been verified here** (#29, #30 and every "awaiting a real call" line). The central feature is
    checked only by tools, with no LiveKit server.
-4. **Co-editing and rich text becoming the default** with tool checks and "read as code only" paths.
+4. **Co-editing on by default** (decision 6) with tool checks and "read as code only" paths. The real two-person test
+   cannot be done in the cloud container, so it waits on Thomas and a second person. If it slips, the switch stays off
+   and the release is not held by it (see "Tensions").
 5. **Backup and restore** are not proven end to end (no whole-server backup, an export that blocks a hosted server).
-6. **Legal gaps:** no licence file, no terms or privacy text, no trademark search.
+   Decision 9 makes this a release requirement.
+6. **Legal gaps:** no licence file, no terms or privacy text, no trademark search, and the host admin exception
+   (decision 15) that those texts must state.
 7. **Third-party modules** with no SDK version and no stability promise: the first outside module freezes whatever the
    SDK is that day.
-8. **Scope:** about 150 open issues and 103 plans. Without the freeze nothing finishes.
+8. **Scope and an open-ended freeze:** about 150 open issues, 103 plans, all twelve modules in (decision 2) and no
+   limit on the freeze (decision 5). Without a review date the freeze can drag (question 19).
 9. **Phones:** several gating layout issues (#464, #681, #682) and no real phone test.
 10. **Dependency drift:** `livekit-server:latest` and no audit step.
 
-## What is not in the first release (proposal)
+## What is not in the first release
+
+Decided in part: all twelve modules are in (decision 2), the call as a module is out (decision 7), and there is no
+listing or review of third-party modules (decision 10). The rest is a proposal.
 
 Everything listed under "Ideas and business" above, except what Thomas pulls in; the iOS app
 ([plan-ios-app](plan-ios-app.md), draft); passkeys unless decided in (#28); billing and own domains (#49, #50); running
 Chameleon on Windows and Mac (#56); a one-container install (#48); integration tokens (#64); the Chrome extension
-(#232); the module listing and review (Track 5) unless decided in; and every plan whose status says "draft" or
+(#232); the module listing and review (Track 5), decided out; and every plan whose status says "draft" or
 "nothing built" and is not named in a "done" list.
 
 ## Doc facts
 
 For content-manager once Thomas decides (this plan does not edit these):
 
-- `CLAUDE.md`: replace the "not released" rule at the release.
+- `CLAUDE.md`: replace the "not released" rule before the tag (decision 17; Thomas and content-manager write it).
+- A `LICENSE` file (decision 13) and the legal texts drafted for the lawyer (decision 12): terms of service, a privacy
+  notice, a cookie notice and module author terms.
+- The terms, the privacy notice and the owner's guide must say that the host admin's password opens every environment
+  (decision 15).
 - A release guide: install, update, rollback, backup, restore.
 - A security page and a `SECURITY.md` (how to report a flaw), a data protection page (the inventory), a data format
   page (every stored shape and its version) and a module author page (the stability promise).
@@ -474,134 +599,97 @@ For content-manager once Thomas decides (this plan does not edit these):
 Sizes are S (under a day), M (a few days) and L (a week or more). A step marked HELD touches `server/`, sign-in, who sees
 what, the SDK or a stored format, so it waits for an independent read before main.
 
-1. **Re-read the issue list and mark it** (`release: gating`, `release: after`) once Thomas answers questions 1 to 3 and
-   18. project manager. S.
-2. **Write each module's and core area's "done list"** into its plan, from the proposals above. product-planner, with
-   Thomas. M.
-3. **The freeze starts.** The project manager enforces it. S.
-4. **Security assessment**, in the order of the earlier draft, isolation first. quality-assurance reads;
-   server-development and bug-fixes fix; each fix has a check. L. HELD for every fix. Includes #70, #406, #422, #441,
-   #442, #684, #685, #795 and the secrets issues.
-5. **Data format inventory, version markers and the migration policy.** server-development and content-manager. M. HELD
-   (a stored format).
-6. **Backup and restore**, one path, tested (#427, the Vault's bytes, the export that blocks the server).
-   server-development. L. HELD.
-7. **The data protection inventory, retention and deletion rules** (#36, plan-vault-privacy slice 4). product-planner
-   writes the plan, server-development builds. M, then L. HELD.
-8. **Gating bugs** (#27, #441, #464, #681, #682, #732, #741, #335, #23 and the verification issues). bug-fixes and
-   experience-design. M to L.
-9. **A real call and two-person verification** (#29, #30), by Thomas or a person he names, on a real LiveKit server. M.
-   This cannot be checked without a real LiveKit call.
-10. **The legal track:** the licence inventory (credits gaps), terms, privacy, cookies, trademark, AI terms and the
-    lawyer's review. Thomas, a lawyer and content-manager. L. No tool checks this.
-11. **The third-party contract:** the SDK and manifest version, the stability promise, the hello-world module (#46), the
-    warning (#412) and the review decision. product-planner writes it; server-development and experience-design
-    build. L. HELD (the SDK and the manifest).
-12. **The accessibility and phone pass** on every "done" list. experience-design and quality-assurance. M each.
-13. **Documents:** the release guide, the security and data pages, the module author page and the stale status lines.
-    content-manager. M.
-14. **Release rehearsal:** a clean install and an update from the earlier image, with data. quality-assurance. M.
-15. **The release steps** above. The project manager and Thomas. S.
+1. **Re-read the issue list and mark it** (`release: gating`, `release: after`), every open issue including #742 and up,
+   #780, #786 and #795 (decisions 3 and 18). project manager. S.
+2. **Thomas names what only he can name:** the lawyer (decision 12), the phone and computer kinds and the two people
+   for the real call and the co-editing test (decisions 6 and 16), the freeze review date and who allows exceptions
+   (questions 19 and 20), the backup details (question 21). Thomas. S, but waiting on him holds steps 4 to 9.
+3. **Finish the name "Coffee Pub Chameleon"** (#426, [plan-rename-chameleon](plan-rename-chameleon.md)), before the
+   freeze (decision 14). experience-design and content-manager; server-development for any stored key. M. Then the
+   trademark clearance goes to the lawyer (step 11).
+4. **Write each of the twelve modules' and each core area's "done list"** into its plan (decision 2). product-planner,
+   with Thomas. M for each module, L in all.
+5. **The freeze starts**, with the review date from question 19. The project manager enforces it. S.
+6. **Finish `plan-security-assessment`, then the security reads and fixes**, isolation first (decision 8).
+   product-planner finishes the plan; quality-assurance reads; server-development and bug-fixes fix; each fix has a
+   check. L. HELD for every fix. Includes #70, #406, #441, #442, #684, #685, #795, the secrets issues, and for #422 only
+   the check that nothing else crosses environments (decision 15).
+7. **Data format inventory, version markers, the migration policy and a copy before any migration** (decision 9).
+   Every marker goes in before the tag. server-development and content-manager. M. HELD (a stored format).
+8. **Data protection and backups** (decision 9): the inventory, retention and deletion rules (#36, plan-vault-privacy
+   slice 4), then the scheduled whole-server backup with the Vault's bytes, kept off the machine, and a restore proven on
+   a clean machine (#427, the export that blocks the server). product-planner writes the plan once question 21 is
+   answered; server-development builds. M, then L. HELD.
+9. **Gating bugs** (#27, #441, #464, #681, #682, #732, #741, #335, #23, the verification issues and any the re-read
+   adds). bug-fixes and experience-design. M to L.
+10. **The real calls and the co-editing test** (decisions 6 and 16, #29, #30): a real call with two people on each device
+    kind Thomas names, including a hosted server, and a real two-person co-editing test, run by Thomas or the people he
+    names. Only after both pass does the `coediting` switch default flip (S, HELD, server-development). M. Cannot be
+    checked in the cloud container or without a real LiveKit call.
+11. **The legal track** (decisions 11 to 14 and 15): the licence inventory, the `LICENSE` file, terms, privacy, cookies,
+    module author terms, the host admin statement, trademark, AI terms; content-manager drafts for the lawyer, the lawyer
+    confirms in writing, Thomas signs. L. No tool checks this.
+12. **The third-party contract** (decisions 7 and 10): the SDK and manifest version, the stability promise stating the
+    call is not yet a module, the hello-world module (#46), the warning (#412). product-planner writes it;
+    server-development and experience-design build. L. HELD (the SDK and the manifest).
+13. **The accessibility and phone pass** on every "done" list. experience-design and quality-assurance. M each.
+14. **Documents:** the release guide (install, update, rollback, backup, restore), the security and data pages, the
+    module author page, `SECURITY.md`, the stale status lines, and the post-release rule for `CLAUDE.md` (decision 17,
+    written by Thomas and content-manager). content-manager. M.
+15. **Release rehearsal:** a clean install, an update from the earlier image with data (reading every older shape), and a
+    restore from an older backup. quality-assurance. M.
+16. **The release steps** above, version `1.0.0` (decision 4). The project manager and Thomas. S.
+17. **Before the first customer:** the human penetration test on a hosted server and a fix round (decisions 8 and 11),
+    the lawyer's written confirmation (decision 12), and a recorded two-person call on the hosted server. Thomas, an
+    outside tester, the lawyer. M to L. Not checked by any tool here.
 
 ## Verify
 
-- Steps 1 to 3 are checked by reading: every open issue has a mark, every module has a done list.
-- Step 4: each finding has a check that failed before the fix and passes after, run by `npm run check`. The hostile
+- Steps 1 to 5 are checked by reading: every open issue has a mark, every module has a done list, the name has no mixed
+  forms left (`check-names` stays as it is).
+- Step 6: each finding has a check that failed before the fix and passes after, run by `npm run check`. The hostile
   cases are tried on a throwaway server with two environments, as `tools/check-links.mjs` does today. A real hosted
-  domain and a real reverse proxy are not available here.
-- Steps 5 and 6: a script writes data in the oldest format, updates, and reads it; a restore from a backup onto a clean
-  data folder; a kill during a write is simulated.
-- Step 9 and everything that touches a call: only a real LiveKit call can show it. No check here can.
-- Step 10 is not verified by any tool. A lawyer's written confirmation is the check.
+  domain and a real reverse proxy are not available here. That the host admin's password opens every environment is
+  tried and then written in the docs; nothing else may do it.
+- Steps 7 and 8: a script writes data in the oldest format, updates, and reads it; a copy exists before a migration; a
+  restore from a backup onto a clean data folder; a kill during a write is simulated. A backup kept on another machine,
+  and a hosted disk, cannot be checked from here.
+- Steps 10 and 17 and everything that touches a call: only a real LiveKit call with real people can show it. The
+  co-editing two-person test also needs two real people. No check here can stand in for either.
+- Step 11 is not verified by any tool. A lawyer's written confirmation is the check.
 - `npm run check:docs` and `node tools/check-names.mjs` (as root it must end `check-names: 2 problems`) for every plan and
   document change.
 
 ## What is not decided
 
-Everything. This plan has no decisions yet. When Thomas answers, product-planner moves his answers into a "Decisions"
-section and takes them out of the questions below.
+- Who allows an exception to the freeze (question 20; Thomas did not answer that half of question 5).
+- What bounds the freeze, since it has no limit (question 19).
+- The backup details (question 21) and the devices and people for the real tests (question 22).
+- The per-module done lists, which are proposals until Thomas cuts or adds to them.
+- Everything the lawyer decides.
 
 ## Open questions for Thomas
 
-Each is a choice. The first option is my suggestion, and only a suggestion. "Blocks" says what the answer holds up.
+The first option is my suggestion, and only a suggestion. "Blocks" says what the answer holds up. Questions 1 to 18 are
+answered (see "Decisions"); these four are new.
 
-1. **What is the first release, in one sentence?** (blocks steps 1 to 3 and the whole freeze)
-   a. A private, invited release to named customers on a hosted server that Thomas runs (suggested: the fewest promises,
-   a small blast radius, and a lighter legal track).
-   b. A public release anyone can self-host from the image.
-   c. Both together.
-2. **Which modules are in the first release?** (blocks each module's done list)
-   a. All twelve, each with the proposed list above (suggested only if the freeze is short).
-   b. A core set (for example Planner, Calendar, To-do, Polls, Maps, Vault, Assistant, Research), with the rest marked
-   "preview" or left out (Documents with co-editing, Whiteboard, Stream, Budget).
-   c. Thomas names them one by one.
-3. **What makes an issue gating?** (blocks step 1)
-   a. The seven rules above (suggested).
-   b. Only rules 1 to 3.
-   c. Thomas marks each one himself.
-4. **Which version number is the release?** (does not block; needed at "Release steps" 2)
-   a. `1.0.0` (suggested: the compatibility promise starts at 1.0).
-   b. `0.5.0`, and a later 1.0 once the promises have held for a while.
-   c. Another number.
-5. **How long may the freeze last, and who may allow an exception?** (blocks step 3)
-   a. Four weeks, then Thomas decides again; Thomas allows exceptions, and the project manager allows ones that touch no
-   stored data, route or SDK call (suggested).
-   b. No limit.
-   c. Only Thomas allows any exception.
-6. **Is co-editing on by default at release?** (blocks the Documents list and Track 3's snapshot test)
-   a. No: it ships behind its switch, off, marked preview (suggested: no real two-person test yet).
-   b. Yes, after a real two-person test.
-   c. Left out of the release.
-7. **Is the call as a module (#377), which Thomas marked critical, in the first release?** (blocks the core list and the
-   module contract)
-   a. No: it ships as it is, and the SDK promise says the call is not yet a module (suggested only because it changes
-   the SDK, which the freeze would then block; doing it first delays everything). Thomas should weigh this one himself.
-   b. Yes, before the freeze starts.
-   c. Yes, and the release waits for it.
-8. **How is security assessed?** (blocks step 4)
-   a. Reuse and finish the earlier `plan-security-assessment` draft, with an independent larger-model read of every core
-   area, then a human penetration test on a hosted server before the first customer (suggested).
-   b. The larger-model read only.
-   c. A smaller scope: isolation, sign-in, guests and uploads only.
-9. **What is the stored-data promise after release?** (blocks step 5)
-   a. Every update reads every older shape since the release; each shape has a version; a copy is taken before any
-   migration (suggested).
-   b. An update may need a manual step for a named list of changes.
-   c. No promise in the first months, and customers are told so.
-10. **Third-party modules at release?** (blocks step 11)
-    a. The contract and the SDK promise are published, an owner approves as today, and there is no listing and no review
-    by us (suggested: the smallest promise we can keep).
-    b. The above, plus a review by us for a listing.
-    c. Not in the first release: only bundled modules.
-11. **Is a human penetration test and a lawyer's review in the budget?** (blocks steps 4 and 10)
-    a. Yes to both, before the first customer (suggested).
-    b. The lawyer only.
-    c. Neither yet; the release is private and small.
-12. **Who signs off the legal track, and which texts do we need?** (blocks step 10) The texts could be terms of service, a
-    privacy notice, a cookie notice, module author terms and a licence file.
-    a. Thomas signs after a named lawyer confirms in writing, and content-manager drafts the texts for the lawyer
-    (suggested).
-    b. The lawyer drafts them.
-    c. Thomas decides without a lawyer.
-13. **What is the product's own licence at release?** (blocks #72 and step 10)
-    a. Proprietary, all rights reserved, with a `LICENSE` file (suggested: it matches `package.json` and About).
-    b. Another licence Thomas chooses.
-14. **The product name (#426).** (blocks the trademark check)
-    a. Finish "Coffee Pub Chameleon" before the freeze, then clear the trademark (suggested).
-    b. Release under the current mixed names.
-    c. Another name.
-15. **Does the host admin's password stay able to open every environment (#422)?** (blocks the security list)
-    a. No: change it before release (suggested: it breaks the per-environment promise).
-    b. Yes, documented as the hosted operator's right.
-16. **What does "verified" need for the first release?** (blocks step 9)
-    a. One real call with two people, on each phone and computer kind Thomas names, including a hosted server (suggested).
-    b. A call on Thomas's own server only.
-    c. Tool checks only.
-17. **What happens to `CLAUDE.md`'s "not released" rule?** (does not block; needed at "Release steps" 10)
-    a. Replace it with a post-release rule (compatibility, migrations, version bumps) that Thomas and content-manager
-    write before the tag (suggested).
-    b. Keep it until a later date.
-18. **Is the issue list refreshed before anything is marked?** (blocks step 1)
-    a. Yes: the project manager re-reads all open issues, including #742 and up, #780, #786 and #795, which this plan
-    could not read (suggested).
-    b. Use the 2026-11-12 list as it is.
+19. **What keeps the freeze from dragging, given no limit (decision 5)?** (blocks step 5)
+    a. A review date, set when the freeze starts (for example every four weeks), on which the project manager reports
+    what is left and Thomas chooses to continue, cut a list or move a module to after the release (suggested: it is not
+    a limit, and it makes the drag visible).
+    b. No review at all, as answered.
+    c. A review triggered by something else, such as the number of open gating issues.
+20. **Who may allow an exception to the freeze?** (the unset half of question 5; blocks step 5)
+    a. Thomas allows all; the project manager allows only a fix that touches no stored data, route or SDK call and tells
+    Thomas in the next report (suggested).
+    b. Only Thomas allows any exception.
+21. **What are the backup details?** (blocks step 8)
+    a. Daily automatic copies of the whole data folder, the last seven kept, one copy on another machine, the secrets
+    key kept apart from the copies, and disk encryption on the hosted server left to the host (suggested as a starting
+    point only; the numbers are Thomas's).
+    b. Thomas sets each point himself (how often, how many, where, who can read them, whether copies are sealed).
+22. **Which devices and which two people, and does the release wait for the co-editing test?** (blocks step 10, and
+    the default for co-editing)
+    a. Thomas names the phone and computer kinds and the two people now; the release does not wait for the co-editing
+    test, and ships with `coediting` off if it has not passed by the tag (suggested: the switch makes this safe).
+    b. The release waits for the co-editing test.
