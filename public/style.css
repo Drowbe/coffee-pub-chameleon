@@ -8790,6 +8790,209 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
   right: 0;
 }
 
+/* Call position Right (plan-workspaces.md, decision 17 and step 9; space.js, callPlaceFor): as Left, turned round. In a
+   column at least 560px wide the chat is on the left with all of its parts and the call beside it on the right, the
+   column's full height: its titlebar at the top (clear of the handle, which sits over it there), the tiles in all the
+   height there is, the toolbar pinned to the bottom. The same line between them sets the call's width. */
+.side-column.call-right {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--side-column-call-w, 320px);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-areas: "chat head" "chat strip" "chat out" "chat bar" "chat rest";
+}
+
+.side-column.call-right.in-call:not(.call-away) {
+  grid-template-rows: auto minmax(0, 1fr) auto auto 0;
+}
+
+.side-column.call-right > .side-column-call-head {
+  grid-area: head;
+}
+
+.side-column.call-right > .side-column-strip {
+  grid-area: strip;
+  min-width: 0;
+}
+
+.side-column.call-right > .side-column-call-out {
+  grid-area: out;
+  padding-right: 8px;
+}
+
+body:not(.in-aside) .side-column.call-area.call-right > .side-column-chat {
+  grid-area: chat;
+  min-width: 0;
+  min-height: 0;
+  border-top: 0;
+  border-right: 1px solid var(--border);
+}
+
+.side-column.call-right .side-column-splitter-h {
+  display: none;
+}
+
+.side-column.call-right .side-column-strip > .canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.side-column.call-right > .side-column-splitter-side {
+  left: auto;
+  right: calc(var(--side-column-call-w, 320px) - 4px);
+}
+
+@media (pointer: coarse) {
+  .side-column.call-right > .side-column-splitter-side {
+    right: calc(var(--side-column-call-w, 320px) - 7px);
+  }
+}
+
+/* Call position In the workspace (plan-workspaces.md, decisions 17 and 30, step 9; space.js, callPlaceIn): the same call
+   area, with the title bar, menu and controls it has above the chat, in the canvas's area instead of the column. The
+   column grows by the call's width (--call-work-w) beside the chat, which keeps its own, and the canvas has the rest.
+   While nothing is docked on the canvas the call has all of its area: the column is drawn over the canvas, which keeps
+   its width underneath (so a module docked next fits as it would have) and shows nothing. Out of the call the area
+   holds the large Start call and a line (decision 32). The handle folds the chat alone; the call stays. Wider than a
+   phone only: a phone has no column and no canvas area to put the call in (decision 29). */
+@media (min-width: 641px) {
+  .side-column.call-work {
+    --call-work-chat: var(--side-column-w, 320px);
+    width: calc(var(--call-work-chat) + var(--call-work-w, 400px));
+    display: grid;
+    grid-template-columns: var(--call-work-chat) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "chat head" "chat strip" "chat out" "chat empty";
+  }
+
+  .side-column.call-work.collapsed {
+    --call-work-chat: 44px;
+  }
+
+  /* On the call: the tiles take the height. */
+  .side-column.call-work.in-call {
+    grid-template-rows: auto minmax(0, 1fr) auto 0;
+  }
+
+  .work.call-in-work:not(:has(> .canvas > .module-docked)) > .side-column.call-work {
+    width: 100%;
+    margin-right: calc(var(--call-work-chat) + var(--call-work-w, 400px) - 100%);
+    border-right: 0;
+  }
+
+  .work.call-in-work:not(:has(> .canvas > .module-docked)) > .canvas {
+    visibility: hidden;
+  }
+
+  .side-column.call-work > .side-column-call-head {
+    grid-area: head;
+    padding-right: 8px;
+  }
+
+  .side-column.call-work > .side-column-strip {
+    grid-area: strip;
+    min-width: 0;
+  }
+
+  .side-column.call-work .side-column-strip > .canvas {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .side-column.call-work > .side-column-call-empty {
+    grid-area: empty;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-height: 0;
+    background: var(--bg-section);
+  }
+
+  body:not(.in-aside) .side-column.call-area.call-work > .side-column-chat {
+    grid-area: chat;
+    min-width: 0;
+    min-height: 0;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .side-column.call-work .side-column-splitter-h {
+    display: none;
+  }
+
+  /* The handle and the chat's edge stay at the chat's own corner and edge, not the call's. */
+  .side-column.call-work > .side-column-toggle {
+    right: auto;
+    left: calc(var(--call-work-chat) - 32px);
+  }
+
+  .side-column.call-work #chat-content > header {
+    padding-right: 40px;
+  }
+
+  .side-column.call-work > .side-column-splitter-v {
+    right: auto;
+    left: calc(var(--call-work-chat) - 4px);
+  }
+
+  /* The call's own edge, beside the docked modules: there only while something is docked. */
+  .side-column-splitter-work {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -4px;
+    width: 8px;
+    cursor: col-resize;
+  }
+
+  .work.call-in-work:not(:has(> .canvas > .module-docked)) .side-column-splitter-work {
+    display: none;
+  }
+
+  /* Folded: the rail in the chat's place under the handle, the call as it is. The call's icon and the faces stay out
+     of the rail: the call is on show. */
+  .side-column.call-work.collapsed > .side-column-rail {
+    grid-area: chat;
+    padding-top: 40px;
+    border-right: 1px solid var(--border);
+  }
+
+  .side-column.call-work.collapsed > .side-column-call-head:not([hidden]),
+  .side-column.call-work.collapsed > .side-column-strip,
+  .side-column.call-work.collapsed > .side-column-call-empty:not([hidden]) {
+    display: flex;
+  }
+
+  .side-column.call-work.collapsed > .side-column-splitter-work:not([hidden]) {
+    display: block;
+  }
+
+  .side-column.call-work.collapsed > .side-column-toggle {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    margin: 0;
+  }
+
+  .side-column.call-work.collapsed .side-column-rail-call,
+  .side-column.call-work.collapsed .side-column-rail-faces {
+    display: none;
+  }
+}
+
+@media (min-width: 641px) and (pointer: coarse) {
+  .side-column.call-work > .side-column-splitter-v {
+    left: calc(var(--call-work-chat) - 7px);
+  }
+
+  .side-column-splitter-work {
+    right: -7px;
+    width: 14px;
+  }
+}
+
 /* The Conference layout (plan-workspaces.md, step 4; space.js, syncConferenceView): the canvas is hidden and the column
    is the page. The chat keeps the width it has in the column (--side-column-w) and the call has all the rest: its title
    bar, the tiles in all the height there is and the toolbar pinned under them, as when the call is beside the chat.
@@ -8879,6 +9082,129 @@ body:not(.in-aside) .side-column.call-left > .side-column-chat {
 @media (min-width: 641px) and (pointer: coarse) {
   .side-column.call-page > .side-column-splitter-v {
     left: calc(var(--side-column-w, 320px) - 7px);
+  }
+}
+
+/* Call position on the Conference layout (plan-workspaces.md, step 5; space.js, conferencePlaceFor), this space's own
+   choice there. Beside the chat is the page as the rules above draw it. Left of the chat turns the two round. Above
+   the chat and Below the chat stack them in one column: the chat keeps a height of its own (--conf-chat-h, set by the
+   line between them) and the call has the rest. Call only is the column's fold on this layout: the chat gives way to
+   the rail, whose chat button (with the unread count) brings it back, and the call has the page. */
+@media (min-width: 641px) {
+  .side-column.call-page.conf-left {
+    grid-template-columns: minmax(0, 1fr) var(--side-column-w, 320px);
+    grid-template-areas: "head chat" "strip chat" "out chat" "empty chat";
+  }
+
+  body:not(.in-aside) .side-column.call-page.conf-left > .side-column-chat {
+    border-right: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .side-column.call-page.conf-left > .side-column-splitter-v {
+    left: auto;
+    right: calc(var(--side-column-w, 320px) - 4px);
+  }
+
+  .side-column.call-page.conf-above {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) var(--conf-chat-h, 360px);
+    grid-template-areas: "head" "strip" "out" "empty" "chat";
+  }
+
+  .side-column.call-page.conf-above.in-call:not(.call-away) {
+    grid-template-rows: auto minmax(0, 1fr) auto 0 var(--conf-chat-h, 360px);
+  }
+
+  .side-column.call-page.conf-below {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--conf-chat-h, 360px) auto auto auto minmax(0, 1fr);
+    grid-template-areas: "chat" "head" "strip" "out" "empty";
+  }
+
+  .side-column.call-page.conf-below.in-call:not(.call-away) {
+    grid-template-rows: var(--conf-chat-h, 360px) auto minmax(0, 1fr) auto 0;
+  }
+
+  /* The call out in its own window: its slim strip keeps its place and the chat has the rest of the page. */
+  .side-column.call-page.conf-above.call-away {
+    grid-template-rows: auto auto auto 0 minmax(0, 1fr);
+  }
+
+  .side-column.call-page.conf-below.call-away {
+    grid-template-rows: minmax(0, 1fr) auto auto auto 0;
+  }
+
+  body:not(.in-aside) .side-column.call-page.conf-above > .side-column-chat,
+  body:not(.in-aside) .side-column.call-page.conf-below > .side-column-chat {
+    border-right: 0;
+  }
+
+  body:not(.in-aside) .side-column.call-page.conf-above > .side-column-chat {
+    border-top: 1px solid var(--border);
+  }
+
+  .side-column.call-page.conf-below > .side-column-call-head {
+    border-top: 1px solid var(--border);
+  }
+
+  .side-column.call-page.conf-above > .side-column-splitter-v,
+  .side-column.call-page.conf-below > .side-column-splitter-v {
+    display: none;
+  }
+
+  .side-column-splitter-chat {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    cursor: row-resize;
+  }
+
+  .side-column.conf-above > .side-column-splitter-chat {
+    bottom: calc(var(--conf-chat-h, 360px) - 4px);
+  }
+
+  .side-column.conf-below > .side-column-splitter-chat {
+    top: calc(var(--conf-chat-h, 360px) - 4px);
+  }
+
+  /* Call only: the rail in the chat's place, the call's parts drawn as they are with the chat open (the column's own
+     fold hides them, beside the work). The call's icon and the faces stay out of the rail: the call is on show. */
+  .side-column.call-page.collapsed {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .side-column.call-page.collapsed > .side-column-rail {
+    display: flex;
+    grid-area: chat;
+    border-right: 1px solid var(--border);
+  }
+
+  .side-column.call-page.collapsed > .side-column-call-head:not([hidden]),
+  .side-column.call-page.collapsed:not(.call-away) > .side-column-strip,
+  .side-column.call-page.collapsed > .side-column-call-empty:not([hidden]),
+  .side-column.call-page.collapsed > .side-column-call-out:not([hidden]) {
+    display: flex;
+  }
+
+  .side-column.call-page.collapsed .side-column-rail-call,
+  .side-column.call-page.collapsed .side-column-rail-faces {
+    display: none;
+  }
+}
+
+@media (min-width: 641px) and (pointer: coarse) {
+  .side-column-splitter-chat {
+    height: 14px;
+  }
+
+  .side-column.conf-above > .side-column-splitter-chat {
+    bottom: calc(var(--conf-chat-h, 360px) - 7px);
+  }
+
+  .side-column.conf-below > .side-column-splitter-chat {
+    top: calc(var(--conf-chat-h, 360px) - 7px);
   }
 }
 

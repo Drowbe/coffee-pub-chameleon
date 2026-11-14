@@ -621,10 +621,14 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   // The canvas's width; while it is hidden (the space list shown over a running call), the last width it had.
   let fitWidth = 0;
   const canvasWidth = () => { if (canvas.clientWidth > 0) fitWidth = canvas.clientWidth; return fitWidth; };
+  // The rule is told when the window is wider than a phone: the canvas then has columns however narrow the chat column,
+  // or the call In the workspace, leaves it (its own width alone would read as a phone's at 640 px and below, where every
+  // module gets a column because only one shows).
+  const fitOpts = () => ({ wide: !isNarrow() });
   // fitDock() over every module wanting a column now, and `extra` (one about to dock); `waiting` is the modules' ids.
   const planColumns = (extra = []) => {
     const cols = columnsFrom([...opened.values()].filter(wantsColumn).concat(extra));
-    const plan = fitDock(canvasWidth(), specsOf(cols));
+    const plan = fitDock(canvasWidth(), specsOf(cols), fitOpts());
     const waits = new Set(plan.waiting);
     return { ...plan, cols, waiting: cols.filter((c) => waits.has(c.key)).flatMap((c) => c.mods.map((p) => p.id)) };
   };
@@ -705,7 +709,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   // are full (so a pick never stores a dock it cannot show). A stack counts as one column.
   function dockBlocked(p) {
     if (p.waiting) return 'Docks when the window is wide enough';
-    const full = !isNarrow() && columnsFrom([...opened.values()].filter(wantsColumn)).length >= dockLimit(canvasWidth());
+    const full = !isNarrow() && columnsFrom([...opened.values()].filter(wantsColumn)).length >= dockLimit(canvasWidth(), fitOpts());
     return full ? 'The window is too narrow for another column' : '';
   }
   // A waiting module's box says so (data-waiting).
@@ -752,7 +756,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     const flex = flexOf(cols);
     for (const p of flex.mods) p.el.classList.add('is-flex');
     // Each module keeps the width it was given for when there is room again; only what is shown shrinks.
-    const { widths } = fitDock(canvasWidth(), specsOf(cols));
+    const { widths } = fitDock(canvasWidth(), specsOf(cols), fitOpts());
     canvas.style.setProperty('--canvas-cols', cols.map((c) => (c === flex ? 'minmax(0, 1fr)' : `${widths.get(c.key) ?? DOCK_MIN}px`)).join(' '));
     // Both lines given: a stack's sections are laid in the column's area absolutely, where a missing end line is the canvas's edge.
     cols.forEach((c, i) => { for (const p of c.mods) for (const el of p.parts()) el.style.gridColumn = `${1 + i} / ${2 + i}`; });
@@ -770,7 +774,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     const fixed = cols.filter((c) => c !== flex);
     const total = fixed.reduce((sum, c) => sum + dockWidthOf(c.mods[0]), 0);
     if (total <= canvasWidth() - FLEX_MIN) return;
-    const { widths } = fitDock(canvasWidth(), specsOf(cols));
+    const { widths } = fitDock(canvasWidth(), specsOf(cols), fitOpts());
     for (const c of fixed) for (const p of c.mods) p.width = widths.get(c.key) ?? DOCK_MIN;
   }
 
@@ -1101,7 +1105,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     const cols = currentColumns();
     const c = cols.find((x) => x.ids.includes(id));
     const extra = !c || c.ids.length > 1 ? 1 : 0;
-    return extra && cols.length + extra > dockLimit(canvasWidth()) ? 'The window is too narrow for another column.' : '';
+    return extra && cols.length + extra > dockLimit(canvasWidth(), fitOpts()) ? 'The window is too narrow for another column.' : '';
   }
   const focusMenuOf = (id) => requestAnimationFrame(() => opened.get(id)?.frame?.titlebar?.querySelector('.mf-titlebar-menu')?.focus());
 
@@ -2345,7 +2349,7 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   // a shared layout loads into the Workspace here; for Calendar or Map the Workspace opens as above and restore()
   // answers the tab's id ('calendar' or 'map'), which the page shows through the tab's own press once its layouts are
   // read (the Workspace stays behind, remembered). Otherwise it answers null. A phone has no tabs: there the Calendar's
-  // or the Map's composite opens first, as the phone's first tab.
+  // or the Map's composite opens first, as the phone's first tab, and for Conference the call is the view shown first.
   function restore() {
     suspended = true;
     restoring = true;
@@ -2380,7 +2384,9 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
       aliases, // a stored `calendar` or `todo` opens the composite while the Calendar is on here (composites.js)
     });
     // A phone with Calendar or Map as the first visit: that composite first (a stored `calendar` or `maps` read as it).
-    const lead = tab && isNarrow() ? readAliased(tab === 'conference' ? [] : [tab === 'map' ? 'maps' : tab], aliases).filter((id) => canOpenHere(id)) : [];
+    // With Conference as the first visit the call is first (plan-workspaces.md, step 7): a phone has no Conference
+    // layout, the call is its own view there, shown "Not in a call" until the person joins (opening it never joins).
+    const lead = tab && isNarrow() ? (tab === 'conference' ? ['conference'] : readAliased([tab === 'map' ? 'maps' : tab], aliases)).filter((id) => canOpenHere(id)) : [];
     const want = [...lead, ...opens.filter((id) => !lead.includes(id))];
     for (const id of want) {
       if (builtins.has(id)) { if (canOpenHere(id)) api_openBuiltin(id); }

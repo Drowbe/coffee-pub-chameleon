@@ -161,9 +161,17 @@
          (Shift for more, Home and End for the least and the most, double-click or Shift+Enter for the default).
          space.js remembers the width per person (the chat's width preference). -->
     <div class="side-column-splitter side-column-splitter-v" id="side-column-splitter" role="separator" aria-orientation="vertical" aria-label="Resize the chat column" tabindex="0" title="Drag to resize"></div>
-    <!-- Call position Left: the line between the call (on the left) and the chat, the same keys as the edge. Shown only
-         then; space.js remembers the call's width per person (prefs.callSideWidth). -->
+    <!-- Call position Left and Right: the line between the call (on the left, or the right) and the chat, the same keys
+         as the edge. Shown only then; space.js remembers the call's width per person (prefs.callSideWidth). -->
     <div class="side-column-splitter side-column-splitter-side" id="side-column-call-splitter" role="separator" aria-orientation="vertical" aria-label="Resize the call beside the chat" tabindex="0" title="Drag to resize" hidden></div>
+    <!-- Call position In the workspace: the call's edge beside the modules docked on the canvas, setting the call's
+         width there (the same keys as the others). Shown only then; space.js remembers the width per person
+         (prefs.callWorkWidth). -->
+    <div class="side-column-splitter side-column-splitter-work" id="side-column-work-splitter" role="separator" aria-orientation="vertical" aria-label="Resize the call in the workspace" tabindex="0" title="Drag to resize" hidden></div>
+    <!-- The Conference layout with the call above or below the chat: the line between the two, setting the chat's
+         height (Up and Down, the same keys as the others). Shown only then; space.js remembers the height per person
+         (prefs.conferenceChatHeight). -->
+    <div class="side-column-splitter side-column-splitter-chat" id="side-column-chat-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the chat" tabindex="0" title="Drag to resize" hidden></div>
   </aside>
   <!-- Everything in the call lives inside the canvas so it can pop out as one. -->
   <main class="canvas" id="canvas" hidden>

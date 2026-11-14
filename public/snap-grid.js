@@ -455,10 +455,13 @@ export const NARROW = 640; // at this width and below a canvas shows one view at
 
 // How many columns a canvas `width` px wide holds: the flexible column at its least, plus as many fixed columns at their
 // least as fit. At NARROW and below, no limit (Infinity); the first limit is 2, at NARROW + 1.
-export function dockLimit(width) {
+// `wide`: the window itself is wider than a phone, so the canvas has columns however narrow it is (canvas.js says so:
+// beside a wide chat column, or the call In the workspace, the canvas can be NARROW or less while the page is not a
+// phone's). The same count then holds at every width, one column at least, and the rest wait.
+export function dockLimit(width, { wide = false } = {}) {
   const w = Number(width) || 0;
-  if (w <= NARROW) return Infinity;
-  return 1 + Math.floor((w - FLEX_MIN) / DOCK_MIN);
+  if (w <= NARROW && !wide) return Infinity;
+  return Math.max(1, 1 + Math.floor((w - FLEX_MIN) / DOCK_MIN));
 }
 
 // Which of the modules that want a column get one now. `columns` is every one of them, in column order, each
@@ -468,11 +471,11 @@ export function dockLimit(width) {
 //   waiting  the rest, in column order;
 //   widths   a Map of each docked fixed column's id to the width to show: its own while they fit, else all shrunk in
 //            step, none below DOCK_MIN (under the limit that always fits). The flexible column is not in it.
-export function fitDock(width, columns) {
+export function fitDock(width, columns, opts = {}) {
   const list = (Array.isArray(columns) ? columns : []).filter((c) => c && c.id != null);
   const widths = new Map();
   if (!list.length) return { docked: [], waiting: [], widths };
-  const limit = dockLimit(width);
+  const limit = dockLimit(width, opts); // `opts.wide`: a canvas of NARROW or less in a window that is not a phone's
   const flex = list.find((c) => c.flex) || list[0];
   const chosen = new Set([flex.id]);
   for (const c of list) if (chosen.size < limit && c.keep) chosen.add(c.id);
