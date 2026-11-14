@@ -699,6 +699,27 @@ try {
     assert.equal((await travelRow()).name, 'Travel');
   });
 
+  await test('a space\'s own template (hosted): a host template a space names cannot be deleted, and usedBySpaces counts it', async () => {
+    const owner = cookieOf(await call(server, 'out', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
+    const row = async () => (await console_('GET', '/api/host/templates')).json.templates.find((t) => t.id === 'day-trips-2');
+    assert.equal((await row()).usedBySpaces, 0);
+    const made = await call(server, 'out', 'POST', '/api/spaces', { cookie: owner, body: { name: 'Own words', template: 'day-trips-2' } });
+    assert.equal(made.status, 200, made.text);
+    assert.equal((await row()).usedBySpaces, 1);
+    assert.deepEqual((await row()).usedBy, [], 'no environment is made from it');
+    const refused = await console_('DELETE', '/api/host/templates/day-trips-2');
+    assert.equal(refused.status, 409);
+    assert.match(refused.json.error, /^Environments or spaces use this template: .+\. Hide it instead\.$/);
+    const read = await call(server, 'out', 'GET', `/api/spaces/${made.json.space.id}`, { cookie: owner });
+    assert.equal(read.json.space.template, 'day-trips-2');
+    assert.equal(read.json.look.words.space.one, 'journey');
+    // Another environment's own space is not counted against a template it did not choose, and clearing releases the template.
+    assert.equal((await call(server, 'out', 'PATCH', `/api/spaces/${made.json.space.id}`, { cookie: owner, body: { template: null } })).status, 200);
+    assert.equal((await row()).usedBySpaces, 0);
+    assert.equal((await console_('DELETE', '/api/host/templates/day-trips-2')).status, 200);
+    assert.equal((await console_('POST', '/api/host/templates/travel/duplicate', { id: 'day-trips-2', name: 'Day trips two' })).status, 201, 'put back for the checks after');
+  });
+
   await test('an edited template exports with edited set, and importing it under a new id drops nothing', async () => {
     const file = await console_('GET', '/api/host/templates/travel/export');
     assert.equal(file.status, 200, file.text);

@@ -130,7 +130,7 @@ function createContextBuilder(deps) {
     if (space) context.space = { name: String(space.name || '').slice(0, MAX_SPACE_NAME), word: word('space'), objectWord: word('object') };
     context.today = today;
     if (space) {
-      const bands = timelineOf(templatePhases(), space.phases, { today: today.date, created: space.createdAt }).slice(0, MAX_PHASES);
+      const bands = timelineOf(templatePhases(space), space.phases, { today: today.date, created: space.createdAt }).slice(0, MAX_PHASES);
       context.phases = bands.map((b) => ({ name: b.label, ...(b.start ? { start: b.start } : {}), ...(b.end ? { end: b.end } : {}), ...(b.current ? { current: true } : {}) }));
     }
     context.asker = { name: who.user.displayName, role: roleWordOf(who.user, space) };

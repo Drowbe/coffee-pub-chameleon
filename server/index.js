@@ -353,7 +353,10 @@ const store = proxyFor('store');
 // The words a person reads for each level and role (server/words.js): word() reads the current request's environment's
 // words, or the defaults outside a request.
 const { word, fill: fillWords } = require('./words');
-require('./words').useCurrent(() => envContext.getStore()?.store.resolvedWords() || null);
+// The space the current request is about (plan-space-templates.md): set for /api/spaces/:id routes when the person may enter that
+// space, and read only by the environment it was set in, so a callback that outlives its request never answers for another's.
+const spaceContext = new AsyncLocalStorage();
+require('./words').useCurrent(() => envContext.getStore()?.store.wordsNow() || null);
 const modules = proxyFor('modules');
 const moduleData = proxyFor('moduleData');
 const moduleHolds = proxyFor('moduleHolds');
@@ -731,6 +734,9 @@ function environmentFor(slug) {
   // So is a Clear whose Undo time ran out (server/module-holds.js): finishHold runs in this environment.
   env.moduleHolds.runIn = (fn) => envContext.run(env, fn);
   env.moduleHolds.onExpire = (hold) => finishHold(hold);
+  // A space's own template is read from this environment's catalog; the space the request is about comes from spaceContext.
+  env.store.templateById = (id) => templateFor(env, id);
+  env.store.currentSpace = () => { const c = spaceContext.getStore(); return c && c.env === env ? c.spaceId : null; };
   // A display icon may also be a built-in module's own icon (store.displayIconIds), beside the installed modules' ones.
   const installedIcons = env.store.moduleIconIds;
   env.store.moduleIconIds = () => [...installedIcons(), ...BUILTIN_MODULES.map((b) => b.icon)];
@@ -1683,8 +1689,10 @@ function requestSpacesFor(viewer, spaces) {
 }
 function shownSpace(req, space) {
   const general = withoutBudget(space);
-  if (!general || !general.guestToken || maySeeGuestLink(currentUser(req), general)) return general;
-  return { ...general, guestToken: null };
+  if (!general) return general;
+  const shown = { ...general, template: general.template || null }; // the id the space chose, or null: the environment's
+  if (!general.guestToken || maySeeGuestLink(currentUser(req), general)) return shown;
+  return { ...shown, guestToken: null };
 }
 // Whether `user` is a member of `space` and may enter it: a member of a space closed for set up is not (spaceAccess.mayEnter,
 // the one rule). Owners and the admin are asked apart, as before: hasOwnerRights(user) || userIsIn(user, space).
@@ -1721,8 +1729,17 @@ function branding() {
   const s = store.settings;
   // The template's ordered phases, for the phase chip (plan-one-bar.md, step 3); [] with no template or none in it.
   const phases = (Array.isArray(store.templatePhases) ? store.templatePhases : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
-  return { environmentName: s.environmentName, productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, studio: studioView(STUDIO), hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), guestDoor: guestDoorOn(), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
+  return { environmentName: s.environmentName, productName: PRODUCT_NAME, productShortName: PRODUCT_SHORT_NAME, studio: studioView(STUDIO), hosted: Boolean(BASE_DOMAIN), words: store.resolvedWords(), verbs: store.resolvedVerbs(), phases, spaceTemplates: store.spaceTemplatesOn(), homeIcon: store.homeIcon, templateHomeIcon: store.templateHomeIcon || null, loginText: s.loginText, language: s.language || 'en', clock: s.clock === '24' ? '24' : '12', currency: s.currency || 'USD', allowRegistration: Boolean(s.allowRegistration), guestDoor: guestDoorOn(), mfaOffered, mfaRequired: Boolean(s.mfaRequired), maxQuality: s.maxQuality || 720, allowScreenShare: s.allowScreenShare !== false, allowAsides: s.allowAsides !== false, allowPrivate: s.allowPrivate !== false, allowReactions: s.allowReactions !== false, conferenceEnabled: s.conferenceEnabled !== false, callService: HAS_CALL_SERVICE, autoJoinCall: s.autoJoinCall === true, activeThemeId: s.activeThemeId || null, themeMode: environmentThemeMode(), themeVersion: environmentThemeVersion(), hasIcon: !!store.iconPath(), hasBackground: !!store.siteImagePath('background'), version: VERSION, border: s.border, borderColor: s.borderColor, borderWidth: s.borderWidth || 6, mutedBorder: s.mutedBorder !== false, mutedColor: s.mutedColor || '#b8503f', plate: Boolean(s.plate), plateLayout: s.plateLayout || 'lower-left', plateColor: s.plateColor || '#000000', plateTextColor: s.plateTextColor || '#f1e6d8', plateFontSize: s.plateFontSize || 16, plateOpacity: s.plateOpacity ?? 60, plateTextCase: s.plateTextCase || 'default', charBorder: Boolean(s.charBorder), charBorderColor: s.charBorderColor || '#6fae6b', charMutedBorder: Boolean(s.charMutedBorder), charMutedColor: s.charMutedColor || '#b8503f', charBorderWidth: s.charBorderWidth || 6, pictureBackground: Boolean(s.pictureBackground), pictureColor: s.pictureColor || '#1a1410', pictureScale: s.pictureScale || 100, offlineDim: s.offlineDim ?? 0, offlineTint: s.offlineTint || '#000000', offlineTintOpacity: s.offlineTintOpacity ?? 0, asideDim: s.asideDim ?? 0, asideTint: s.asideTint || '#000000', asideTintOpacity: s.asideTintOpacity ?? 0, privateDim: s.privateDim ?? 0, privateTint: s.privateTint || '#000000', privateTintOpacity: s.privateTintOpacity ?? 0, reactions: Array.isArray(s.reactions) ? s.reactions : [], icons: Array.isArray(s.icons) ? s.icons : [], guestImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.guestImagePath(slot)])), defaultImages: Object.fromEntries(PARTICIPANT_SLOTS.map((slot) => [slot, !!store.defaultImagePath(slot)])) };
 }
+
+// What a space reads, as the pages and a guest's link paint it: { words, verbs, phases } (lookOf), the phases as branding() shows them.
+const phaseView = (list) => (Array.isArray(list) ? list : []).map((p) => ({ id: p.id, label: p.label, ...(p.main ? { main: true } : {}), ...(p.icon ? { icon: p.icon } : {}) }));
+function lookView(spaceId) {
+  const look = store.lookOf(spaceId);
+  return { words: look.words, verbs: look.verbs, phases: phaseView(look.phases) };
+}
+// The phases a space reads, for the rules that walk them (the AI's rollup, covering the main phase).
+const phasesOfSpace = (spaceId) => { const p = store.lookOf(spaceId).phases; return Array.isArray(p) ? p : []; };
 
 function initials(name) {
   const words = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -2120,11 +2137,17 @@ hostRouter.get('/api/host/environments', requireHostAdmin, async (_req, res) => 
   // (plan-first-password.md, Decision 4); never the link, its hash or its times.
   res.json({ environments: list.map((t) => { const usage = environmentUsage(t.slug); if (callsNow.has(t.slug)) usage.callsNow = callsNow.get(t.slug); return { ...t, usage, refused: refusalView(t.slug), template: environmentTemplate(t), awaitingFirstPassword: ownersAwaitingFirstPassword(t.slug) }; }) });
 });
+// How many spaces in environment `slug` name template `id` as their own (plan-space-templates.md). 0 for an environment that
+// does not open. The count is of the records, so it holds while the switch is off.
+function spacesUsing(slug, id) {
+  if (refusalView(slug)) return 0;
+  try { return environmentFor(slug).store.spaces.filter((r) => r.template === id).length; } catch { return 0; }
+}
 // The templates an environment can be made from, for the console's create form.
 // Every template, with where it comes from, its version, whether it is hidden and which environments use it.
 hostRouter.get('/api/host/templates', requireHostAdmin, (_req, res) => {
   const used = hostRegistry.listEnvironments();
-  res.json({ templates: [...templateCatalog(null).values()].map((t) => ({ ...templateSummary(t), edited: Boolean(t.edited), update: t.update || null, usedBy: used.filter((e) => e.template === t.id).map((e) => e.slug) })) });
+  res.json({ templates: [...templateCatalog(null).values()].map((t) => ({ ...templateSummary(t), edited: Boolean(t.edited), update: t.update || null, usedBy: used.filter((e) => e.template === t.id).map((e) => e.slug), usedBySpaces: used.reduce((n, e) => n + spacesUsing(e.slug, t.id), 0) })) });
 });
 // One template in full, for the console's editor. An edited bundled template also carries `shipped`, for compare.
 hostRouter.get('/api/host/templates/:id', requireHostAdmin, (req, res) => {
@@ -2222,8 +2245,8 @@ hostRouter.delete('/api/host/templates/:id', requireHostAdmin, (req, res) => {
   const t = templateFor(null, req.params.id);
   if (!t) return noSuchTemplate(res, req.params.id);
   if (t.source === 'bundled') return res.status(403).json({ error: "Bundled templates can't be deleted. Hide it instead." });
-  const users = hostRegistry.listEnvironments().filter((e) => e.template === t.id);
-  if (users.length) return res.status(409).json({ error: `${word('environment', { many: true, cap: true })} use this template: ${users.map((e) => e.name || e.slug).join(', ')}. Hide it instead.` });
+  const users = hostRegistry.listEnvironments().filter((e) => e.template === t.id || spacesUsing(e.slug, t.id) > 0);
+  if (users.length) return res.status(409).json({ error: `${word('environment', { many: true, cap: true })} or ${word('space', { many: true })} use this template: ${users.map((e) => e.name || e.slug).join(', ')}. Hide it instead.` });
   hostRegistry.removeTemplate(t.id);
   res.json({ ok: true });
 });
@@ -4158,7 +4181,7 @@ app.get('/api/guest-link/:token', (req, res) => {
   const theSpace = store.spaceByGuestToken(req.params.token);
   if (!theSpace) return res.status(404).json({ error: `that ${word('guest')} link is off or wrong` });
   if (spaceAccess.isClosed(theSpace)) return res.status(403).json({ error: closedSentence(), closed: true });
-  res.json({ spaceId: theSpace.id, spaceName: theSpace.name });
+  res.json({ spaceId: theSpace.id, spaceName: theSpace.name, look: lookView(theSpace.id) }); // that space's words, not the environment's
 });
 // The address's new guest sessions this request would be the next of: 429 with the sentence when it is past the limit.
 function newGuestSessionRefusal(req) {
@@ -4566,7 +4589,7 @@ app.get('/api/status', requireStream, async (req, res) => {
   res.json({
     ...branding(),
     users: store.users.map((u) => ({ ...publicUser(req, u, { link: false }), online: withoutCall(byKey.get(u.key)) })),
-    spaces: store.spaces.map((r) => shownSpace(req, r)),
+    spaces: store.spaces.map((r) => { const { template: _t, ...rest } = shownSpace(req, r); return rest; }), // the access key reads no template
     asides: store.asides,
     activeSpace: activeSpaceId(byKey),
     ownerOnline: hasOnlineOwner(byKey),
@@ -4585,10 +4608,21 @@ app.get('/api/pages/:path', requireStream, (req, res) => {
 
 // Spaces: the Lobby (everyone) plus the spaces an owner curates. Signed-in
 // users and stream key holders can read them; owners change them.
+// Inside /api/spaces/:id the words are that space's (plan-space-templates.md), but only for a person who may enter it: for anyone else
+// the answer to an id must read exactly as it does for an id that does not exist, so no word of a closed or unseen space's
+// template is told. Anything else about the space is each route's own rule.
+app.use('/api/spaces/:id', (req, res, next) => {
+  const space = store.spaceById(req.params.id);
+  const viewer = space ? presenceViewer(req) : null;
+  if (!space || !viewer || !spaceAccess.mayEnter(viewer, space)) return next();
+  return spaceContext.run({ env: envContext.getStore(), spaceId: space.id }, next);
+});
 app.get('/api/spaces', (req, res) => {
   const viewer = presenceViewer(req);
   if (!viewer || viewer.guestSpace) return res.status(401).json({ error: 'sign in first' });
-  res.json({ spaces: spacesFor(req, viewer, store.spaces) });
+  const spaces = spacesFor(req, viewer, store.spaces);
+  // The access key (OBS, Studio) reads no template: it has no use for it and it is no one's choice to tell.
+  res.json({ spaces: viewer.all ? spaces.map(({ template: _t, ...rest }) => rest) : spaces });
 });
 // POST /api/spaces/:id/join: a signed-in person enters a space that is open to accounts or to guests: they are added to
 // its members and it is marked as theirs to remove. A space they may not enter answers as an unknown id does.
@@ -4689,8 +4723,8 @@ app.post('/api/spaces/:id/access-requests/:requestId', requireUser, (req, res) =
   res.json({ ok: true, changed: result.changed, request: { id: result.request.id, state: result.request.state } });
 });
 app.post('/api/spaces', requireOwner, (req, res) => {
-  const { name, description, members, profile, link, linkIcon } = req.body || {};
-  res.json({ space: store.addSpace({ name, description, members, profile, link, linkIcon, creator: currentUser(req).key }) });
+  const { name, description, members, profile, link, linkIcon, template } = req.body || {};
+  res.json({ space: store.addSpace({ name, description, members, profile, link, linkIcon, template, creator: currentUser(req).key }) });
 });
 app.post('/api/spaces/order', requireOwner, (req, res) => {
   res.json({ spaces: store.reorderSpaces((req.body || {}).order) });
@@ -4700,11 +4734,11 @@ app.post('/api/spaces/order', requireOwner, (req, res) => {
 app.get('/api/spaces/:id', requireUser, (req, res) => {
   const space = store.spaceById(req.params.id);
   if (!space || closedTo(req, space)) return res.status(entryStatus(req, space)).json(entryBody(req, space, `no such ${word('space')}`));
-  if (isOwner(req)) return res.json({ space });
+  if (isOwner(req)) return res.json({ space: { ...space, template: space.template || null }, look: lookView(space.id) });
   if (!moderates(currentUser(req), space)) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
-  const theirs = { id: space.id };
+  const theirs = { id: space.id, template: space.template || null }; // a moderator reads the template and does not choose it
   for (const k of MODERATOR_SPACE_FIELDS) if (k in space) theirs[k] = space[k];
-  res.json({ space: theirs });
+  res.json({ space: theirs, look: lookView(space.id) });
 });
 // Owners and the admin change anything; a member ticked as this space's moderator may send `phases` (the dates on
 // the timeline, plan-one-bar.md step 1), `opensWith`, `defaultLayout` (Set up, step 4) and `tabs` (the owner's tabs, plan-workspaces.md decision 22) and `budget` (the target,
@@ -4739,7 +4773,7 @@ app.post('/api/spaces/:id/phases/cover', (req, res) => {
   const mayWrite = (who.user && hasOwnerRights(who.user)) || modules.enabledAll().some(({ manifest, entry }) => manifest.scope.includes('space')
     && ModuleManager.onInSpace(entry, manifest, space.id) && moduleSpaceAccess(entry, who, space) && moduleCan(manifest, perms, 'write'));
   if (!mayWrite) return res.status(403).json({ error: `Only someone who can write in ${word('module', { a: true })} that is on in this ${word('space')} can move its dates.` });
-  const phases = Array.isArray(store.templatePhases) ? store.templatePhases : [];
+  const phases = phasesOfSpace(space.id);
   const result = phaseRule.coverMain(phases, space.phases, day, { created: space.createdAt });
   if (!result.moved) return res.status(204).end();
   res.json({ phases: store.updateSpace(space.id, { phases: result.dates }).phases });
@@ -4943,8 +4977,8 @@ app.post('/api/users/:key/mute', requireUser, async (req, res) => {
 // What a person reads a module called and sees it as in this environment (plan-environment-templates.md, "Module display
 // names and icons"): its display name and icon (the owner's, else the template's), else the manifest's own. For an
 // installed manifest, a bundled one or a built-in module alike ({ id, name, icon }).
-function shownModule(m) {
-  const d = store.moduleDisplay(m.id);
+function shownModule(m, spaceId = null) {
+  const d = store.moduleDisplay(m.id, spaceId);
   return { name: d.name || m.name, icon: d.icon || m.icon, content: m.content === 'flush' ? 'flush' : 'padded' };
 }
 // What a kind of object is called: its manifest `name`, where `{name}` stands for the module's shown name (this
@@ -6849,7 +6883,7 @@ const aiContext = createContextBuilder({
   canReadChat: (who, space) => Boolean(who && who.user && (hasOwnerRights(who.user) || (userIsIn(who.user, space) && store.spacePermissions(who.user.key, space.id).chatRead))),
   serverZone: () => ics.serverZone(),
   timelineOf: phaseRule.timelineOf,
-  templatePhases: () => (Array.isArray(store.templatePhases) ? store.templatePhases : []),
+  templatePhases: (space) => phasesOfSpace(space && space.id),
 });
 // The read tools for Chat's /ai and the Assistant view (slice 2, server/ai-tools.js): the same pool as the rollup's, read as
 // the person, every result admitted by the policy with part `lookup`.
@@ -10738,18 +10772,19 @@ app.get('/api/modules/:id/context', (req, res) => {
   if (!ctx) return;
   const { manifest, perms, who } = ctx;
   const here = ctx.scope === 'space' ? store.spaceById(ctx.spaceId) : null;
-  const phases = Array.isArray(store.templatePhases) ? store.templatePhases : [];
+  const look = store.lookOf(here ? here.id : null); // this space's words and phases (moduleAccess has let this viewer into it)
+  const phases = Array.isArray(look.phases) ? look.phases : [];
   res.json({
     user: who.keyed ? { key: 'viewer', name: 'Viewer', role: 'viewer' } : who.user ? { key: who.user.key, name: who.user.displayName, role: who.user.role } : { key: 'guest', name: word('guest', { cap: true }), role: 'guest' },
     permissions: Object.fromEntries(manifest.permissions.map((p) => [p.key, Boolean(perms[`module.${manifest.id}.${p.key}`])])),
     // `nav`: the admin allowed this module into the primary nav (surfaces.page.nav), which is what lets a system-wide
     // tool of its own into that bar (host.nav.set; see api-module-sdk.md, "Registering into the nav bars").
     // `name` and `icon`: what this environment calls the module and shows it as (its display name and icon, else its own).
-    module: { id: manifest.id, ...shownModule(manifest), version: manifest.version, nav: Boolean(manifest.surfaces.page && manifest.surfaces.page.nav) },
+    module: { id: manifest.id, ...shownModule(manifest, here ? here.id : null), version: manifest.version, nav: Boolean(manifest.surfaces.page && manifest.surfaces.page.nav) },
     // How the server shows language, time and money (Manage > Settings), for every module to follow.
     // `currencies`: the codes the server takes (as GET /api/currencies), for a module's currency picker.
     // `words`: every level's and role's words in this environment, as branding()'s (server/words.js), for host.locale().words.
-    locale: { language: store.settings.language || 'en', clock: store.settings.clock === '24' ? '24' : '12', currency: store.settings.currency || 'USD', currencies: currencyCodes(store.settings.currency), words: store.resolvedWords() },
+    locale: { language: store.settings.language || 'en', clock: store.settings.clock === '24' ? '24' : '12', currency: store.settings.currency || 'USD', currencies: currencyCodes(store.settings.currency), words: look.words },
     // The space this read is in, or null outside one; its `phases` are the dates set on it ({} while none; plan-one-bar.md
     // step 1). The top-level `phases` is the template's, live, or [] when there is none. `budget` is the space's budget
     // target, { amount?, currency? } (#216; set in Set up by an owner, the admin or a moderator of the space), or null
@@ -10775,9 +10810,9 @@ app.get('/api/modules/for-space', (req, res) => {
   res.json({
     modules: modules.enabledAll()
       .filter(({ manifest, entry }) => manifest.scope.includes('space') && manifest.surfaces.canvas && moduleSpaceAccess(entry, who, space) && moduleCan(manifest, perms, 'read'))
-      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, tags: manifest.tags === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id), undoSeconds: moduleHolds.seconds })),
+      .map(({ manifest, entry }) => ({ id: manifest.id, ...shownModule(manifest, space.id), color: manifest.color || null, ...(manifest.description ? { description: manifest.description } : {}), version: manifest.version, budget: manifest.budget === true, tags: manifest.tags === true, scope: manifest.scope, runMode: modules.runModeOf(entry), canvas: manifest.surfaces.canvas, commands: manifest.commands || [], permissions: manifest.permissions.map((p) => `module.${manifest.id}.${p.key}`).filter((k) => perms[k]), clear: mayClearHere(manifest, who, perms, space.id), undoSeconds: moduleHolds.seconds })),
     // The built-in modules' names and icons as this environment shows them (the canvas's Conference and Chat switches).
-    builtin: BUILTIN_MODULES.map((b) => ({ id: b.id, ...shownModule(b), ...(b.description ? { description: fillWords(b.description) } : {}) })),
+    builtin: BUILTIN_MODULES.map((b) => ({ id: b.id, ...shownModule(b, space.id), ...(b.description ? { description: fillWords(b.description) } : {}) })),
     // What this space opens with, or null when it has no list of its own. The environment's list is what a new space
     // opens with when the space itself has none.
     opensWith: Array.isArray(space.opensWith) && space.opensWith.length ? [...space.opensWith] : null,
@@ -11862,6 +11897,7 @@ app.delete('/api/templates/:id', requireOwner, (req, res) => {
   if (!t) return res.status(404).json({ error: `There is no template called ${req.params.id.slice(0, 40)}.` });
   if (t.source === 'bundled') return res.status(403).json({ error: "Bundled templates can't be deleted." });
   if (env.store.templateRecord?.id === t.id) return res.status(409).json({ error: `This ${word('environment')} uses this template. Switch to another one first.` });
+  if (env.store.spaces.some((r) => r.template === t.id)) return res.status(409).json({ error: `${word('environment', { many: true, cap: true })} or ${word('space', { many: true })} use this template: ${env.store.settings.environmentName}. Hide it instead.` });
   env.store.removeImportedTemplate(t.id);
   res.json({ ok: true });
 });
