@@ -32,6 +32,7 @@ import vm from 'node:vm';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildSnapshot, buildSources, proposedManifest } from './design-system-snapshot.mjs';
+import { startBrowser, stopBrowser } from './browser-launch.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DS = path.join(root, 'public', 'design-system');
@@ -121,12 +122,12 @@ class Cdp {
 }
 async function launch(bin) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-chrome-'));
-  const child = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--no-first-run', '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = startBrowser(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--hide-scrollbars', '--no-first-run', '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], dir);
   const url = await new Promise((resolve, reject) => {
     let buf = ''; const t = setTimeout(() => reject(new Error('the browser did not start: ' + buf.slice(-300))), 20000);
     child.stderr.on('data', (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); resolve(m[1]); } });
     child.on('exit', (c) => { clearTimeout(t); reject(new Error('the browser exited (' + c + ')')); });
-  });
+  }).catch(async (e) => { await stopBrowser(child, dir); throw e; }); // a browser that did not start is not left running
   const ws = new WebSocket(url);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('cannot reach the browser'))); });
   return { cdp: new Cdp(ws), child, dir };
@@ -254,7 +255,7 @@ if (!bin) {
   } catch (e) {
     fail('the browser part could not run: ' + e.message);
   } finally {
-    if (br) { try { br.cdp.ws.close(); br.child.kill(); } catch { /* gone */ } fs.rmSync(br.dir, { recursive: true, force: true }); }
+    if (br) { try { br.cdp.ws.close(); } catch { /* gone */ } await stopBrowser(br.child, br.dir); }
     if (server) {
       if (server.child.exitCode === null) await new Promise((r) => { server.child.once('exit', r); server.child.kill(); setTimeout(r, 5000); });
       try { fs.rmSync(server.dataDir, { recursive: true, force: true }); } catch { /* a temp folder; the system clears it */ }

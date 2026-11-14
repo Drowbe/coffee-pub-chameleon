@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { startBrowser, stopBrowser } from './browser-launch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -97,12 +98,12 @@ class Cdp {
 }
 async function launch(bin) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-prompt-chrome-'));
-  const child = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = startBrowser(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], dir);
   const url = await new Promise((resolve, reject) => {
     let buf = ''; const t = setTimeout(() => reject(new Error('the browser did not start: ' + buf.slice(-300))), 20000);
     child.stderr.on('data', (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); resolve(m[1]); } });
     child.on('exit', (c) => { clearTimeout(t); reject(new Error('the browser exited (' + c + ')')); });
-  });
+  }).catch(async (e) => { await stopBrowser(child, dir); throw e; }); // a browser that did not start is not left running
   const ws = new WebSocket(url);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('cannot reach the browser'))); });
   return { cdp: new Cdp(ws), child, dir, ws };
@@ -243,9 +244,8 @@ else {
     fail(`browser part: ${err.message}`);
   } finally {
     try { ws.close(); } catch (e) { /* closing */ }
-    child.kill();
     server.close();
-    await new Promise((r) => setTimeout(r, 300)); try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); } catch (e) { /* the browser is still closing */ }
+    await stopBrowser(child, dir);
   }
 }
 fs.rmSync(tmp, { recursive: true, force: true });

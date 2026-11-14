@@ -31,6 +31,7 @@ import net from 'node:net';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { startBrowser, stopBrowser } from './browser-launch.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -222,12 +223,12 @@ class Cdp {
 }
 async function launch(bin) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sysc-chrome-'));
-  const child = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = startBrowser(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], dir);
   const url = await new Promise((resolve, reject) => {
     let buf = ''; const t = setTimeout(() => reject(new Error('the browser did not start: ' + buf.slice(-300))), 20000);
     child.stderr.on('data', (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); resolve(m[1]); } });
     child.on('exit', (c) => { clearTimeout(t); reject(new Error('the browser exited (' + c + ')')); });
-  });
+  }).catch(async (e) => { await stopBrowser(child, dir); throw e; }); // a browser that did not start is not left running
   const ws = new WebSocket(url);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('cannot reach the browser'))); });
   return { cdp: new Cdp(ws), child, dir };
@@ -375,9 +376,9 @@ if (!problems.length) {
     } finally {
       try { cdp.ws.close(); } catch { /* closing */ }
       const gone = (c) => (c.exitCode !== null ? Promise.resolve() : new Promise((r) => { c.once('exit', r); setTimeout(r, 3000); }));
-      child.kill(); server.child.kill();
-      await Promise.all([gone(child), gone(server.child)]);
-      for (const d of [dir, server.dataDir]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* a temp folder left behind is harmless */ } }
+      server.child.kill();
+      await Promise.all([stopBrowser(child, dir), gone(server.child)]);
+      for (const d of [server.dataDir]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* a temp folder left behind is harmless */ } }
     }
   }
 }

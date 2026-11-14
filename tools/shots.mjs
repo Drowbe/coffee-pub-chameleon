@@ -62,6 +62,7 @@ import net from 'node:net';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { startBrowser, stopBrowser } from './browser-launch.mjs';
 import { fileURLToPath } from 'node:url';
 import { SEEDS, seedChatFor, PASSWORD, TODAY } from './shots-seed.mjs';
 
@@ -255,13 +256,13 @@ class Cdp {
 }
 async function launch(bin) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shots-chrome-'));
-  const child = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--force-color-profile=srgb', '--font-render-hinting=none', '--disable-lcd-text', '--disable-font-subpixel-positioning', '--force-device-scale-factor=1', '--run-all-compositor-stages-before-draw', '--disable-partial-raster', '--disable-threaded-animation', '--disable-checker-imaging', '--disable-image-animation-resync', '--disable-new-content-rendering-timeout', '--disable-features=PaintHolding', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = startBrowser(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--force-color-profile=srgb', '--font-render-hinting=none', '--disable-lcd-text', '--disable-font-subpixel-positioning', '--force-device-scale-factor=1', '--run-all-compositor-stages-before-draw', '--disable-partial-raster', '--disable-threaded-animation', '--disable-checker-imaging', '--disable-image-animation-resync', '--disable-new-content-rendering-timeout', '--disable-features=PaintHolding', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], dir);
   const url = await new Promise((resolve, reject) => {
     let buf = '';
     const t = setTimeout(() => reject(new Error('the browser did not start: ' + buf.slice(-300))), 20000);
     child.stderr.on('data', (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); resolve(m[1]); } });
     child.on('exit', (c) => { clearTimeout(t); reject(new Error('the browser exited (' + c + '): ' + buf.slice(-300))); });
-  });
+  }).catch(async (e) => { await stopBrowser(child, dir); throw e; }); // a browser that did not start is not left running
   const ws = new WebSocket(url);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('cannot reach the browser'))); });
   return { cdp: new Cdp(ws), child, dir };
@@ -581,10 +582,7 @@ async function main() {
     try {
       if (browser) {
         browser.cdp.ws.close();
-        const done = new Promise((r) => browser.child.once('exit', r));
-        browser.child.kill();
-        await Promise.race([done, new Promise((r) => setTimeout(r, 5000))]);
-        fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+        await stopBrowser(browser.child, browser.dir);
       }
     } catch { /* best effort */ }
     await stopServer(server);

@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { startBrowser, stopBrowser } from './browser-launch.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let failures = 0;
@@ -69,13 +70,13 @@ class Cdp {
 }
 async function launch(bin) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-pdf-viewer-chrome-'));
-  const child = spawn(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run', '--disable-background-networking', '--disable-component-update', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = startBrowser(bin, ['--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run', '--disable-background-networking', '--disable-component-update', '--remote-debugging-port=0', `--user-data-dir=${dir}`, 'about:blank'], dir);
   const url = await new Promise((resolve, reject) => {
     let buf = '';
     const t = setTimeout(() => reject(new Error(`the browser did not start: ${buf.slice(-300)}`)), 20000);
     child.stderr.on('data', (d) => { buf += d; const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (m) { clearTimeout(t); resolve(m[1]); } });
     child.on('exit', (c) => { clearTimeout(t); reject(new Error(`the browser exited (${c})`)); });
-  });
+  }).catch(async (e) => { await stopBrowser(child, dir); throw e; }); // a browser that did not start is not left running
   const ws = new WebSocket(url);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('cannot reach the browser'))); });
   return { cdp: new Cdp(ws), child, dir, ws };
@@ -280,7 +281,7 @@ else {
     console.log(`  FAIL ${err.stack || err.message}`);
   } finally {
     try { ws.close(); } catch { /* gone */ }
-    await new Promise((r) => { if (child.exitCode !== null) return r(); child.once('exit', r); child.kill('SIGKILL'); });
+    await stopBrowser(child, dir);
     await server.stop();
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* the browser's last writes */ }
     fs.rmSync(server.dataDir, { recursive: true, force: true });
