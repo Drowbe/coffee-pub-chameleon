@@ -432,6 +432,8 @@ async function runPositions(browser, S) {
   const LABELS = ['Top of the column', 'Bottom of the column', 'Left of the chat', 'Right of the chat', 'Floating window', 'In the workspace', 'Its own window'];
   try {
     await driveScreen(tab, { id: 'positions', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
+    // A visit opens on the layout this person last used (workspaces step 6), and the pop-out run before this one left mia on Conference: start on the Workspace.
+    if ((await tab.eval(P)).tab !== 'workspace') await press('workspace');
     const before = await tab.eval(P);
     // The menu beside the work, in a 320px column: all seven, Left and Right saying why they cannot be picked.
     const m0 = await menu(); await esc();

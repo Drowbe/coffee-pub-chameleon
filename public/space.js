@@ -3125,7 +3125,7 @@ function paintSetupLabel() {
 // server keeps the limits (10 of your own and 10 shared in a space, names up to 40 characters, each name once in its
 // list) and says what it refuses; its sentence is shown as it is. Not drawn on a narrow canvas, in an aside, or for a
 // guest with nothing to load.
-let layoutList = { spaceId: null, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], canShare: false, canSetDefault: false };
+let layoutList = { spaceId: null, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], last: null, canShare: false, canSetDefault: false };
 let layoutAsk = 0; // the latest request for the list; an older answer arriving late is dropped
 const layoutSpaceId = () => (currentSpace && !currentSpace.isAside ? currentSpace.id : null); // an aside has no layouts
 const layoutUrl = (id, layoutId = '') => `/api/spaces/${encodeURIComponent(id)}/layouts${layoutId ? `/${encodeURIComponent(layoutId)}` : ''}${guestToken ? `?guest=${encodeURIComponent(guestToken)}` : ''}`;
@@ -3153,24 +3153,24 @@ async function refreshLayouts() {
   const id = layoutSpaceId();
   const ask = ++layoutAsk;
   if (!id) {
-    layoutList = { spaceId: null, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], canShare: false, canSetDefault: false };
+    layoutList = { spaceId: null, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], last: null, canShare: false, canSetDefault: false };
     renderLayouts();
     return;
   }
   try {
     const got = await layoutRequest('GET', layoutUrl(id));
     if (ask !== layoutAsk || layoutSpaceId() !== id) return;
-    layoutList = { spaceId: id, mine: got.mine || [], shared: got.shared || [], system: Array.isArray(got.system) ? got.system : [], firstVisit: got.firstVisit && typeof got.firstVisit.layout === 'string' ? got.firstVisit : null, defaultLayout: got.defaultLayout || null, favorites: Array.isArray(got.favorites) ? got.favorites : [], canShare: Boolean(got.canShare), canSetDefault: Boolean(got.canSetDefault) };
+    layoutList = { spaceId: id, mine: got.mine || [], shared: got.shared || [], system: Array.isArray(got.system) ? got.system : [], firstVisit: got.firstVisit && typeof got.firstVisit.layout === 'string' ? got.firstVisit : null, defaultLayout: got.defaultLayout || null, favorites: Array.isArray(got.favorites) ? got.favorites : [], last: typeof got.last === 'string' && got.last ? got.last : null, canShare: Boolean(got.canShare), canSetDefault: Boolean(got.canSetDefault) };
   } catch {
     if (ask !== layoutAsk) return;
-    layoutList = { spaceId: id, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], canShare: false, canSetDefault: false };
+    layoutList = { spaceId: id, mine: [], shared: [], system: [], firstVisit: null, defaultLayout: null, favorites: [], last: null, canShare: false, canSetDefault: false };
   }
   renderLayouts();
 }
 function renderLayouts() {
   renderLayoutTabs(); // the top bar's layout tabs, from the same list
   // The tab shown was unfavorited or deleted: back to the Workspace, which is the one that remembers.
-  if (currentLayoutTab !== 'workspace' && layoutList.spaceId && layoutList.spaceId === layoutSpaceId() && !layoutTabList().some((t) => t.layout === currentLayoutTab) && !findLayout(currentLayoutTab)) pressLayoutTab('workspace');
+  if (currentLayoutTab !== 'workspace' && layoutList.spaceId && layoutList.spaceId === layoutSpaceId() && !layoutTabList().some((t) => t.layout === currentLayoutTab) && !findLayout(currentLayoutTab)) pressLayoutTab('workspace', null, { remember: false });
   canvas.refreshMenu(); // and the menu's Layouts section, while it is open
 }
 
@@ -3701,7 +3701,28 @@ const shownLayoutTab = () => currentLayoutTab;
 // was left meanwhile, another tab was pressed, or the tab is not there (turned off, or this person unfavorited it).
 function showFirstVisitTab(id, spaceId) {
   if (!id || currentLayoutTab !== 'workspace' || layoutSpaceId() !== spaceId || layoutList.spaceId !== spaceId) return;
-  if (layoutTabList().some((t) => t.layout === id)) pressLayoutTab(id);
+  // Restoring is not a change: nothing is written (remember: false). A saved layout has no tab until it is shown.
+  if (layoutTabList().some((t) => t.layout === id) || findLayout(id)) pressLayoutTab(id, null, { remember: false });
+}
+// The layout this person last used in this space (workspaces step 6), when it can still be shown now: the server only
+// answers one that exists and is not hidden by the owner; here also one this person has not turned off for themselves.
+// A guest and an Aside have none (a guest follows the owner's default). Else null, quietly: the first visit rules apply.
+function restorableLast() {
+  const id = layoutList.spaceId && layoutList.spaceId === layoutSpaceId() ? layoutList.last : null;
+  if (!id || guestToken || guestMode || !mayFavorite()) return null;
+  if (id === 'workspace') return id;
+  return layoutTabList().some((t) => t.layout === id) || findLayout(id) ? id : null;
+}
+// A change of layout by the person is written for them (PUT .../last-layout), so the next visit, in any browser, opens
+// it. Never for a guest, and never for a restore. A refusal is dropped quietly: the layout is shown all the same.
+function rememberLayout(id) {
+  const space = layoutSpaceId();
+  if (!space || guestToken || guestMode || !mayFavorite() || layoutList.spaceId !== space || layoutList.last === id) return;
+  const before = layoutList.last;
+  layoutList.last = id;
+  layoutRequest('PUT', `/api/spaces/${encodeURIComponent(space)}/last-layout`, { layout: id }).catch(() => {
+    if (layoutList.last === id) layoutList.last = before;
+  });
 }
 function layoutTabList() {
   return layoutTabs({
@@ -3787,7 +3808,7 @@ function fitLayoutTabs(avail) {
 }
 // A press shows the tab's layout, one click, no confirm; the keyboard stays on the tab. The bars are drawn again (the
 // focused module's own tools change with the layout) and the tabs fitted again (the one shown never goes into the "...").
-function pressLayoutTab(id, from = null, { load = true } = {}) {
+function pressLayoutTab(id, from = null, { load = true, remember = true } = {}) {
   const tab = layoutTabList().find((t) => t.layout === id);
   if (!tab && id !== 'workspace' && !findLayout(id) && !findSystemLayout(id)) return;
   if (id === 'workspace') {
@@ -3798,6 +3819,7 @@ function pressLayoutTab(id, from = null, { load = true } = {}) {
     renderLayoutTabs(); // the temporary tab goes
     nav.draw();
     canvas.refreshMenu();
+    if (remember) rememberLayout('workspace');
     return;
   }
   // Calendar and Map are system layouts (their `modules`: the composite, docked, filling the canvas), reloaded as saved
@@ -3824,6 +3846,7 @@ function pressLayoutTab(id, from = null, { load = true } = {}) {
   if (id === 'conference') layoutNote('Conference layout.');
   rebaseLayout();
   canvas.refreshMenu();
+  if (remember) rememberLayout(id);
 }
 
 // Modified (Thomas, 2026-11-11): the layout shown is a saved one and the arrangement is no longer what it was when it was
@@ -6172,6 +6195,8 @@ async function join(spaceId = 'lobby', { joinCall = false, pull = false } = {}) 
     if (entry !== entries) return;
     await canvas.refresh(currentSpace.isAside ? null : currentSpace.id); // asides have no modules
     if (entry !== entries) return;
+    if (!currentSpace.isAside && !guestMode) await refreshLayouts(); // the person's last layout (workspaces step 6) is known before the canvas opens
+    if (entry !== entries) return;
     spaceName = spaceDisplayName(currentSpace);
     applyPermissions();
     updateRecallButton();
@@ -6260,7 +6285,7 @@ function enterSpace({ joinCall = false } = {}) {
   canvas.updateMenu();
   // A fresh request, else the remembered layout, else what this space or environment opens with, else the chat and the modules.
   // The conference among them opens in "Not in a call": entering never joins, and the microphone is asked for only on a join.
-  const firstTab = canvas.restore(); // 'calendar' or 'map' when a first visit opens on that tab (plan-layout-views.md, step 5)
+  const firstTab = canvas.restore({ last: restorableLast() }); // the tab to show: this person's last layout, else the owner's default when it is a fixed layout
   applyColumnPref(); // the always-on column, open or a rail, as this space was left
   const enteredId = currentSpace.id;
   refreshLayouts().then(() => showFirstVisitTab(firstTab, enteredId)); // and its saved layouts

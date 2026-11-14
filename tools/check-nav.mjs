@@ -660,17 +660,17 @@ test('the default layout (plan-saved-layouts.md, step 4): Make default in a shar
   // restore(): on entering, a first visit (or a guest) whose first visit is a shared layout loads it through loadLayout,
   // whether or not Opens with is set (plan-layout-views.md, step 5); a remembered layout wins; a fresh request to open
   // one object wins over both. Calendar or Map: the Workspace opens and restore() answers the tab the page presses.
-  const restore = canvasJs.slice(canvasJs.indexOf('  function restore() {'), canvasJs.indexOf('  // --- saved layouts'));
-  assert.match(restore, /const firstLayout = request \? 'workspace' : firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\);/);
-  assert.match(restore, /if \(firstLayout !== 'workspace' && !SYSTEM_TABS\.includes\(firstLayout\) && spaceDefaultLayout && spaceDefaultLayout\.id === firstLayout\) \{[\s\S]*?loadLayout\(spaceDefaultLayout\);\n\s*return null;/);
+  const restore = canvasJs.slice(canvasJs.indexOf('  function restore('), canvasJs.indexOf('  // --- saved layouts'));
+  assert.match(restore, /const firstLayout = request \? 'workspace' : firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow, last \}\);/);
+  assert.match(restore, /if \(firstLayout !== 'workspace' && !SYSTEM_TABS\.includes\(firstLayout\) && firstLayout !== last && spaceDefaultLayout && spaceDefaultLayout\.id === firstLayout\) \{[\s\S]*?loadLayout\(spaceDefaultLayout\);\n\s*return null;/);
   assert.ok(!/Array\.isArray\(spaceOpensWith\) &&/.test(restore), 'a layout no longer needs Opens with to be set');
   assert.ok(restore.indexOf('loadLayout(spaceDefaultLayout)') < restore.indexOf('whatOpens({'), 'before the module list');
   assert.match(restore, /return tab && !isNarrow\(\) \? tab : null;/, 'Calendar or Map: the tab, wider than a phone');
   assert.match(canvasJs, /const enteringNow = entering;\n\s*entering = false;/, 'only the restore on entering (not the Workspace tab\'s) shows the first visit\'s layout');
   assert.match(canvasJs, /entering = Boolean\(id\);/, 'refresh() of a space arms it');
-  assert.match(space, /const firstTab = canvas\.restore\(\);[^\n]*\n[\s\S]*?refreshLayouts\(\)\.then\(\(\) => showFirstVisitTab\(firstTab, enteredId\)\);/, 'the tab is pressed once the layouts are read');
+  assert.match(space, /const firstTab = canvas\.restore\(\{ last: restorableLast\(\) \}\);[^\n]*\n[\s\S]*?refreshLayouts\(\)\.then\(\(\) => showFirstVisitTab\(firstTab, enteredId\)\);/, 'the tab is pressed once the layouts are read');
   const showFirst = space.slice(space.indexOf('function showFirstVisitTab('), space.indexOf('function layoutTabList() {'));
-  assert.match(showFirst, /if \(!id \|\| currentLayoutTab !== 'workspace' \|\| layoutSpaceId\(\) !== spaceId \|\| layoutList\.spaceId !== spaceId\) return;\n\s*if \(layoutTabList\(\)\.some\(\(t\) => t\.layout === id\)\) pressLayoutTab\(id\);/, 'through the tab\'s own press, so the Workspace stays behind');
+  assert.match(showFirst, /if \(!id \|\| currentLayoutTab !== 'workspace' \|\| layoutSpaceId\(\) !== spaceId \|\| layoutList\.spaceId !== spaceId\) return;\n\s*(?:\/\/[^\n]*\n\s*)?if \(layoutTabList\(\)\.some\(\(t\) => t\.layout === id\) \|\| findLayout\(id\)\) pressLayoutTab\(id, null, \{ remember: false \}\);/, 'through the tab\'s own press, so the Workspace stays behind');
   assert.match(canvasJs, /spaceDefaultLayout = answer\.defaultLayout && Array\.isArray\(answer\.defaultLayout\.modules\) \? answer\.defaultLayout : null;/, 'from GET /api/modules/for-space');
   assert.match(canvasJs, /spaceFirstVisit = answer\.firstVisit && typeof answer\.firstVisit\.layout === 'string'\n\s*\? answer\.firstVisit/, 'the first visit as the server resolved it');
   // Make default sets the default alone, and says what a first visit opens.
@@ -711,7 +711,7 @@ test('favorite layouts, step 2 (plan-favorite-layouts.md): a ... on every row fo
   assert.match(space, /const mayFavorite = \(\) => !guestToken && Boolean\(me\?\.key\) && me\.role !== 'guest';/);
   // The list carries this person's favorites from GET .../layouts, [] when it has none.
   assert.match(space, /favorites: Array\.isArray\(got\.favorites\) \? got\.favorites : \[\]/);
-  assert.equal((space.match(/defaultLayout: null, favorites: \[\], canShare: false, canSetDefault: false \};/g) || []).length, 3, 'every empty list has no favorites');
+  assert.equal((space.match(/defaultLayout: null, favorites: \[\], last: null, canShare: false, canSetDefault: false \};/g) || []).length, 3, 'every empty list has no favorites');
   // The row: the ... for anyone who may favorite; a favorite's heart after the name, hidden from a screen reader, which
   // hears ", favorite" in the row's name instead.
   const row = space.slice(space.indexOf('function layoutMenuItems() {'), space.indexOf('function layoutRowItems(layoutId) {'));

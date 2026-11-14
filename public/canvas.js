@@ -2347,10 +2347,10 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
   // every module on here without the conference (for a guest, the conference and the chat). See opens-with.js.
   // On entering, a first visit opens the space's first visit layout (plan-layout-views.md, step 5; firstVisitLayout):
   // a shared layout loads into the Workspace here; for Calendar or Map the Workspace opens as above and restore()
-  // answers the tab's id ('calendar' or 'map'), which the page shows through the tab's own press once its layouts are
+  // answers the tab's id ('calendar' or 'map', or the person's own last layout, step 6), which the page shows through the tab's own press once its layouts are
   // read (the Workspace stays behind, remembered). Otherwise it answers null. A phone has no tabs: there the Calendar's
   // or the Map's composite opens first, as the phone's first tab, and for Conference the call is the view shown first.
-  function restore() {
+  function restore({ last = null } = {}) {
     suspended = true;
     restoring = true;
     const enteringNow = entering;
@@ -2362,17 +2362,18 @@ export function createCanvas({ guestToken = null, guest = Boolean(guestToken), o
     // The column's own (plan-one-bar.md, step 6): wider than a phone the conference and the chat open in the side column,
     // whatever the lists or a layout say, and whatOpens leaves them out of what goes on the canvas.
     if (columnMode()) for (const id of builtins.keys()) if (canOpenHere(id)) api_openBuiltin(id);
-    const firstLayout = request ? 'workspace' : firstVisitLayout({ firstVisit: spaceFirstVisit, remembered: saved.__open, guest, entering: enteringNow });
+    const firstLayout = request ? 'workspace' : firstVisitLayout({ firstVisit: spaceFirstVisit, remembered: saved.__open, guest, entering: enteringNow, last });
     // A shared layout as the first visit (plan-saved-layouts.md, decision 4): it opens through loadLayout, modes and
     // places included, whether or not Opens with is set (the two are independent now). A person's remembered layout
     // still wins after their first visit (plan-entering, decision 5).
-    if (firstLayout !== 'workspace' && !SYSTEM_TABS.includes(firstLayout) && spaceDefaultLayout && spaceDefaultLayout.id === firstLayout) {
+    if (firstLayout !== 'workspace' && !SYSTEM_TABS.includes(firstLayout) && firstLayout !== last && spaceDefaultLayout && spaceDefaultLayout.id === firstLayout) {
       restoring = false;
       suspended = false;
       loadLayout(spaceDefaultLayout);
       return null;
     }
-    const tab = SYSTEM_TABS.includes(firstLayout) ? firstLayout : null;
+    // The person's own last layout is shown as its tab is pressed, a saved one included (the page checked it is there).
+    const tab = SYSTEM_TABS.includes(firstLayout) || (firstLayout !== 'workspace' && firstLayout === last && !guest) ? firstLayout : null;
     const opens = request ? [request.module] : whatOpens({
       remembered: saved.__open,
       own: spaceOpensWith,
