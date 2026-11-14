@@ -17,10 +17,10 @@ microphone until you join.
 Who can: anyone whose role allows **See and join the conference**, while the owner has not switched the conference
 off.
 
-To join the call, press **Start call** at the right end of the **Discussion | Assistant** row, above the chat. It
-reads **Join call** while someone is already on a call. Your browser asks for your microphone. You join with your camera
-off; turn it on whenever you're ready. If you are not in the call, the column shows nothing else of it: no video area,
-only the chat.
+To join the call, press **Start call** in the call's title bar, at the top of the column. It reads **Join call** while
+someone is already on a call. Your browser asks for your microphone. You join with your camera off; turn it on whenever
+you're ready. Until you join, the call's area is its title bar and its menu, and no video. Where the call has a whole area
+of its own (the **Conference** layout, or **In the workspace** below) a large **Start call** button shows there as well.
 
 If the environment's plan allows only so many calls at once and they are all running elsewhere, the column says so
 under the button, for example "This environment's plan allows 1 call at once; one is running in The Keep". It names the
@@ -28,8 +28,7 @@ space only if you belong to it; otherwise it says "one is running in another spa
 Joining a call that is already running is never refused. If the server does not answer, it says "Could not reach the
 server to join the call. Try again in a moment."
 
-Once you are in the call, its tiles appear at the top of the column, with the call's own titlebar over them and the
-toolbar under them.
+Once you are in the call, its tiles appear under the call's title bar, with the toolbar under them.
 
 Keys: **M** microphone, **D** deafen, **V** camera, **S** share screen, **C** collapse or open the column, **R**
 reactions, **L** change the tiles, **F** full screen, **1** to **6** send a reaction.
@@ -39,8 +38,8 @@ reactions, **L** change the tiles, **F** full screen, **1** to **6** send a reac
 Wider than the narrow layout (more than 640 pixels), the call and the chat are not modules you switch on. They are in a column
 beside the Workspace in every layout tab, whichever one is shown. From top to bottom:
 
-- **The call**, once you have joined: its titlebar, the tiles, and the toolbar. Out of the call there is no call area;
-  **Start call** (or **Join call**) is at the right end of the chat's **Discussion | Assistant** row.
+- **The call**: its title bar, always shown where you may join the call, with **Start call** (or **Join call**) and the
+  call's **⋮** menu; once you have joined, also the tiles and the toolbar.
 - **The chat**, with its **Discussion | Assistant** tabs (see [Chat](userguide-chat.md)).
 
 Who is here is not in the column; it is in the top bar (see "Who is here" below).
@@ -51,8 +50,9 @@ column can take up to the whole window; the Workspace then has no room, and the 
 width is remembered.
 
 **Fold the column.** The small arrow at the column's top right (or **C**) folds it to a narrow rail that shows the
-faces of the people on the call and the chat's unread count. Press the chat button on the rail to open it again. The
-column never closes, and it is remembered for each space.
+faces of the people on the call, the chat's unread count and a call button beside the chat button (a small dot on it while
+you are in a call). Press the chat button on the rail to open the column again; the call button opens it with the call
+showing, and does not start a call. The column never closes, and it is remembered for each space.
 
 **Size the call.** Drag the line between the tiles and the chat, or use the Up and Down arrows on it, to make the tiles
 taller or shorter. The video can take at most a little over half the column, so the chat always keeps at least 45 percent of it; in a
@@ -66,8 +66,10 @@ Once you are in the call, the area at the top of the column has:
 
 - **A titlebar.** It reads the environment's name for the conference, else **Call**, and while you are in the call it
   shows how long you have been in it (`12:34`, then `1:00:00` from the first hour; it counts from when you joined). It
-  has a **Pop out** icon, which moves the call into a window of its own, and a **⋮** menu. The menu has **Pop out the
-  call** (or **Bring the call back**), **Call position** (below), and, while you are in the call, **Leave the call**.
+  has **Start call** (or **Join call**) until you are in the call, a **Pop out** icon once you are (it moves the call into a
+  window of its own), and a **⋮** menu. The menu has **Pop out the call** (or **Bring the call back**), **Call position**
+  (below), and, while you are in the call, **Leave the call**. Chat's own **⋮** menu has only **Save the chat** and
+  **Delete the chat**.
   For people who can manage the space it also has **Settings** (under **Call position**), which holds the switch that
   turns the space's guest link on and off (**Members** under "Set up" in [Spaces](userguide-spaces.md)). The call's own titlebar, when the call floats or has a window,
   shows the same time and the same **Pop out** icon.
@@ -80,27 +82,37 @@ Once you are in the call, the area at the top of the column has:
   screen, away, Tiles and deafen, then the camera and the microphone last. Leave never folds. A tooltip names each
   button and its key.
 
-Out of the call there is no call area at all, whatever **Call position** is saved; it comes back when you join.
-
 ### Call position
 
-**Call position** chooses where the call sits. It is in the call's **⋮** menu and in Chat's **⋮** menu. The choices:
+**Call position** chooses where the call sits. It is in the call's **⋮** menu (Chat's **⋮** menu no longer has it). What it offers depends on the layout tab shown.
+
+**Beside the work**, in every layout except **Conference**, seven choices:
 
 - **Top of the column**, the default: the call over the chat.
 - **Bottom of the column**: the chat over the call.
-- **Left of the chat**: the call beside the chat, each as tall as the column. It needs a column at least 560 pixels
+- **Left of the chat** and **Right of the chat**: the call beside the chat, each as tall as the column. Each needs a column at least 560 pixels
   wide (the choice is marked, but says "Needs a wider column" until the column is wide enough, and the call sits at the
   top meanwhile). Drag the line between them to change the call's width.
 - **Floating window**: the call floats over the Workspace as a window you can drag and resize. The column then shows a
   slim strip with the microphone, deafen, camera and hang up, and **Bring the call back**.
+- **In the workspace**: the call's area, with the same title bar, menu and controls, moves out of the column into the
+  work area, beside the modules docked there and the chat. It needs a work area at least 780 pixels wide (it says "Needs a wider window" until then, and the call sits at the top of the column meanwhile). The large **Start call** button shows there while you are not in a call.
 - **Its own window**: the call moves into a window of its own, with the chat and the modules staying on the page. The
   call keeps its connection; nobody joins twice. The column shows the same slim strip. Closing that window brings the
   call back. Your browser may ask you to allow pop-ups the first time.
 
-Top, bottom, left and floating are remembered; its own window is not (a window opens only when you press the button).
+**On the Conference layout**, the call and the chat fill the page and **Call position** has its own choices, with **Its own window** as above:
+
+- **Beside the chat**, the default: the chat keeps the width the column has and the call takes the rest of the page.
+- **Left of the chat**: the same two, turned round.
+- **Above the chat** and **Below the chat**: one column, the chat keeping a height of its own.
+- **Call only**: the chat folds away to the rail and the call has the page. The chat button on the rail brings it back where it was.
+
+Everything except **Its own window** is remembered for you in this browser, for each space: the position beside the work, whether it floats, the Conference layout's position, and **Call only**. Choices made in one space never reach another. At 640 pixels wide and below there is no column and no Conference layout, so **Right of the chat** and **In the workspace** are never offered there.
+
 The **Pop out** icon in the call's titlebar does the same as **Its own window**, and becomes **Bring the call back**
-while the call is out of the column. Hang up brings the call back too. A screen share lifts the call into the Workspace as a
-floating window while anyone shares a screen, and puts it back when the last share ends.
+while the call is out of the column. Hang up brings the call back too. Beside the work, a screen share lifts the call into the Workspace as a
+floating window while anyone shares a screen, and puts it back when the last share ends; on the Conference layout and **In the workspace** the share stays in the call's tiles.
 
 ### Tiles
 
@@ -123,15 +135,15 @@ only an icon and the count ("5 here").
 
 ## What opens when you enter
 
-Each space remembers the modules you had open when you last used it, in which mode (docked, floating or in a window),
-and how big, and opens them again when you enter. The first time, the space's **First visit** setting decides (see
-"Set up" in [Spaces](userguide-spaces.md)). The call is never joined by entering.
+Each space remembers the modules you had open in the Workspace when you last used it, in which mode (docked, floating or in a window),
+and how big, and opens them again when you enter. It also remembers which layout you last used (the Workspace, the **Conference** layout and so on) and opens on that. The first time, the space's **First visit** setting decides (see
+"What opens when you enter" and "Set up" in [Spaces](userguide-spaces.md)). The call is never joined by entering.
 
 ## Leaving the call, staying in the space
 
 The red leave button on the toolbar, or **Leave the call** in the call's menu, leaves the call, not the space. Your
 microphone and camera stop, you stop receiving anyone's audio and video, and your tile disappears for everyone else, but
-you stay in the space and stay online, with the chat and the modules still open. The call area goes away and
+you stay in the space and stay online, with the chat and the modules still open. The tiles go away and
 **Start call** is back. The space's own **Leave space**, the last entry of the space's menu in the top bar, is
 what leaves the space. The status line reads "in <space>" whether or not you are on the call. If nothing at all is open
 in the Workspace, it says so. In a pop-out window, hang up brings the app back to the page first.
@@ -198,8 +210,10 @@ chat box is hidden.
   In Panel Mode there is also **Unstack all**, which gives every module in a stack a column of its own (it is
   off while nothing is stacked). Window Mode puts stacks away and Panel Mode brings them back (see "Stacking
   modules" below).
-- **Layouts**: the Workspace, Calendar and Map first, then the space's shared layouts, then your own, with **New layout** and
+- **Layouts**: the Workspace and the other layouts the space shows (Calendar, Map, Conference, Whiteboards and Documents), then the space's shared layouts, then your own, with **New layout** and
   **Save as new layout** at the end (see "Saved layouts" below).
+
+**In a Fixed Workspace.** Calendar, Map, Conference, Whiteboards and Documents are fixed: nobody arranges them, so the **Modules** tab does not offer the arrangement controls there (**Arrange**, **Layouts**, **Open for you**, adding or taking away a module). It shows only the switches that layout has, or says "There is nothing to configure here." Today only Calendar has one, **Show in the Calendar**, the To-do module's own setting, shown while the To-do module and the Calendar are on, and changed by owners and the admin. The Workspace and the saved layouts are Customizable Workspaces and keep the full tab.
 
 The panel stays open while you flip switches; close it with **Cancel** (or **Close**) or Escape. For owners and the admin, a line at the foot says "Modules are turned on for the whole <environment> in Manage." With
 the keyboard, Tab and the arrow keys move through it, and Space or Enter flips a switch or presses a button. In the narrow layout there is no **Modules** tab: the modules are tabs along the bottom.

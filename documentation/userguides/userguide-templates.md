@@ -94,6 +94,16 @@ confirm is.
 its **Template** tab, pick a template and click **Switch template**, then the same offer, with **Review** to bring it
 back later.
 
+## Let a space use its own template
+
+An environment has one template, and its spaces read it. An owner can let a space read another: a trip in the Travel template and a campaign in another, in one environment. Turn it on in Manage, **Template** tab, **Let a space use its own template** (on by default; it saves as you switch it). Then an owner or the admin picks a template for a space in the space's Set up, or when adding the space (see "A space's own template" in [Spaces](userguide-spaces.md)).
+
+A space's template changes that space's words (space, aside, canvas, module, object, moderator, member, guest and the layout button), its phases, and the names and icons of modules. The environment's words for environment, owner and home, the entering button's verb, Home and every list across spaces stay as the environment's template and the owner's own words set them. Words and module names an owner set by hand in Manage win over any template. A space's template does not turn modules on or change settings, reactions, icons or the theme.
+
+Turning the switch off makes every space read the environment's template at once. Nothing is lost: what each space chose is kept and comes back when the switch is turned on. A template that a space uses cannot be deleted; hide it instead.
+
+The host admin sees, in the console's list of templates, **Used by** with the environments that use a template and a count such as "3 spaces" for the spaces that chose it themselves.
+
 ## When a template is updated
 
 The host admin can edit a template, and a new release can bring a new version of a bundled one. Its words, home

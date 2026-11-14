@@ -47,21 +47,35 @@ default light or dark look.
 
 ### Layout tabs
 
-Every view of a space is a layout, and each layout is a tab. They sit right after the space's name:
+Every view of a space is a layout, and each layout is a tab. They sit right after the space's name. There are two kinds:
 
-- **Workspace** is always first. It is the canvas, the work area where modules open, docked beside each other or floating, and it
-  remembers how you left it.
+- **Customizable Workspaces**: the **Workspace** and the saved layouts you have made a favorite. A person arranges any
+  number of modules in them.
+- **Fixed Workspaces**: **Calendar**, **Map**, **Conference**, **Whiteboards** and **Documents**. Nobody arranges them;
+  each shows what it is. Their **Modules** tab in Set up offers only the switches that layout has (see
+  [The call](userguide-call.md), "The Modules tab").
+
+The tabs, in the order the owner chose (by default this one):
+
+- **Workspace** is always first and cannot be hidden. It is the canvas, the work area where modules open, docked beside
+  each other or floating, and it remembers how you left it.
 - **Calendar** and **Map** follow while those modules are on in the space (Map also needs a map file or a picture map
   to be set; see [Maps](userguide-maps.md)). Calendar is the Calendar and the To-do together for this space; Map is
   the map and Places together. Each fills the work area and loads as saved every time you press its tab. Opening one
   does not set you Away on the call.
+- **Conference** is there for anyone who may see and join the call (the server has a call service, the environment has
+  the conference on, and your role allows it). The call and the chat fill the page; see [The call](userguide-call.md),
+  "Call position". Nobody joins by pressing it.
+- **Whiteboards** and **Documents** are there while that module is on in the space and you may read it.
 - After them, each saved layout you have made a favorite, in the order you favorited them. There is no limit.
 
-Press a tab to show it. The call and the chat stay where they are, in the column beside the work area (see
+Press a tab to show it. Except on the Conference layout, the call and the chat stay where they are, in the column beside the work area (see
 [The call](userguide-call.md)), whichever tab is shown. On Set up's **Modules** tab, under **Layouts**, the **⋮** on a row
-offers **Favorite** or **Unfavorite** (Calendar and Map can be taken off the tabs; the Workspace always stays),
+offers **Favorite** or **Unfavorite** (the Fixed Workspaces can be taken off the tabs; the Workspace always stays),
 **Rename** and **Change icon**. Your names, icons and favorites are yours alone, kept for each space. A guest has no
 tabs, and neither has an aside.
+
+**The owner sets the bar.** Owners, the admin and the space's moderators choose, under **Layouts** on Set up's **Settings** tab, which layouts show in the bar for everyone in the space, in what order, and which one opens first (see "Set up" below). A person can hide more tabs for themselves, rename them and change their icons, but cannot bring back one the owner hid or change the order.
 
 ### The profile menu
 
@@ -289,13 +303,16 @@ cannot be invited, and you need the permission to start a private conversation (
 
 ## What opens when you enter
 
-The first time someone enters a space, what they see is decided by the space's **First visit** setting (see "Set up"
-below): the Workspace with the modules switched on under **Opens with**, or the Calendar, the Map or a shared saved
-layout. When the owner has chosen nothing, it is what the environment sets for a new space, else the chat and every
-module on in the space. A guest with nothing set gets the chat and the call's tiles. The call is always out of the
-call, showing **Start call** (or **Join call**): entering never joins it, for anyone (see [The call](userguide-call.md)).
+What you see on entering is the first of these that applies:
 
-After that, each person's own arrangement is remembered for each space: the modules open, how, and how big. In the narrow layout, the first tab shown is the first thing opened.
+1. A link or a notice that opens one object, which wins.
+2. **The layout you last used in this space**, if you have one and it is still there. The server keeps it for each person and space, so it follows you to another browser. A change of layout by you writes it; opening the space again does not.
+3. The space's **Opens first** layout, set by an owner, the admin or a moderator under **Layouts** (see "Set up" below): the Workspace, or the Calendar, the Map, the Conference, Whiteboards, Documents or a shared saved layout. If you have been in the space before and have no layout kept yet, the Workspace opens as you left it.
+4. The Workspace, with the modules switched on under **Opens with** or, when the owner has chosen nothing, what the environment sets for a new space, else the chat and every module on in the space.
+
+A guest has no layout kept: a guest gets the owner's **Opens first** every time, and the Workspace when that layout is one a guest cannot use (Calendar, Map, Conference, Whiteboards, Documents), with the chat and the call's tiles when nothing else is set. A layout that has gone, is switched off, or has been hidden by the owner is skipped, and the next rule applies. The call is always out of the call, showing **Start call** (or **Join call**): entering never joins it, for anyone (see [The call](userguide-call.md)).
+
+After that, each person's own arrangement of the Workspace is remembered for each space: the modules open, how, and how big. In the narrow layout, the first tab shown is the first thing opened.
 
 If you reload the page while you are in a space, you are put back in that space rather than on Home. It is remembered
 for that browser tab only; leaving the space, being removed from it, or a space that cannot be joined clears it, and a
@@ -336,7 +353,8 @@ The tabs, in this order, with your environment's words for them:
 - **Space** (named for the environment's word, such as **Trip**): the space's **Picture** (square; anything else is
   cropped to the middle), **Name**, **Description**, **Faces in the call** (what each person's tile shows while their
   camera is off: their own pictures, or their character pictures; see
-  [Participant and Character images](userguide-images.md)), **Launch link** and its **Link icon**, **In the published
+  [Participant and Character images](userguide-images.md)), **Template** (owners and the admin, not on the Lobby; see
+  "A space's own template" below), **Launch link** and its **Link icon**, **In the published
   calendar** (shown only while an owner has the published calendar on; see "The published calendar (owner)" in
   [Calendar](userguide-calendar.md)), and last the section **Delete this <space>** (with the
   environment's word).
@@ -355,9 +373,10 @@ The tabs, in this order, with your environment's words for them:
   as Budget) is on in the space, or when one is already set. Leave the amount empty and choose a currency to give the
   space a currency with no target; empty both to clear it. Owners, the admin and the space's moderators can set it
   (see [Budget](userguide-budget.md)).
-- **Settings**: four kinds of section.
-  - **First visit**: what someone sees the first time they enter. Choose the **Workspace**, with its **Opens with**
-    switches (the chat, and each module on in the space), or **Calendar**, **Map** or a shared saved layout. Owners and the
+- **Settings**: five kinds of section.
+  - **Template** (a moderator sees this; owners and the admin choose it on the **Space** tab): a line naming the template the space reads, "This <space> reads the <template> template.", with "Only the <owner> can change it." Until the template's name is read, the line shows the template's id.
+  - **Layouts** (owners, the admin and moderators): one row for each layout the space can show, in the order the bar shows them. Each has **Show in the bar** (the Workspace's is on and cannot be turned off), **Move up** and **Move down** (buttons, no dragging; a line announces "<name> moved to position N.") and **Opens first**, a choice of one that is the space's first-visit layout. It is part of **Save**. Everyone in the space sees the bar this makes; each person can hide more for themselves but cannot bring back what you hid.
+  - **First visit**: what someone sees the first time they enter. Under **Layouts**, **Opens first** picks the layout; the shared saved layouts are listed here with the same choice. Under **In the Workspace, a new person sees these open**, the **Opens with** switches (the chat, and each module on in the space) say what the Workspace holds. Owners and the
     admin choose which; a moderator can change the **Opens with** switches. A switch that cannot open now stays in the
     list with a note saying why ("(not installed)", "(turned off)", "(can't open on the canvas)"), so turning it back
     on restores it. **Stop using it** returns to the Workspace. After a first visit each person's own arrangement is
@@ -387,15 +406,16 @@ Older settings addresses still work: `/spaces/<id>` (with `#space`, `#members` o
 
 ## Who can enter
 
-By default a space is for its members only. **Who can enter**, on the **Members** tab of Set up, changes that. Only owners and the admin can set it; it is saved with **Save**.
+By default a space is for its members only. **Who can enter**, on the **Members** tab of Set up, is four switches. Only owners and the admin set them; they are saved with **Save**.
 
-- **Invited people only**: members, owners and the admin. The space does not show to anyone else.
-- **Anyone with an account**: everyone with an account in the environment sees the space on Home with **Join**. Choosing it makes them a member.
-- **Anyone, including guests**: also guests who came in by the guest door ([Accounts](userguide-accounts.md), "Guests"). This choice is there only while the guest door is on, or while the space already has it.
+- **Members of <the space's name>**: on, the space is open as the other switches say. Off, the space is **closed for set up**: only owners, the admin and the space's moderators can enter it, and everyone else, its members included, is refused (the person who would be let in if it were open is told "This <space> is closed for set up."; anyone else is told nothing, as for a space that does not exist). The other three switches keep what they were, dimmed, so turning this back on restores them. A moderator sees only this switch, on the **Settings** tab, and may turn it off to close the space while setting it up.
+- **All <environment> members**: everyone with an account in the environment sees the space on Home with **Join**. Choosing it makes them a member.
+- **Invited guests**: guests who come in by the space's guest link. On by default; off, the space's guest link is turned off and none can be made.
+- **Visiting guests**: guests who came in by the guest door ([Accounts](userguide-accounts.md), "Guests"). It needs **All <environment> members** (turning it on turns that on; turning that off turns this off) and works only while the host has the guest door on. While it is off at the host, the switch is dimmed with a line saying "The host has not turned guest sign-in on, so this does nothing yet."
 
-The Lobby, behind Home, is always for everyone.
+The Lobby, behind Home, is always for everyone and has none of these.
 
-**People can ask to come in** (a switch beside it) lets a person who cannot enter ask. A closed space with this off does not appear to them at all, and its address answers as if it did not exist. With it on they see the space's picture, name and description on Home and in the **Spaces** menu, with **Request access**.
+**People can ask to come in** (a switch beside them) lets a person who cannot enter ask. A closed space with this off does not appear to them at all, and its address answers as if it did not exist. With it on they see the space's picture, name and description on Home and in the **Spaces** menu, with **Request access**.
 
 To ask (anyone who cannot enter, signed in or a guest from the door):
 
@@ -404,6 +424,22 @@ To ask (anyone who cannot enter, signed in or a guest from the door):
 3. When approved, a notice in the bell says "You can enter <space>", and the space is yours to enter. A guest's approval lasts until their session ends.
 
 To answer (owner or admin): a notice in the bell, "Request to enter <space>", opens Set up on **Members**. Under **Waiting to come in**, choose **Approve** or **Deny** beside the name. Someone approved becomes a member. There are limits on how many requests a person, an address and a space can have at once; they are the server's, in the [Settings reference](userguide-settings-reference.md), "Agreements, guests and entering".
+
+## A space's own template
+
+An environment has one template, and a space can read another. A group that runs a trip and a campaign in one environment can give each its own words and phases. Owners and the admin choose, at any time, and only while Manage's **Template** tab has **Let a space use its own template** on (see [Manage](userguide-environment-settings.md)).
+
+To choose when adding a space: on Home, choose **Add space** (with your environment's word). When the choice is on and there are templates to pick from, a small dialog asks for the **Template**, with **Add** and **Cancel**. The first choice is "Same as the <environment>" (with the template it reads in brackets).
+
+To change it later:
+
+1. Open Set up on the **Space** tab.
+2. In **Template**, choose another template, or "Same as the <environment>" to go back.
+3. Choose **Save**. It first asks "Change this <space> to <template>?" and says "Its words, phases and <module> names change now. Nothing is removed." Choose **Change**.
+
+What a space's template changes, inside that space only: the words for space, aside, canvas, module, object, moderator, member and guest and the layout button's verb; the phases; and the names and icons of modules. Anything an owner set by hand in Manage still wins. What stays the environment's everywhere: the words for environment, owner, home, host and admin, the entering button's verb, and every list that spans spaces (Home, the **Spaces** menu, the bell). It does not change which modules exist or any setting, reaction, icon or theme. A space made with a template starts with that template's **Opens with** and faces in the call; a later change does not touch them.
+
+Phase dates stay on the space when the new template lacks the phase, and come back if you switch back: changing templates loses no date. A moderator reads the template but cannot change it. If Manage's switch is off, every space reads the environment's template and what each space chose is kept for when it is turned on again.
 
 ## Step aside
 
