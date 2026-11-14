@@ -6,11 +6,12 @@ experience-design build, bug-fixes fixes, quality-assurance reads and tests (rea
 documentation, the changelog and the first drafts of the legal texts. A lawyer, whom Thomas chooses, confirms the
 legal track.
 
-**Status:** decided in part, 2026-11-14. Thomas answered the eighteen questions of the first draft on 2026-11-14; his
-answers are under "Decisions". Nothing is built. Four new questions (19 to 22) came out of the answers and are under
-"Open questions for Thomas"; two of them (19 and 20) are about the freeze and should be answered before it starts. The
-per-module "done" lists, the checklists and the order below are still proposals that Thomas cuts or adds to, except where
-a decision says otherwise.
+**Status:** decided, 2026-11-14, with two things still owed by Thomas (the two people for the real call and the
+co-editing test, and the browser on each device). Thomas answered the eighteen questions of the first draft and the four
+that came out of them (19 to 22) on 2026-11-14; his answers are under "Decisions". Nothing is built. The issue table
+under "What it is today" is a draft that the project manager and Thomas confirm; no issue is gating by this document
+alone. The per-module "done" lists, the checklists and the order below are still proposals that Thomas cuts or adds to,
+except where a decision says otherwise.
 
 Thomas's request, 2026-11-14: "We need to define 'done' for a 'release'. We have a series of modules, all in flight,
 core in flight, and bugs. (1) work through each module and declare a 'done' body of work; (2) nail down the core and
@@ -57,8 +58,8 @@ the product is released this rule is removed." In practice, each a proposal unti
 
 ## Decisions
 
-Thomas, 2026-11-14, answering the eighteen questions of the first draft. Each keeps its question and the option he
-chose. Numbers are the question numbers; the plan elsewhere cites them as "decision N". Question 5 is answered in his
+Thomas, 2026-11-14, answering the eighteen questions of the first draft and the four that followed (19 to 22). Each
+keeps its question and the option he chose. Numbers are the question numbers; the plan elsewhere cites them as "decision N". Question 5 is answered in his
 own words, not an option.
 
 1. **What is the first release, in one sentence?** Answered, a: a private, invited release to named customers on a hosted
@@ -68,8 +69,8 @@ own words, not an option.
 3. **What makes an issue gating?** Answered, a: the seven rules under "Gating rules".
 4. **Which version number is the release?** Answered, a: `1.0.0`. The compatibility promise starts there.
 5. **How long may the freeze last, and who may allow an exception?** Answered, in his own words: no limit on the freeze.
-   Who may allow an exception was not answered and is still unset; it is a follow-up (question 20). The first draft
-   had suggested four weeks.
+   Who may allow an exception is decision 20; the review date that keeps the freeze visible is decision 19. The first
+   draft had suggested four weeks.
 6. **Is co-editing on by default at release?** Answered, b: yes, after a real two-person test. The `coediting` switch
    stays off until that test passes.
 7. **Is the call as a module (#377) in the first release?** Answered, a: no. It ships as it is, and the SDK promise says
@@ -93,11 +94,27 @@ own words, not an option.
     must tell customers, before they put data in, that the host admin's password opens every environment, that the
     hosted operator is the one who holds it, and what the operator will and will not do with that access.
 16. **What does "verified" need for the first release?** Answered, a: one real call with two people on each phone and
-    computer kind Thomas names, including a hosted server.
+    computer kind Thomas names, including a hosted server. The kinds are named in decision 22.
 17. **What happens to `CLAUDE.md`'s "not released" rule?** Answered, a: it is replaced with a post-release rule before
     the tag, written by Thomas and content-manager. product-planner does not edit `CLAUDE.md`.
 18. **Is the issue list refreshed before anything is marked?** Answered, a: the project manager re-reads every open
     issue, including #742 and up, #780, #786 and #795, before anything is marked gating.
+19. **What keeps the freeze from dragging, given no limit (decision 5)?** Answered, a: a review date, set when the
+    freeze starts (for example every four weeks). On that date the project manager reports what is left and Thomas
+    chooses to continue, cut a list or move a module to after the release. It is not a limit. Reason: it makes a drag
+    visible without forcing a choice.
+20. **Who may allow an exception to the freeze?** Answered, a: Thomas allows every exception. The project manager allows
+    only a fix that touches no stored data, route or SDK call, and tells Thomas in the next report. Reason: a change
+    that could break a promise stays with him.
+21. **What are the backup details?** Answered, a: daily automatic backups, the last seven kept, one copy on a machine
+    other than the one the data lives on, the secrets key kept apart from the backups, and disk encryption on the hosted
+    server left to the host. Reason: a plain starting point that Thomas can tighten later.
+22. **Which devices and which two people, and does the release wait for the co-editing test?** Answered, a, in part.
+    Thomas named the device kinds for the real calls and the co-editing test (2026-11-14): iPhone 13 Pro Max, iPad
+    12.9, Mac mini M4 and Windows 11. **Still owed:** the two people, and the browser on each device (for example Safari
+    or Chrome; Thomas has not named them). The release does not wait for the co-editing test: if it has not passed by the
+    tag, the release ships with `coediting` off, and a customer is told co-editing is not yet on. Reason: the switch
+    makes this safe.
 
 ### Tensions between the decisions
 
@@ -105,9 +122,9 @@ Ranked, worst first. None is a reason to change a decision; each says what keeps
 
 1. **All twelve modules and no limit on the freeze (decisions 2 and 5).** Twelve done lists, about 150 open issues,
    gating bugs that each need an independent read, and nothing that ends the freeze except Thomas's own call. It can
-   drag with no one deciding that it is dragging. Suggested bound: a review date, not a limit. On that date Thomas
+   drag with no one deciding that it is dragging. Decision 19 bounds it with a review date, not a limit. On that date Thomas
    looks at what is left and chooses to continue, cut a module's list, or move a module to after the release. He is
-   not forced to do any of them (question 19).
+   not forced to do any of them.
 2. **The host admin's password against the per-environment promise and the private hosted legal track (decisions 15, 1
    and 12).** A customer in a hosted environment is told that environments are separate, and the operator can open any
    of them. That is honest only if the terms and the privacy notice say so, and the lawyer confirms the wording. The
@@ -117,8 +134,8 @@ Ranked, worst first. None is a reason to change a decision; each says what keeps
 3. **Co-editing on by default needs a test the cloud container cannot do (decision 6).** A real two-person test needs
    two people in two browsers. Tool checks and the container can show the restore tests but not that. Until the test
    passes the `coediting` switch stays off, so the release does not break if the test slips; it only ships without
-   co-editing on. The question is who does the test and when (question 22), and whether the release waits for it.
-   That waiting is Thomas's choice, not this plan's.
+   co-editing on. Decision 22: the release does not wait for the test. What is still owed is the two people and the
+   browsers; until they are named the test cannot be scheduled.
 
 Two smaller notes. Decisions 8, 11 and 12 say "before the first customer", not "before the tag", so the tag can come
 before the pen test and the lawyer's confirmation, and a customer waits for both. And decision 9 makes the baseline of
@@ -129,14 +146,11 @@ stored shapes the release itself, so every missing version marker must go in bef
 Read 2026-11-14 on `origin/main` at `06d737ce`. Read as code and documents unless I say otherwise. Nothing was run, and
 `npm run check` was not run for this plan.
 
-**The issue list was not refreshed.** This session could not reach GitHub for this repository (`gh` and the issue tool
-were refused), so the issue numbers below come from the list taken on 2026-11-12 (`triage-all.md` and
-`open-issues.json` in the planning notes: 152 open issues, numbers up to #741). Issues opened or closed since, and every
-number from #742 up, I have only seen named in commit titles, not read. That includes #780 (the pre-release licence
-re-check), #786 (secrets) and #795 (SSRF) from Thomas's request. I could confirm only that #784 is a merged pull request
-("a secret module setting type, write-only and sealed in its own file"). The project manager should re-run the list
-before any label is applied (open question 18). Where a commit since 2026-11-12 names an issue, I mark it "likely
-done, confirm".
+**The issue list.** The 2026-11-12 list was out of date. The project manager read the open list again on 2026-11-14
+(146 open issues, numbers and titles with labels where known), and the table under "Open issues" below is built from
+that list. I could not read any issue body (no GitHub access for this session), so the classification comes from titles,
+labels, this plan, the architecture documents and the code. The per-module tables below still show the 2026-11-12
+issue numbers; some of those are no longer open.
 
 ### Modules
 
@@ -178,51 +192,105 @@ other nine modules have no `test/` folder, so their checks live in `tools/check-
 | Product site, name, licensing | [plan-product-site](plan-product-site.md) built; [plan-rename-chameleon](plan-rename-chameleon.md) drafted | #426, #72, #49 | the name is half done (known issue: "The logo still reads the old name"); the licence lock (#72) |
 | Checks and documents | `package.json`'s `check` script runs 161 distinct tool scripts, plus the module tests | #686, #402, #764 | a failing check on main (#686); a flaky one (#402); the known failures in `CLAUDE.md` |
 
-### Open issues, grouped (the 2026-11-12 list, 152 open)
+### Open issues (the 2026-11-14 list, 146 open): a draft gating table
 
-Every issue is in one group. The groups and the reasons are my proposal; the rules are under "Gating rules".
+**This is a draft for Thomas to confirm.** Nothing is gating because this table says so. Thomas marks an issue gating
+(decision 3, rule 7, and decision 18); the project manager applies the label (`release: gating` or `release: after`)
+only after he confirms. I read titles and labels only, so each row says how sure I am. "High" means the title alone
+settles the rule; "needs a body read" means the title suggests a rule but the body decides. Rule numbers are those under
+"Gating rules". The earlier 2026-11-12 list is replaced by this one.
 
-**Gating (proposed), 32.**
+Some issues that list named are not on the 2026-11-14 list: #729, #740, #741, #732, #681, #412, #353, #213 and #43. They
+were closed, or marked done, since 2026-11-12, as far as the list shows. The project manager confirms that, since I
+cannot see closed issues.
 
-- Security, hostile cases or missing guards: #70 (a GET that changes state, sign-in forced by another site), #406
-  (isolation beyond #295), #422 (host password opens every environment; decided to stay as a documented exception, so what is left is the
-  documentation, the terms and a check that nothing else can do it), #441 (the console has no framing headers), #442
-  (the create route adopts a leftover folder), #684 and #685 (agreement and 403 rules), #709 (the "(guest)" label
-  cannot be trusted; likely done by `f61be301`), #353 (sign-up leaves an environment behind), #412 (a warning before an
-  uploaded module runs in the page; also the third-party track).
-- Data protection and integrity: #36 (no single decision on private data), #427 (one full backup), #414 (private Vault
-  files; plan-vault-privacy slice 4 is left), #471 (a page can stay stale after a reconnect), #445 (Whiteboard limits and
-  storage, from the independent QA), #393 (the AI's real-provider test; the AI is a flow of personal data).
-- Legal: #72 (the licence lock; a licence must exist before it is locked), #603 (vendored libraries need licence files;
-  `d61ed72a` and `40900a93` name #603 and #773, so likely done, confirm).
-- Verification: #29 and #30 (a real call; two people), #686 (a check fails on main), #402 (a check cannot clean up after itself).
-- Works for every person: #27 (the console's top bar 404s), #464 (at 760 px the first docked column is 0 px wide and its
-  modules vanish), #681 and #682 (phone tap targets), #741 (a guest sees the sign-in page inside Calendar and Maps), #732
-  (a closed pop-out does not return), #335 (nested controls inside a `role="button"`, accessibility), #23 (a second tab
-  can stall on plain HTTP/1.1; depends on what production serves), #376 (LiveKit optional; the plan is built, the issue is
-  open: confirm and close).
-- Third-party: #46 (a hello-world module for authors).
+**Gating (draft), 36: 22 high, 14 needing a body read.**
 
-**Decide first, 12.** Not gating by default, but whether each is in the first release changes a "done" list: #377 (the
-call as a module; Thomas marked it critical), #28 (passkeys), #2 (first-time experience), #213 (the host console
-reorganised; priority now), #202 (a point of view for the workflow), #205 (chat as the primary input), #665
-(co-editing), #687 (rich text as the default), #731 (one AI Assistant module), #729 and #374 (Places into Maps; #729
-likely done by `b8714558`), #426 (the product name; also a trademark question).
+High confidence, 22:
 
-**Not gating, 65.** Polish, naming and later features. Reason: none can lose data, leak data or stop a person entering a
-space or a call. #25, #35, #39 (superseded; the earlier triage proposed closing it), #179, #214, #215, #220, #221,
-#223, #231, #235, #236, #238, #243, #249, #266, #267, #286, #290, #291, #293, #294, #297, #298, #325, #328, #331, #332,
-#333, #336, #338, #339, #371, #388, #416, #477, #492, #499, #501, #503, #505, #541, #542, #543, #544, #554, #561, #569,
-#611, #612, #618, #631, #632, #634, #641, #662, #666, #679, #680, #683, #690, #717, #718, #730, #740 (likely done by
-`e37e2d96`, confirm). Of these, #611 and #632 (Documents round trips) come close to gating for the Documents list;
-they stay here until Thomas sets that list.
+| Issue | Rule | Why | What the 2026-11-14 decisions change |
+|---|---|---|---|
+| #70 | 1 | A GET that changes state, and a sign-in forced by another site. | Track 1 fix, HELD. |
+| #406 | 2 | One environment reaching another's streams or shared state. | Isolation first (decision 8). |
+| #422 | 1, 2 | The host admin's password opens every environment. | Stays open as a documented exception (decision 15). What is left is the docs, the terms, and a check that nothing else crosses. |
+| #441 | 1 | The host console sends no framing headers (a framing attack). | Track 1 fix. |
+| #795 | 1, 2 | The owner-set search address accepts loopback and follows redirects (SSRF). | Track 1, one shared outbound guard. |
+| #709 | 1 | A member can take a display name ending in "(guest)". | Likely fixed by `f61be301`; confirm. |
+| #36 | 1, 6 | No written decision on how private data is stored and sent. | Release work for data protection (decision 9, Track 2), not an open question. |
+| #427 | 1 | One full backup of the whole server on a schedule. | Release work for backups (decisions 9 and 21). |
+| #72 | 6 | The licence lock and the About page; a licence must exist first. | Release work for the licence (decision 13). |
+| #780 | 6 | Re-check every licence and attribution before a public release. | Part of the licence inventory (Track 4). |
+| #426 | 4, 7 | The product's name; a rename changes ids and words. | Finished before the freeze (decision 14). |
+| #686 | 5 | A live check fails on main. | Release step 4. |
+| #402 | 5 | A check cannot clean up after itself (`ENOTEMPTY`). | Release step 4. |
+| #764 | 5 | `check-setup-tabs` fails when the machine is busy. | Release step 4. |
+| #29 | 3, 5 | The canvas and layout were never tried in a real call. | The real call (decisions 16 and 22), step 10. |
+| #30 | 3, 5 | Modules were never tried with two people on a real server. | The real call (decisions 16 and 22), step 10. |
+| #665 | 4, 7 | Co-editing; its stored state and the default switch. | Release work: the real two-person test; ships with `coediting` off if it has not passed by the tag (decisions 6 and 22). |
+| #471 | 3, 4 | The module event stream has no reconnect signal, so a page goes stale; the signal is an SDK promise. | The Stream done list assumes it. |
+| #464 | 3 | At 760 px the first docked column is 0 px wide and its modules vanish. | None. |
+| #682 | 3 | The second phone pass. | None. |
+| #770 | 3 | On a phone a person cannot see what they type in Chat. | None. |
+| #27 | 3 | The host console's shared top bar requests answer 404. | None. |
 
-**Ideas and business, after the first release, 43.** #12, #33, #34, #40, #41, #43 (Font Awesome Pro; the free set
-ships today), #44, #45, #47, #48, #49, #50, #52, #53, #54, #55, #56, #64, #65, #73, #132, #204, #208, #209, #211, #218,
-#232, #250, #252, #253, #307, #351, #357, #358, #380, #382, #396, #451, #458, #469, #480, #566, #688. Reason: new
-features, business offers (billing, own domains, a licence relay, running elsewhere) and ideas with no plan. #64
-(integration tokens) and #382 (AI working with the app) become gating only if Thomas puts outside AI clients or
-third-party integrations in the first release.
+Needs a body read, 14:
+
+| Issue | Rule | Why | What the body decides |
+|---|---|---|---|
+| #786 | 1 | Hardening notes from the secret-setting read: the seal key beside the file, `keepData`, a default on a secret, a module id constructor. | Which of the four notes can leak a secret. |
+| #685 | 2 | A few routes answer 403 instead of 404 for a space the person may not enter. | Whether it tells an outsider the space exists. |
+| #684 | 3 | A raw `fetch()` and the guest page do not send the agreement 403 to `/agree`. | Whether a guest is stuck or only misrouted. |
+| #442 | 2 | The console create route adopts a leftover environment folder. | Whether a leftover folder can hand one owner another's data. |
+| #445 | 1, 4 | Whiteboard follow-ups from the independent QA (labelled next). | Which follow-ups lose data or change a stored format. |
+| #393 | 1 | The assistant's real-provider test of look-ups and proposals; the AI is a flow of personal data. | Whether the test is a data-protection gate or a quality one. |
+| #376 | 3 | LiveKit optional; the plan is built. | Whether it is only to confirm and close. |
+| #46 | 4 | A hello-world module for authors (Track 5 authoring help). | Whether decision 10's published contract needs it. |
+| #23 | 3 | A second tab can stall on HTTP/1.1 (labelled later). | Whether production serves HTTP/2, which would remove it. |
+| #335 | 3 | Space cards hold nested controls inside `role="button"` (accessibility). | Whether it breaks keyboard use on a core page. |
+| #603 | 6 | Maps vendored libraries need licence files, a table and pinned hashes. | Likely done by `d61ed72a` and `40900a93`; confirm. |
+| #611 | 1 | A run of four or more `$` does not round-trip, so Documents changes what a person wrote. | Whether text is lost or only reformatted. |
+| #752 | 1 | A paste over the size limit is lost silently. | Whether the person is told. |
+| #336 | 3 | The Calendar Day view scrolls by itself at 390 px. | Whether the view is unusable. |
+
+**Not gating (draft), 98, grouped.** None of these can lose or leak data, stop a person entering a space or a call, or
+change a promise after release, going by the title.
+
+- **Decided not gating: #377.** The call ships as it is and the SDK promise says the call is not yet a module (decision 7).
+- **Ideas and business, after the first release:** #12, #25, #28 (passkeys), #33, #34, #35, #40, #41, #43, #44, #45, #47,
+  #48, #49, #50, #52, #53, #54, #55, #56, #64, #65, #73, #132, #204, #209, #211, #218, #232, #250, #252, #351, #380, #382,
+  #396, #451, #458, #469, #480, #566, #789, #800, #803 and #688. Reason: new features, business offers (billing, own
+  domains, a licence relay, other platforms) and ideas with no plan. #64 and #382 become gating only if Thomas puts
+  outside AI clients or integrations in the first release.
+- **The Whiteboard backlog:** #499, #501, #503, #542, #543, #544, #554, #561 and #569. Reason: Present, comments, export
+  and import, colours and other modules' objects are listed as out of the first release; the data-loss follow-ups are in
+  #445, which needs a body read.
+- **Documents polish:** #634, #666, #690 and #778. Reason: a stray button, per-document fonts, maths and a focus outline.
+- **Later-priority design and layout polish:** #371, #477, #492, #612, #618, #631, #641, #683 (a restyle, "plan first"),
+  #774 and #718.
+- **Home, Settings and Planner polish and later features:** #179, #202, #205, #214, #215, #223, #236, #238, #243, #249,
+  #266, #267, #291, #297, #298, #307, #325, #328, #331, #332, #333, #338, #339, #357, #358, #388, #294, #505, #2 and #730.
+  Reason: a wording change, a missing convenience or a feature that is not in the done lists as built. #298 (saving a
+  bundled template reorders the module list) is a bug whose result is order only.
+
+**Body must be read before deciding, 12.** The project manager reads these. Where I lean, I say so.
+
+| Issue | Why the title is not enough |
+|---|---|
+| #632 | A `mailto` with square brackets in Documents; with #611, it may change what a person wrote. Leaning to gating if it changes stored text. |
+| #687 | Rich text becomes the default after hand tests. Thomas decides the default; the tests are verification work. |
+| #286 | `/api/bus/actions` should tell each action's `may`. It may add a field to an SDK reply, which is rule 4. |
+| #744 | Workspaces and the Conference tab (build). It may add routes or stored keys, and the freeze would stop it. |
+| #750 | Each space can use its own template (step 2 building). It adds a stored key, so it must land before the freeze or wait. |
+| #731 | Combine Assistant and AI service into one module. It would rename a module id and stored keys, which a release freezes. |
+| #374 | Should Places and Maps be one module? Commit `b8714558` folds Places into Maps; the issue may only need closing. |
+| #679 | Access step 8, Trips add and leave. It touches who can enter a space. |
+| #680 | A report-a-problem button files a private GitHub issue. It sends text out, so it is a data-protection question. |
+| #290 | Finish Lobby wording and phone tabs (labelled next). The phone tabs half may be rule 3. |
+| #717 | Follow-ups from batch 6. Unknown contents. |
+| #798 | About open-source padding at 390 px in dark mode, labelled `check-conformance`. If a check fails on main it is rule 5. |
+
+Counts: 22 gating with high confidence, 14 gating needing a body read, 12 whose body must be read, 98 not gating; 146
+in all.
 
 ## The contract of "done"
 
@@ -314,10 +382,12 @@ finished (decision 14).
   documents, tests and checks, and licence fixes.
 - **Exceptions:** an exception names the issue, the reason and the "done" point it serves, in the issue. A change to the
   core, the SDK, the manifest or a stored format is held for an independent read, as today.
-- **Who may allow it:** not decided. The first draft suggested Thomas for everything and the project manager for fixes
-  that touch no stored data, route or SDK call. Thomas did not answer that half (question 20).
+- **Who may allow it:** decision 20. Thomas allows every exception. The project manager allows only a fix that touches
+  no stored data, route or SDK call, and tells Thomas in the next report.
 - **How long:** until the release is tagged. Thomas set no limit (decision 5). With all twelve modules in (decision 2)
-  this is the largest risk to the plan, so question 19 asks for a review date, not a limit.
+  this is the largest risk to the plan, so decision 19 sets a review date, not a limit. The date is set when the
+  freeze starts (for example every four weeks); the project manager reports what is left, and Thomas chooses to
+  continue, cut a list or move a module out.
 - **What the project manager does:** every pull request in the freeze names its "done" point, and a feature pull
   request waits until the tag.
 
@@ -374,18 +444,18 @@ Checklist (proposal). It starts with an inventory (what personal data, where, wh
 page today.
 
 **What decision 9 means here.** Thomas's intent is that data is secure and backed up, so both are release
-requirements, not extras. In concrete terms, each point a proposal until Thomas confirms it (question 21):
+requirements, not extras. In concrete terms, each point set by decision 21 where it names a number or a place:
 
 - **Secure in transit.** Every hosted environment is reached over HTTPS, and the install guide says so without a
   plain-HTTP option for a hosted server.
 - **Secure at rest.** Secrets stay sealed; data files stay `0600`; no secret or password hash appears in an owner's export,
   a log or a backup meant to be shared. #36 gets one written answer: what is stored as plain JSON and why. Whether the
-  hosted server's disk is encrypted is the host's choice, outside the app, and is a part of question 21.
-- **Backed up.** A scheduled, automatic copy of the whole data folder (every environment, the host's files, and the
-  Vault's file bytes) that does not block the running server, is kept on a machine other than the one the data lives
-  on, and keeps a stated number of past copies. Today only an owner's export and an unfiltered host backup exist (#427).
+  hosted server's disk is encrypted is the host's choice, outside the app (decision 21).
+- **Backed up.** Decision 21: a daily automatic copy of the whole data folder (every environment, the host's files, and
+  the Vault's file bytes) that does not block the running server, the last seven kept, and one copy on a machine other
+  than the one the data lives on. Today only an owner's export and an unfiltered host backup exist (#427).
 - **Backups are secret.** A backup holds password hashes and, with the secrets key, the sealed secrets. It is readable
-  only by the operator, and the plan says whether the key is kept apart from the copies.
+  only by the operator, and the secrets key is kept apart from the backups (decision 21).
 - **Restore proven.** A restore onto a clean machine, from a backup made by the oldest version, and the restored
   environment starts (Track 3).
 - **A copy before every migration** (Track 3).
@@ -541,7 +611,7 @@ A proposal. Every step is a gate. The number and the rule change are decided; th
 10. **The rule changes.** `CLAUDE.md`'s "not released" rule is replaced by the post-release rule (decision 17), written
     by Thomas and content-manager before the tag. This plan does not edit `CLAUDE.md`.
 11. **Before the first customer** (not before the tag): the human penetration test on a hosted server and the lawyer's
-    written confirmation (decisions 8, 11 and 12), and the real two-person call on each kind of device Thomas names
+    written confirmation (decisions 8, 11 and 12), and the real two-person call on each of the four devices Thomas named (decision 22)
     (decision 16). The first release is private, invited and hosted by Thomas (decision 1), so the tag may come first and
     a customer waits for these.
 
@@ -562,7 +632,7 @@ A proposal. Every step is a gate. The number and the rule change are decided; th
 7. **Third-party modules** with no SDK version and no stability promise: the first outside module freezes whatever the
    SDK is that day.
 8. **Scope and an open-ended freeze:** about 150 open issues, 103 plans, all twelve modules in (decision 2) and no
-   limit on the freeze (decision 5). Without a review date the freeze can drag (question 19).
+   limit on the freeze (decision 5). Without the review date of decision 19 the freeze can drag.
 9. **Phones:** several gating layout issues (#464, #681, #682) and no real phone test.
 10. **Dependency drift:** `livekit-server:latest` and no audit step.
 
@@ -601,15 +671,15 @@ what, the SDK or a stored format, so it waits for an independent read before mai
 
 1. **Re-read the issue list and mark it** (`release: gating`, `release: after`), every open issue including #742 and up,
    #780, #786 and #795 (decisions 3 and 18). project manager. S.
-2. **Thomas names what only he can name:** the lawyer (decision 12), the phone and computer kinds and the two people
-   for the real call and the co-editing test (decisions 6 and 16), the freeze review date and who allows exceptions
-   (questions 19 and 20), the backup details (question 21). Thomas. S, but waiting on him holds steps 4 to 9.
+2. **Thomas names what only he can name:** the lawyer (decision 12), the two people for the real call and the
+   co-editing test and the browser on each device (decision 22; the devices are named), and the date the freeze starts,
+   which fixes the first review date (decision 19). Thomas. S, but waiting on him holds steps 4 to 9.
 3. **Finish the name "Coffee Pub Chameleon"** (#426, [plan-rename-chameleon](plan-rename-chameleon.md)), before the
    freeze (decision 14). experience-design and content-manager; server-development for any stored key. M. Then the
    trademark clearance goes to the lawyer (step 11).
 4. **Write each of the twelve modules' and each core area's "done list"** into its plan (decision 2). product-planner,
    with Thomas. M for each module, L in all.
-5. **The freeze starts**, with the review date from question 19. The project manager enforces it. S.
+5. **The freeze starts**, with the first review date set (decision 19) and the exception rule of decision 20. The project manager enforces it. S.
 6. **Finish `plan-security-assessment`, then the security reads and fixes**, isolation first (decision 8).
    product-planner finishes the plan; quality-assurance reads; server-development and bug-fixes fix; each fix has a
    check. L. HELD for every fix. Includes #70, #406, #441, #442, #684, #685, #795, the secrets issues, and for #422 only
@@ -618,12 +688,13 @@ what, the SDK or a stored format, so it waits for an independent read before mai
    Every marker goes in before the tag. server-development and content-manager. M. HELD (a stored format).
 8. **Data protection and backups** (decision 9): the inventory, retention and deletion rules (#36, plan-vault-privacy
    slice 4), then the scheduled whole-server backup with the Vault's bytes, kept off the machine, and a restore proven on
-   a clean machine (#427, the export that blocks the server). product-planner writes the plan once question 21 is
-   answered; server-development builds. M, then L. HELD.
-9. **Gating bugs** (#27, #441, #464, #681, #682, #732, #741, #335, #23, the verification issues and any the re-read
-   adds). bug-fixes and experience-design. M to L.
-10. **The real calls and the co-editing test** (decisions 6 and 16, #29, #30): a real call with two people on each device
-    kind Thomas names, including a hosted server, and a real two-person co-editing test, run by Thomas or the people he
+   a clean machine (#427, the export that blocks the server). product-planner writes the plan from decision 21;
+   server-development builds. M, then L. HELD.
+9. **Gating bugs** (the draft table under "Open issues": #27, #441, #464, #682, #770, #335, #23, the verification
+   issues, and any the re-read adds). bug-fixes and experience-design. M to L.
+10. **The real calls and the co-editing test** (decisions 6, 16 and 22, #29, #30): a real call with two people on each
+    device kind Thomas named (iPhone 13 Pro Max, iPad 12.9, Mac mini M4 and Windows 11, each with a browser still to be
+    named), including a hosted server, and a real two-person co-editing test, run by Thomas or the people he
     names. Only after both pass does the `coediting` switch default flip (S, HELD, server-development). M. Cannot be
     checked in the cloud container or without a real LiveKit call.
 11. **The legal track** (decisions 11 to 14 and 15): the licence inventory, the `LICENSE` file, terms, privacy, cookies,
@@ -654,7 +725,9 @@ what, the SDK or a stored format, so it waits for an independent read before mai
 - Steps 7 and 8: a script writes data in the oldest format, updates, and reads it; a copy exists before a migration; a
   restore from a backup onto a clean data folder; a kill during a write is simulated. A backup kept on another machine,
   and a hosted disk, cannot be checked from here.
-- Steps 10 and 17 and everything that touches a call: only a real LiveKit call with real people can show it. The
+- Steps 10 and 17 and everything that touches a call: only a real LiveKit call with real people can show it, on the
+  four devices of decision 22 (iPhone 13 Pro Max, iPad 12.9, Mac mini M4, Windows 11), each in a browser Thomas still
+  names, with the two people he still names. The
   co-editing two-person test also needs two real people. No check here can stand in for either.
 - Step 11 is not verified by any tool. A lawyer's written confirmation is the check.
 - `npm run check:docs` and `node tools/check-names.mjs` (as root it must end `check-names: 2 problems`) for every plan and
@@ -662,34 +735,20 @@ what, the SDK or a stored format, so it waits for an independent read before mai
 
 ## What is not decided
 
-- Who allows an exception to the freeze (question 20; Thomas did not answer that half of question 5).
-- What bounds the freeze, since it has no limit (question 19).
-- The backup details (question 21) and the devices and people for the real tests (question 22).
+- The two people for the real call and the co-editing test, and the browser on each of the four devices (decision 22).
+  The real-call and co-editing steps cannot be scheduled without them.
+- The date the freeze starts, which sets the first review date (decision 19).
+- The draft issue table: Thomas confirms or changes it, and the project manager reads the twelve issues whose body
+  must be read.
 - The per-module done lists, which are proposals until Thomas cuts or adds to them.
-- Everything the lawyer decides.
+- Everything the lawyer decides, and who the lawyer is (decision 12).
 
 ## Open questions for Thomas
 
-The first option is my suggestion, and only a suggestion. "Blocks" says what the answer holds up. Questions 1 to 18 are
-answered (see "Decisions"); these four are new.
+Questions 1 to 22 are answered (see "Decisions"). Two things are owed, and they block step 10 and the real call:
 
-19. **What keeps the freeze from dragging, given no limit (decision 5)?** (blocks step 5)
-    a. A review date, set when the freeze starts (for example every four weeks), on which the project manager reports
-    what is left and Thomas chooses to continue, cut a list or move a module to after the release (suggested: it is not
-    a limit, and it makes the drag visible).
-    b. No review at all, as answered.
-    c. A review triggered by something else, such as the number of open gating issues.
-20. **Who may allow an exception to the freeze?** (the unset half of question 5; blocks step 5)
-    a. Thomas allows all; the project manager allows only a fix that touches no stored data, route or SDK call and tells
-    Thomas in the next report (suggested).
-    b. Only Thomas allows any exception.
-21. **What are the backup details?** (blocks step 8)
-    a. Daily automatic copies of the whole data folder, the last seven kept, one copy on another machine, the secrets
-    key kept apart from the copies, and disk encryption on the hosted server left to the host (suggested as a starting
-    point only; the numbers are Thomas's).
-    b. Thomas sets each point himself (how often, how many, where, who can read them, whether copies are sealed).
-22. **Which devices and which two people, and does the release wait for the co-editing test?** (blocks step 10, and
-    the default for co-editing)
-    a. Thomas names the phone and computer kinds and the two people now; the release does not wait for the co-editing
-    test, and ships with `coediting` off if it has not passed by the tag (suggested: the switch makes this safe).
-    b. The release waits for the co-editing test.
+- Who are the two people for the real call and the co-editing test?
+- Which browser on each of the iPhone 13 Pro Max, the iPad 12.9, the Mac mini M4 and Windows 11?
+
+Neither blocks the freeze or the tag, since the release does not wait for the co-editing test (decision 22); both
+block the real-call check before the first customer.
