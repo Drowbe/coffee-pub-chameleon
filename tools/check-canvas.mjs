@@ -236,7 +236,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const settingsJs = fs.readFileSync(path.join(ROOT, 'public/space-setup.js'), 'utf8');
   if (!/opensWithSummary\(\{\s*list: state\.draft\.opensWith/.test(settingsJs)) fail('public/space-setup.js', 'the Opens with sentence must come from the list being edited (opensWithSummary with list: state.draft.opensWith)');
   const canvasJs = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
-  const restore = canvasJs.slice(canvasJs.indexOf('function restore()'), canvasJs.indexOf('// --- the toolbar button'));
+  const restore = canvasJs.slice(canvasJs.indexOf('function restore('), canvasJs.indexOf('// --- the toolbar button'));
   if (!/whatOpens\(\{[^}]*\bguest,/s.test(restore)) fail('public/canvas.js', 'restore() must ask whatOpens (opens-with.js) for what to open, with whether this is a guest');
   if (/opened\.has\('conference'\)\) view = 'conference'/.test(restore)) fail('public/canvas.js', 'restore() must start a phone on the first module opened, not always the call');
   // The always-on column (plan-one-bar.md, step 6): wider than a phone restore() opens the conference and the chat in
@@ -245,7 +245,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/whatOpens\(\{[^}]*column: columnMode\(\)/s.test(restore)) fail('public/canvas.js', 'restore() must ask whatOpens with column: columnMode()');
   // The first visit's layout (plan-layout-views.md, step 5): restore() asks firstVisitLayout, and no longer asks for Opens
   // with to be set before a layout opens; a phone opens Calendar's or Map's composite first.
-  if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
+  if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow, last \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
   if (/spaceDefaultLayout && Array\.isArray\(spaceOpensWith\)/.test(restore)) fail('public/canvas.js', 'a layout as the first visit must not need Opens with to be set');
   // A phone has no layout tabs: the fixed layout that opens first there is its composite or module, as the first tab; for
   // Conference it is the call itself (plan-workspaces.md, step 7), opened as its switch opens it ("Not in a call": it
@@ -761,7 +761,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/p\.waiting \? 'dock'/.test(capture)) fail(C, 'captureLayout() saves a module waiting for a column as docked');
   if (!/placeLayout\(layout, area, canOpenHere, aliases\)/.test(load)) fail(C, 'loadLayout() must place the layout with placeLayout(), canOpenHere() and the composites\' aliases');
   if (!/id: compositeOf\(p\.m\) \? compositeOf\(p\.m\)\.main : p\.id/.test(capture)) fail(C, 'captureLayout() saves a composite under its main module\'s id (the server\'s layout store takes module ids only)');
-  if (!/aliases,/.test(canvasJs.slice(canvasJs.indexOf('  function restore() {'), canvasJs.indexOf('  // --- saved layouts')))) fail(C, 'restore() must ask whatOpens with the composites\' aliases');
+  if (!/aliases,/.test(canvasJs.slice(canvasJs.indexOf('  function restore('), canvasJs.indexOf('  // --- saved layouts')))) fail(C, 'restore() must ask whatOpens with the composites\' aliases');
   if (!/p\.id === 'conference' && p\.kind === 'builtin' && Boolean\(p\.def\?\.inCall\?\.\(\)\)/.test(load) || !/p\.kind !== 'builtin' && !named\.has\(p\.id\) && !keepCall\(p\)\) closeModule\(p\.id\)/.test(load)) fail(C, 'loadLayout() closes what the layout does not name, never the conference or the chat (the column\'s; plan-one-bar.md step 6)');
   if (!/syncDock\(\)/.test(load) || !/snapshot\(\)/.test(load)) fail(C, 'loadLayout() fits the columns (syncDock, fitDock) and becomes the remembered layout (snapshot)');
   if (!/leftOutNote\(plan\.left/.test(load)) fail(C, 'loadLayout() says in one line what it left out');
@@ -1014,7 +1014,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // is still startCall()). The space bar's Join the call (GitHub #165) is a click too, through joinTheCall().
   // Entering connects to no call service at all (plan-realtime-optional-livekit.md, step 5): only startCall() does.
   const setup = spaceJs.slice(spaceJs.indexOf('function enterSpace('), spaceJs.indexOf('\n}\n', spaceJs.indexOf('function enterSpace(')) + 3);
-  if (!setup.includes('canvas.restore()')) fail('public/space.js', 'enterSpace() must open what the space starts with (canvas.restore())');
+  if (!setup.includes('canvas.restore(')) fail('public/space.js', 'enterSpace() must open what the space starts with (canvas.restore())');
   if (!/^function enterSpace\(\{ joinCall = false \} = \{\}\)/m.test(spaceJs)) fail('public/space.js', 'enterSpace() joins only when told to (joinCall, false unless so)');
   const connects = [...spaceJs.matchAll(/^.*\bcall\.connect\(.*$/gm)].map((m) => m[0].trim());
   const startBody = spaceJs.slice(spaceJs.indexOf('async function startCall('), spaceJs.indexOf('\n}\n', spaceJs.indexOf('async function startCall(')));

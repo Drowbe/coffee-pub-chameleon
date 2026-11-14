@@ -47,8 +47,12 @@ export function whatOpens({ remembered = null, own = null, environment = null, m
 // first visit: a person's remembered arrangement (`remembered`, never a guest's) wins afterwards. A guest has no tabs,
 // so Calendar or Map open the Workspace for one (the server already answers 'workspace' for a guest).
 export const SYSTEM_TABS = Object.freeze(['calendar', 'map', 'conference', 'whiteboard', 'documents']);
-export function firstVisitLayout({ firstVisit = null, remembered = null, guest = false, entering = true } = {}) {
+// `last` (plan-workspaces.md, step 6) is the layout this person last used here, already checked as still available by
+// the page: it wins over the owner's default for anyone signed in ('workspace' too: the Workspace, as it was). A guest
+// has none, so the owner's default is theirs every time.
+export function firstVisitLayout({ firstVisit = null, remembered = null, guest = false, entering = true, last = null } = {}) {
   if (!entering) return 'workspace';
+  if (!guest && typeof last === 'string' && last) return last;
   if (!guest && Array.isArray(remembered)) return 'workspace';
   const layout = firstVisit && typeof firstVisit.layout === 'string' && firstVisit.layout ? firstVisit.layout : 'workspace';
   if (guest && SYSTEM_TABS.includes(layout)) return 'workspace';
