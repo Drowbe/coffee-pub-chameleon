@@ -247,7 +247,11 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   // with to be set before a layout opens; a phone opens Calendar's or Map's composite first.
   if (!/firstVisitLayout\(\{ firstVisit: spaceFirstVisit, remembered: saved\.__open, guest, entering: enteringNow \}\)/.test(restore)) fail('public/canvas.js', 'restore() must ask firstVisitLayout (opens-with.js) for the first visit\'s layout');
   if (/spaceDefaultLayout && Array\.isArray\(spaceOpensWith\)/.test(restore)) fail('public/canvas.js', 'a layout as the first visit must not need Opens with to be set');
-  if (!/const lead = tab && isNarrow\(\) \? readAliased\(tab === 'conference' \? \[\] : \[tab === 'map' \? 'maps' : tab\], aliases\)/.test(restore)) fail('public/canvas.js', 'on a phone, a fixed layout as the first visit opens its composite or module first (the conference has none)');
+  // A phone has no layout tabs: the fixed layout that opens first there is its composite or module, as the first tab; for
+  // Conference it is the call itself (plan-workspaces.md, step 7), opened as its switch opens it ("Not in a call": it
+  // never joins), only where this person may open it, and shown first.
+  if (!/const lead = tab && isNarrow\(\) \? \(tab === 'conference' \? \['conference'\] : readAliased\(\[tab === 'map' \? 'maps' : tab\], aliases\)\)\.filter\(\(id\) => canOpenHere\(id\)\) : \[\];/.test(restore)) fail('public/canvas.js', 'on a phone, a fixed layout as the first visit opens its composite or module first, and Conference opens the call first, where the person may open it');
+  if (!/const first = want\.find\(\(id\) => opened\.has\(id\)\);\n\s*if \(first\) view = first;/.test(restore) || !/return tab && !isNarrow\(\) \? tab : null;/.test(restore)) fail('public/canvas.js', 'on a phone the first module opened is the view shown, and no layout tab is answered (a phone has none)');
   if (!/const builtinList = columnMode\(\) \? \[\] :/.test(canvasJs)) fail('public/canvas.js', 'the Show list leaves the conference and the chat out in column mode');
   const html = fs.readFileSync(path.join(ROOT, 'public/space.html'), 'utf8');
   for (const id of ['side-column', 'side-column-toggle', 'side-column-strip', 'side-column-chat', 'side-column-rail', 'work']) if (!html.includes(`id="${id}"`)) fail('public/space.html', `the always-on column needs #${id}`);
@@ -583,6 +587,27 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (DOCK_MIN !== 240 || FLEX_MIN !== 280 || NARROW !== 640) fail(F, `DOCK_MIN, FLEX_MIN and NARROW must be 240, 280 and 640 (are ${DOCK_MIN}, ${FLEX_MIN}, ${NARROW})`);
   for (const [w, n] of [[639, Infinity], [640, Infinity], [641, 2], [760, 3], [1000, 4], [1280, 5], [1600, 6], [1920, 7]]) {
     if (dockLimit(w) !== n) fail(F, `dockLimit(${w}) is ${dockLimit(w)}, not ${n}`);
+  }
+  // A canvas of 640 px or less in a window that is not a phone's (`wide`: beside a wide chat column, or the call In the
+  // workspace, plan-workspaces.md step 9): it still has columns, so the same count holds, one at least, and the rest
+  // wait; nothing is cut off at the canvas's edge. Above 640 px the answer is the same with or without it.
+  for (const [w, n] of [[0, 1], [81, 1], [320, 1], [519, 1], [520, 2], [560, 2], [640, 2], [641, 2], [760, 3], [1280, 5]]) {
+    if (dockLimit(w, { wide: true }) !== n) fail(F, `dockLimit(${w}, { wide: true }) is ${dockLimit(w, { wide: true })}, not ${n}`);
+  }
+  {
+    const seven = Array.from({ length: 7 }, (_, i) => ({ id: `m${i + 1}`, width: 460 }));
+    const at560 = fitDock(560, seven, { wide: true });
+    if (at560.docked.join(',') !== 'm1,m2' || at560.waiting.length !== 5) fail(F, `seven modules on a 560 px canvas in a wide window: two dock and five wait, not ${at560.docked.join(',')} / ${at560.waiting.length} waiting`);
+    if ((at560.widths.get('m2') || 0) + FLEX_MIN > 560 || at560.widths.get('m2') < DOCK_MIN) fail(F, `on a 560 px canvas the fixed column fits beside the flexible one (${at560.widths.get('m2')}px)`);
+    const at320 = fitDock(320, seven, { wide: true });
+    if (at320.docked.join(',') !== 'm1' || at320.waiting.length !== 6) fail(F, `seven modules on a 320 px canvas in a wide window: one docks, not ${at320.docked.join(',')}`);
+    if (fitDock(560, seven).waiting.length) fail(F, 'without `wide` (a phone) nothing waits at 560 px');
+    if (JSON.stringify(fitDock(1000, seven, { wide: true }).docked) !== JSON.stringify(fitDock(1000, seven).docked)) fail(F, 'above 640 px `wide` changes nothing');
+  }
+  {
+    const cj = fs.readFileSync(path.join(ROOT, 'public/canvas.js'), 'utf8');
+    if (!/const fitOpts = \(\) => \(\{ wide: !isNarrow\(\) \}\);/.test(cj)) fail('public/canvas.js', 'the canvas tells the rule when the window is wider than a phone (fitOpts)');
+    if ((cj.match(/fitDock\(canvasWidth\(\), specsOf\(cols\), fitOpts\(\)\)/g) || []).length !== 3 || (cj.match(/dockLimit\(canvasWidth\(\), fitOpts\(\)\)/g) || []).length !== 2 || /fitDock\(canvasWidth\(\), specsOf\(cols\)\)|dockLimit\(canvasWidth\(\)\)/.test(cj)) fail('public/canvas.js', 'every fit of the canvas\'s columns says whether the window is wide (three fitDock, two dockLimit)');
   }
   const conference = { id: 'conference', width: 600, flex: true, keep: true };
   const chat = { id: 'chat', width: 320, keep: true };
@@ -1480,7 +1505,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const F = 'public/space.js';
   const spaceJs = fs.readFileSync(path.join(ROOT, F), 'utf8');
   const html = fs.readFileSync(path.join(ROOT, 'public/space.html'), 'utf8');
-  for (const [id, orient, name] of [['side-column-splitter', 'vertical', 'Resize the chat column'], ['side-column-strip-splitter', 'horizontal', 'Resize the call'], ['side-column-call-splitter', 'vertical', 'Resize the call beside the chat']]) {
+  for (const [id, orient, name] of [['side-column-splitter', 'vertical', 'Resize the chat column'], ['side-column-strip-splitter', 'horizontal', 'Resize the call'], ['side-column-call-splitter', 'vertical', 'Resize the call beside the chat'], ['side-column-chat-splitter', 'horizontal', 'Resize the chat'], ['side-column-work-splitter', 'vertical', 'Resize the call in the workspace']]) {
     const at = html.indexOf(`id="${id}"`);
     const tag = at < 0 ? '' : html.slice(html.lastIndexOf('<', at), html.indexOf('>', at) + 1);
     if (!tag) fail('public/space.html', `the column needs its splitter #${id}`);
@@ -1490,7 +1515,8 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const src = start < 0 ? '' : spaceJs.slice(start, spaceJs.indexOf('const columnWin = ', start));
   if (!/function clampColumnWidth\(/.test(src) || !/function clampStripHeight\(/.test(src) || !/function splitterKey\(/.test(src)) fail(F, 'the column\'s splitters need clampColumnWidth(), clampStripHeight() and splitterKey() after COLUMN_MIN');
   else {
-    const { clampColumnWidth, clampStripHeight, splitterKey, stripHeightFor, callPlaceFor, clampCallSide, conferenceChatWidth, callPlaceIn } = new Function(`${src}\nreturn { clampColumnWidth, clampStripHeight, splitterKey, stripHeightFor: typeof stripHeightFor === 'function' ? stripHeightFor : null, callPlaceFor: typeof callPlaceFor === 'function' ? callPlaceFor : null, clampCallSide: typeof clampCallSide === 'function' ? clampCallSide : null, conferenceChatWidth: typeof conferenceChatWidth === 'function' ? conferenceChatWidth : null, callPlaceIn: typeof callPlaceIn === 'function' ? callPlaceIn : null };`)();
+    const { clampColumnWidth, clampStripHeight, splitterKey, stripHeightFor, callPlaceFor, clampCallSide, conferenceChatWidth, callPlaceIn, placement } = new Function(`${src}\nconst fn = (f) => (typeof f === 'function' ? f : null);\nreturn { clampColumnWidth, clampStripHeight, splitterKey, stripHeightFor: typeof stripHeightFor === 'function' ? stripHeightFor : null, callPlaceFor: typeof callPlaceFor === 'function' ? callPlaceFor : null, clampCallSide: typeof clampCallSide === 'function' ? clampCallSide : null, conferenceChatWidth: typeof conferenceChatWidth === 'function' ? conferenceChatWidth : null, callPlaceIn: typeof callPlaceIn === 'function' ? callPlaceIn : null,
+      placement: { conferencePlaceFor: typeof conferencePlaceFor === 'function' ? conferencePlaceFor : null, conferenceChatHeight: typeof conferenceChatHeight === 'function' ? conferenceChatHeight : null, readColumnPref: typeof readColumnPref === 'function' ? readColumnPref : null, callPositionsOffered: typeof callPositionsOffered === 'function' ? callPositionsOffered : null, callFillsArea: typeof callFillsArea === 'function' ? callFillsArea : null, callWorkWidth: typeof callWorkWidth === 'function' ? callWorkWidth : null, workChatWidth: typeof workChatWidth === 'function' ? workChatWidth : null, CALL_WORK_MIN: typeof CALL_WORK_MIN === 'number' ? CALL_WORK_MIN : null } };`)();
     if (!stripHeightFor) fail(F, 'the call area needs stripHeightFor() after COLUMN_MIN (the chat keeps its share)');
     // No "Hide the video" (Thomas, 2026-10-14): the tiles always show, scaled to the height they get; nothing decides
     // a slim call by the window's height any more.
@@ -1540,7 +1566,8 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     // own (220px). The call's place is 'conference' only there: never in an aside, and the column's places are unchanged.
     if (!conferenceChatWidth || !callPlaceIn) fail(F, 'the Conference layout needs conferenceChatWidth() and callPlaceIn() after COLUMN_MIN');
     else {
-      const fills = (place) => place === 'workspace' || place === 'conference'; // space.js, callFillsArea
+      const fills = placement.callFillsArea || (() => null); // space.js's own rule (decision 32)
+      if (!placement.callFillsArea) fail(F, 'the large Start call\'s rule is callFillsArea(place), after COLUMN_MIN');
       const col = { collapsed: false, aside: false, position: 'top', columnWidth: 320 };
       cases.push(
         ['Conference: the chat keeps its 320px on a 1280px page', conferenceChatWidth(320, 1280), 320],
@@ -1570,6 +1597,112 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
         ['nor in an aside', fills(callPlaceIn({ ...col, conference: true, aside: true })), false],
       );
     }
+    // Call position on the Conference layout (plan-workspaces.md, step 5): its own choice, kept per space apart from the
+    // one beside the work. Beside the chat is the default; Call only folds the chat away and keeps the position under it.
+    // Above and below, the chat keeps a height of its own (no percentage): the call has the rest, never under 240px, and
+    // the chat never under 260px. What is stored is made whole on reading, so nothing unknown ever reaches the page.
+    {
+      const { conferencePlaceFor, conferenceChatHeight, readColumnPref, callPositionsOffered, callFillsArea } = placement;
+      if (!conferencePlaceFor || !conferenceChatHeight || !readColumnPref || !callPositionsOffered || !callFillsArea) fail(F, 'Call position needs conferencePlaceFor(), conferenceChatHeight(), readColumnPref(), callPositionsOffered() and callFillsArea() after COLUMN_MIN');
+      else {
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        const none = readColumnPref(null);
+        cases.push(
+          ['Conference: with nothing chosen the call is beside the chat', conferencePlaceFor({}), 'beside'],
+          ['Conference: no argument is beside the chat', conferencePlaceFor(), 'beside'],
+          ['Conference: Left of the chat', conferencePlaceFor({ position: 'left' }), 'left'],
+          ['Conference: Above the chat', conferencePlaceFor({ position: 'above' }), 'above'],
+          ['Conference: Below the chat', conferencePlaceFor({ position: 'below' }), 'below'],
+          ['Conference: a column position (Top) is not one of its own: beside the chat', conferencePlaceFor({ position: 'top' }), 'beside'],
+          ['Conference: an unknown position is beside the chat', conferencePlaceFor({ position: 'middle' }), 'beside'],
+          ['Conference: Call only, whatever the position under it', conferencePlaceFor({ position: 'above', callOnly: true }), 'only'],
+          ['Conference: Call only off gives the position back', conferencePlaceFor({ position: 'above', callOnly: false }), 'above'],
+          ['Conference, above or below: the chat keeps its 360px on an 800px page', conferenceChatHeight(360, 800), 360],
+          ['Conference, above or below: the call has the rest (440px of 800px)', 800 - conferenceChatHeight(360, 800), 440],
+          ['Conference, above or below: a chat height the person set holds (300px), no percentage', conferenceChatHeight(300, 800), 300],
+          ['Conference, above or below: a tall chat leaves the call 240px', conferenceChatHeight(900, 700), 460],
+          ['Conference, above or below: the chat is never under 260px', conferenceChatHeight(50, 700), 260],
+          ['Conference, above or below: the chat is never under 260px on a page too short for both', conferenceChatHeight(360, 300), 260],
+          ['Conference, above or below: no height stored is the least', conferenceChatHeight(undefined, 700), 260],
+          ['the large Start call: on the Conference layout', callFillsArea('conference'), true],
+          ['the large Start call: In the workspace', callFillsArea('workspace'), true],
+          ...['top', 'bottom', 'left', 'right', 'float', 'window', '', undefined].map((p) => [`the large Start call: never at "${p}"`, callFillsArea(p), false]),
+          ['a space with nothing stored: the column open, the call at the top, not floating, Conference beside the chat', same(none, { collapsed: false, callPosition: 'top', callFloat: false, conferencePosition: 'beside', conferenceCallOnly: false }), true],
+          ['what is stored is read back whole', same(readColumnPref({ collapsed: true, callPosition: 'bottom', callFloat: true, conferencePosition: 'below', conferenceCallOnly: true }), { collapsed: true, callPosition: 'bottom', callFloat: true, conferencePosition: 'below', conferenceCallOnly: true }), true],
+          ['the record from before (only the fold) keeps the fold and gets the defaults', same(readColumnPref({ collapsed: true }), { ...none, collapsed: true }), true],
+          ['an unknown position stored is the top', readColumnPref({ callPosition: 'sideways' }).callPosition, 'top'],
+          ['a Conference position is not a column position', readColumnPref({ callPosition: 'above' }).callPosition, 'top'],
+          ['a column position is not a Conference position', readColumnPref({ conferencePosition: 'bottom' }).conferencePosition, 'beside'],
+          ['Call only is not stored as a position', readColumnPref({ conferencePosition: 'only' }).conferencePosition, 'beside'],
+          ['something that is not a record reads as the defaults', same(readColumnPref('left'), none), true],
+          ['unknown keys are dropped', Object.keys(readColumnPref({ callPosition: 'left', extra: 1 })).sort().join(','), 'callFloat,callPosition,collapsed,conferenceCallOnly,conferencePosition'],
+          ['the Conference layout offers its five and the call\'s own window; nothing floats there', callPositionsOffered({ conference: true, column: true }).join(','), 'beside,left,above,below,only,window'],
+          ['a phone (no column) is offered only the call\'s own window', callPositionsOffered({ conference: false, column: false }).join(','), 'window'],
+          ['a phone is never offered a Conference position', callPositionsOffered({}).join(','), 'window'],
+        );
+        // Step 9, the two new positions (decision 17). Right of the chat follows the Left rule: beside the chat in a column
+        // at least 560px wide, else the top, the choice kept. In the workspace puts the same call area in the canvas's area:
+        // never in an aside or on a phone (decision 29), not while the call is away from the column (floating, its own
+        // window: the column keeps its slim strip), and never instead of the Conference layout. Folding the column folds
+        // the chat alone there. The large Start call shows only where the call fills an area of its own (decision 32).
+        const { callWorkWidth, workChatWidth, CALL_WORK_MIN } = placement;
+        const col = { conference: false, collapsed: false, aside: false, position: 'top', columnWidth: 320 };
+        const offered = callPositionsOffered({ conference: false, column: true });
+        if (!callWorkWidth || !workChatWidth || CALL_WORK_MIN !== 780) fail(F, 'In the workspace needs callWorkWidth(), workChatWidth() and CALL_WORK_MIN (780: the chat\'s, the call\'s and the canvas\'s least) after COLUMN_MIN');
+        else cases.push(
+          ['In the workspace: the chat keeps its 320px on a 1280px page', workChatWidth(320, 1280), 320],
+          ['In the workspace: a wide chat leaves the call 240px and the canvas 320px', workChatWidth(1200, 1280), 720],
+          ['In the workspace: at 800px the chat gives way so the call and the canvas keep their least', workChatWidth(320, 800), 240],
+          ['In the workspace: the chat is never under 220px', workChatWidth(100, 1280), 220],
+          ['In the workspace at its least width (780px): 220px, 240px and 320px', [workChatWidth(320, 780), callWorkWidth(400, 780, workChatWidth(320, 780)), 780 - workChatWidth(320, 780) - callWorkWidth(400, 780, workChatWidth(320, 780))].join(','), '220,240,320'],
+          ['In the workspace at 900px: the chat 320px, the call 260px, the canvas 320px', [workChatWidth(320, 900), callWorkWidth(400, 900, workChatWidth(320, 900)), 900 - workChatWidth(320, 900) - callWorkWidth(400, 900, workChatWidth(320, 900))].join(','), '320,260,320'],
+          ['In the workspace at 1280px: the chat 320px, the call 400px, the canvas 560px', [workChatWidth(320, 1280), callWorkWidth(400, 1280, 320), 1280 - 320 - callWorkWidth(400, 1280, 320)].join(','), '320,400,560'],
+          ['In the workspace in a 780px work area', callPlaceIn({ ...col, position: 'workspace', workWidth: 780 }), 'workspace'],
+          ['In the workspace in a 779px work area falls back to the top, the choice kept', callPlaceIn({ ...col, position: 'workspace', workWidth: 779 }), 'top'],
+          ['In the workspace at 641px falls back to the top', callPlaceIn({ ...col, position: 'workspace', workWidth: 641 }), 'top'],
+          ['In the workspace at 900px', callPlaceIn({ ...col, position: 'workspace', workWidth: 900 }), 'workspace'],
+          ['a narrow work area does not move the call out of the Conference layout', callPlaceIn({ ...col, position: 'workspace', conference: true, workWidth: 641 }), 'conference'],
+          ['a narrow work area leaves the column\'s places alone', callPlaceIn({ ...col, position: 'bottom', workWidth: 641 }), 'bottom'],
+          ['In the workspace: the call keeps its 400px beside docked modules on a 1280px page', callWorkWidth(400, 1280, 320), 400],
+          ['In the workspace: a wide call leaves the docked modules 320px', callWorkWidth(900, 1280, 320), 640],
+          ['In the workspace: the call is never under 240px', callWorkWidth(100, 1280, 320), 240],
+          ['In the workspace: at 900px the call gives way to the modules, down to 260px', callWorkWidth(400, 900, 320), 260],
+          ['In the workspace: the call is never under 240px, whatever is left', callWorkWidth(400, 641, 320), 240],
+          ['In the workspace: beside the rail (the chat folded) the call may be wider', callWorkWidth(1000, 1280, 44), 916],
+        );
+        cases.push(
+          ['Right in a 560px column', callPlaceFor('right', 560), 'right'],
+          ['Right in a 559px column falls back to the top', callPlaceFor('right', 559), 'top'],
+          ['Right at the default 320px column falls back to the top', callPlaceFor('right', 320), 'top'],
+          ['In the workspace is not a place in the column', callPlaceFor('workspace', 900), 'top'],
+          ['beside the work: Right in a wide column', callPlaceIn({ ...col, position: 'right', columnWidth: 600 }), 'right'],
+          ['beside the work: Right in a narrow column falls back to the top', callPlaceIn({ ...col, position: 'right' }), 'top'],
+          ['beside the work: a folded column, Right chosen, is the top', callPlaceIn({ ...col, position: 'right', columnWidth: 900, collapsed: true }), 'top'],
+          ['beside the work: In the workspace', callPlaceIn({ ...col, position: 'workspace' }), 'workspace'],
+          ['In the workspace whatever the column\'s width', callPlaceIn({ ...col, position: 'workspace', columnWidth: 220 }), 'workspace'],
+          ['In the workspace with the column folded: the chat folds, the call stays', callPlaceIn({ ...col, position: 'workspace', collapsed: true }), 'workspace'],
+          ['In the workspace on the Conference layout is the page itself', callPlaceIn({ ...col, position: 'workspace', conference: true }), 'conference'],
+          ['In the workspace in an aside: the top (an aside is unchanged)', callPlaceIn({ ...col, position: 'workspace', aside: true }), 'top'],
+          ['Right of the chat in an aside: the top', callPlaceIn({ ...col, position: 'right', columnWidth: 900, aside: true }), 'top'],
+          ['In the workspace on a phone: the top (there is no workspace to put it in)', callPlaceIn({ ...col, position: 'workspace', phone: true }), 'top'],
+          ['In the workspace while the call floats or has its own window: the column keeps its strip at the top', callPlaceIn({ ...col, position: 'workspace', away: true }), 'top'],
+          ['Top while the call is away is still the top', callPlaceIn({ ...col, away: true }), 'top'],
+          ['In the workspace where no call may be joined (no call area): nothing is put in the workspace', callPlaceIn({ ...col, position: 'workspace', area: false }), 'top'],
+          ['the call fills an area of its own In the workspace', callFillsArea(callPlaceIn({ ...col, position: 'workspace' })), true],
+          ['not right of the chat', callFillsArea(callPlaceIn({ ...col, position: 'right', columnWidth: 600 })), false],
+          ['not In the workspace on a phone', callFillsArea(callPlaceIn({ ...col, position: 'workspace', phone: true })), false],
+          ['not In the workspace in an aside', callFillsArea(callPlaceIn({ ...col, position: 'workspace', aside: true })), false],
+          ['not In the workspace while the call is in its own window', callFillsArea(callPlaceIn({ ...col, position: 'workspace', away: true })), false],
+          ['beside the work Call position offers the column\'s four, floating, In the workspace and the window', offered.join(','), 'top,bottom,left,right,float,workspace,window'],
+          ['a phone is never offered Right of the chat', callPositionsOffered({ conference: false, column: false }).includes('right'), false],
+          ['a phone is never offered In the workspace', callPositionsOffered({ conference: false, column: false }).includes('workspace'), false],
+          ['the Conference layout does not offer In the workspace (it is the page itself there)', callPositionsOffered({ conference: true, column: true }).includes('workspace'), false],
+          ['the Conference layout does not offer Floating window', callPositionsOffered({ conference: true, column: true }).includes('float'), false],
+          ['Right of the chat is kept for the space', readColumnPref({ callPosition: 'right' }).callPosition, 'right'],
+          ['In the workspace is kept for the space', readColumnPref({ callPosition: 'workspace' }).callPosition, 'workspace'],
+        );
+      }
+    }
     const lim = { min: 220, max: 640, def: 320, grow: 'ArrowRight', shrink: 'ArrowLeft' };
     cases.push(
       ['Right widens by 16', splitterKey({ key: 'ArrowRight', shift: false }, 320, lim), 336],
@@ -1589,13 +1722,15 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     for (const [label, got, want] of cases) if (got !== want) fail(F, `${label}: got ${got}, wanted ${want}`);
   }
   if (!/wireSplitter\(columnEl\.querySelector\('#side-column-splitter'\), \{ which: 'width'/.test(spaceJs)) fail(F, 'the column\'s edge is wired as a splitter setting the width');
-  if (!/if \(which === 'width'\) prefs\.chatWidth = conferenceShown\(\) \? conferenceChatWidth\(value, conferencePageWidth\(\)\) : clampColumnWidth\(/.test(spaceJs)) fail(F, 'the column\'s width is the chat\'s width preference (prefs.chatWidth), so a width set before the column holds');
+  if (!/wireSplitter\(columnEl\.querySelector\('#side-column-work-splitter'\), \{ which: 'work', axis: 'x', def: DEFAULT_PREFS\.callWorkWidth, min: CALL_SIDE_MIN, max: callWorkMax,/.test(spaceJs) || !/else if \(which === 'work'\) prefs\.callWorkWidth = callWorkWidth\(/.test(spaceJs)) fail(F, 'In the workspace the call\'s edge is a splitter setting its width there (prefs.callWorkWidth)');
+  if (!/wireSplitter\(columnEl\.querySelector\('#side-column-chat-splitter'\), \{ which: 'chatH', axis: 'y', def: DEFAULT_PREFS\.conferenceChatHeight, min: CHAT_STACK_MIN, max: conferenceChatMaxHeight,/.test(spaceJs) || !/else if \(which === 'chatH'\) prefs\.conferenceChatHeight = conferenceChatHeight\(value, columnHeight\(\)\);/.test(spaceJs)) fail(F, 'on the Conference layout, above and below, the line between the call and the chat is a splitter setting the chat\'s height (prefs.conferenceChatHeight)');
+  if (!/if \(which === 'width'\) prefs\.chatWidth = chatWidthFor\(value\);/.test(spaceJs) || !/function chatWidthFor\(want\) \{\n  const place = callPlaceNow\(\);\n  if \(place === 'conference'\) return conferenceChatWidth\(want, conferencePageWidth\(\)\);\n  if \(place === 'workspace'\) return workChatWidth\(want, conferencePageWidth\(\)\);\n  return clampColumnWidth\(want, columnWin\(\)\.innerWidth\);\n\}/.test(spaceJs)) fail(F, 'the column\'s width is the chat\'s width preference (prefs.chatWidth), so a width set before the column holds');
   // The cap is the whole window (COLUMN_MAX_SHARE 1), the splitter's aria-valuemax says so, and the canvas gives way to
   // nothing rather than pushing the page wider; the column's edge stays inside the window at its widest.
   if (!/const COLUMN_MAX_SHARE = 1;/.test(spaceJs)) fail(F, 'the column may take the whole window (COLUMN_MAX_SHARE = 1)');
   if (!/v\.setAttribute\('aria-valuemax', String\(Math\.max\(COLUMN_MIN, columnMaxWidth\(\)\)\)\);/.test(spaceJs)) fail(F, 'the column\'s edge says its most (aria-valuemax, the window\'s width)');
   if (!/\.work > \.canvas \{\s*min-width: 0;/.test(css)) fail('public/style.css', 'the canvas gives way to nothing beside a column as wide as the window (.work > .canvas { min-width: 0 })');
-  if (!/columnEl\.classList\.toggle\('full', !conferenceShown\(\) && w >= columnWin\(\)\.innerWidth - 8\)/.test(spaceJs) || !/\.side-column\.full \.side-column-splitter-v \{\s*right: 0;/.test(css)) fail(F, 'at the whole window the column\'s edge stays inside it, to drag back (.side-column.full)');
+  if (!/columnEl\.classList\.toggle\('full', !callFillsNow\(\) && w >= columnWin\(\)\.innerWidth - 8\)/.test(spaceJs) || !/\.side-column\.full \.side-column-splitter-v \{\s*right: 0;/.test(css)) fail(F, 'at the whole window the column\'s edge stays inside it, to drag back (.side-column.full)');
   // Left: the line between the call and the chat is a splitter of its own, remembered per person (prefs.callSideWidth).
   if (!/wireSplitter\(columnEl\.querySelector\('#side-column-call-splitter'\), \{ which: 'side', axis: 'x', def: DEFAULT_PREFS\.callSideWidth, min: CALL_SIDE_MIN, max: callSideMax,/.test(spaceJs)) fail(F, 'the call\'s line beside the chat is wired as a splitter (which: \'side\')');
   if (!/else if \(which === 'side'\) prefs\.callSideWidth = clampCallSide\(value, columnWidthNow\(\)\);/.test(spaceJs)) fail(F, 'the call\'s width beside the chat is remembered (prefs.callSideWidth), held to the column');
@@ -1740,11 +1875,43 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/refit\.observe\(\$\('side-column-strip'\)\)/.test(spaceJs)) fail(F, 'the tiles are fitted again as the strip changes');
   if (!/\.side-column\.call-left\.in-call:not\(\.call-away\) \{\s*grid-template-rows: auto minmax\(0, 1fr\) auto auto 0;/.test(css) || !/\.side-column\.call-left \.side-column-strip > \.canvas \{\s*flex: 1 1 auto;\s*min-height: 0;\s*height: auto;\s*grid-template-rows: minmax\(0, 1fr\) auto;/.test(css)) fail('public/style.css', 'beside the chat the strip takes the column\'s height, the tiles fill it (minmax(0, 1fr)) and the toolbar is pinned to its bottom (auto)');
   if (!/id="call-back"[^>]*>[\s\S]{0,120}Bring the call back</.test(html)) fail('public/space.html', '#call-back reads "Bring the call back"');
-  for (const label of ['Top of the column', 'Bottom of the column', 'Left of the chat', 'Floating window', 'Its own window']) if (!spaceJs.includes(`label: '${label}'`)) fail(F, `Call position offers "${label}"`);
+  for (const label of ['Top of the column', 'Bottom of the column', 'Left of the chat', 'Right of the chat', 'Floating window', 'In the workspace', 'Its own window']) if (!spaceJs.includes(`label: '${label}'`)) fail(F, `Call position offers "${label}"`);
   // Left is offered only in a column wide enough, and says why otherwise; the position marked is the one chosen.
   if (!/label: 'Left of the chat', hint: wide \? undefined : 'Needs a wider column', disabled: !wide, onPick: \(\) => setCallPosition\('left'\)/.test(spaceJs) || !/const wide = columnWidthNow\(\) >= CALL_LEFT_MIN;/.test(spaceJs)) fail(F, 'Left of the chat is offered in a column at least CALL_LEFT_MIN wide, else disabled with "Needs a wider column"');
-  if (!/const callPlaceNow = \(\) => callPlaceIn\(\{ conference: conferenceShown\(\), collapsed: columnCollapsed\(\), aside: inAside\(\), position: prefs\.callPosition, columnWidth: columnWidthNow\(\) \}\);/.test(spaceJs)) fail(F, 'where the call shows follows the chosen position and the column\'s width now (callPlaceNow, callPlaceFor), never rewriting the choice');
+  if (!/const callPlaceNow = \(\) => callPlaceIn\(\{ conference: conferenceShown\(\), collapsed: columnCollapsed\(\), aside: inAside\(\), position: columnPref\.callPosition, columnWidth: columnWidthNow\(\), phone: phoneWidth\(\), away: \['window', 'float', 'share'\]\.includes\(callWhere\(\)\), area: callAreaWanted\(\), workWidth: conferencePageWidth\(\) \}\);/.test(spaceJs) || !/const callFillsNow = \(\) => callFillsArea\(callPlaceNow\(\)\);/.test(spaceJs)) fail(F, 'where the call shows follows the chosen position and the column\'s width now (callPlaceNow, callPlaceFor), never rewriting the choice');
   if (!/columnEl\.classList\.toggle\('call-left', left\);/.test(spaceJs)) fail(F, 'Left draws as .call-left on the column');
+  // Step 9 (plan-workspaces.md, decisions 17, 29, 30 and 32). Right of the chat: offered as Left is, drawn as .call-right,
+  // the same line between the two. In the workspace: the same call area (its title bar, menu and controls: nothing is
+  // added, nothing moves out of the column's element) drawn in the canvas's area; the canvas keeps its width under it.
+  if (!/label: 'Right of the chat', hint: wide \? undefined : 'Needs a wider column', disabled: !wide, onPick: \(\) => setCallPosition\('right'\)/.test(spaceJs)) fail(F, 'Right of the chat is offered in a column at least CALL_LEFT_MIN wide, else disabled with "Needs a wider column"');
+  if (!/label: 'In the workspace', hint: wideEnough \? undefined : 'Needs a wider window', disabled: !wideEnough, onPick: \(\) => setCallPosition\('workspace'\)/.test(spaceJs) || !/const wideEnough = conferencePageWidth\(\) >= CALL_WORK_MIN;/.test(spaceJs)) fail(F, 'In the workspace is a Call position, offered in a work area at least CALL_WORK_MIN wide, else disabled with "Needs a wider window"');
+  if (!/columnEl\.classList\.toggle\('call-right', right\);/.test(spaceJs) || !/if \(sideLine\) sideLine\.hidden = !\(left \|\| right\);/.test(spaceJs)) fail(F, 'Right draws as .call-right on the column, with the line between the call and the chat');
+  if (!/columnEl\.classList\.toggle\('call-work', inWork\);\n  columnEl\.parentElement\?\.classList\.toggle\('call-in-work', inWork\);/.test(spaceJs) || !/if \(workLine\) workLine\.hidden = !inWork;/.test(spaceJs)) fail(F, 'In the workspace marks the column and the work area (.call-work, .call-in-work) and shows the call\'s own edge');
+  if (/call-workspace|appendChild\(\s*(?:columnEl\.querySelector\('#call-head'\)|\$\('call-head'\))/.test(spaceJs)) fail(F, 'In the workspace moves nothing out of the column: the same call area, title bar, menu and controls (decision 30)');
+  for (const [re, what] of [
+    [/\n\.side-column\.call-right \{\s*display: grid;\s*grid-template-columns: minmax\(0, 1fr\) var\(--side-column-call-w, 320px\);/, 'right of the chat the chat has the rest and the call its own width (--side-column-call-w), on the right'],
+    [/\.side-column\.call-right\.in-call:not\(\.call-away\) \{\s*grid-template-rows: auto minmax\(0, 1fr\) auto auto 0;/, 'right of the chat the strip takes the column\'s height on the call'],
+    [/\.side-column\.call-right \.side-column-strip > \.canvas \{\s*flex: 1 1 auto;\s*min-height: 0;\s*height: auto;\s*grid-template-rows: minmax\(0, 1fr\) auto;/, 'right of the chat the tiles fill the height and the toolbar is pinned under them'],
+    [/\.side-column\.call-right > \.side-column-splitter-side \{\s*left: auto;\s*right: calc\(var\(--side-column-call-w, 320px\) - 4px\);/, 'right of the chat the line sits between the chat and the call'],
+    [/\.side-column\.call-work \{\s*--call-work-chat: var\(--side-column-w, 320px\);\s*width: calc\(var\(--call-work-chat\) \+ var\(--call-work-w, 400px\)\);\s*display: grid;\s*grid-template-columns: var\(--call-work-chat\) minmax\(0, 1fr\);/, 'In the workspace the chat keeps its width and the call has its own beside it (--call-work-w)'],
+    [/\.side-column\.call-work\.in-call \{\s*grid-template-rows: auto minmax\(0, 1fr\) auto 0;/, 'In the workspace the tiles take all the height on the call (no 55% rule: the call is not in the column)'],
+    [/\.work\.call-in-work:not\(:has\(> \.canvas > \.module-docked\)\) > \.side-column\.call-work \{\s*width: 100%;\s*margin-right: calc\(var\(--call-work-chat\) \+ var\(--call-work-w, 400px\) - 100%\);/, 'In the workspace with nothing docked the call has all of the canvas\'s area, drawn over the canvas, which keeps its width'],
+    [/\.work\.call-in-work:not\(:has\(> \.canvas > \.module-docked\)\) > \.canvas \{\s*visibility: hidden;/, 'under the call the empty canvas shows nothing (and is never display: none: its width is what a docked module is fitted to)'],
+    [/\.side-column\.call-work > \.side-column-call-empty \{\s*grid-area: empty;/, 'In the workspace the large Start call has the call\'s area'],
+    [/\.side-column\.call-work\.collapsed \{\s*--call-work-chat: 44px;/, 'In the workspace the fold folds the chat alone, to the rail'],
+    [/\.side-column\.call-work > \.side-column-toggle \{\s*right: auto;\s*left: calc\(var\(--call-work-chat\) - 32px\);/, 'In the workspace the handle stays at the chat\'s corner'],
+  ]) if (!re.test(css)) fail('public/style.css', what);
+  {
+    const from = css.indexOf('/* Call position In the workspace');
+    const block = from < 0 ? '' : css.slice(from, css.indexOf('/* The Conference layout (plan-workspaces.md, step 4', from));
+    if (!block) fail('public/style.css', 'In the workspace has its rules before the Conference layout\'s block');
+    else {
+      if (!/^[^{]*\*\/\s*@media \(min-width: 641px\) \{/.test(block)) fail('public/style.css', 'In the workspace is drawn wider than a phone only (decision 29)');
+      if (/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(block)) fail('public/style.css', 'In the workspace uses the theme\'s tokens only');
+      const under = /\.work\.call-in-work:not\(:has\(> \.canvas > \.module-docked\)\) > \.canvas \{([^}]*)\}/.exec(block);
+      if (!under || /display/.test(under[1])) fail('public/style.css', 'the canvas under the call is never display: none');
+    }
+  }
   // The call area is shown all the time (plan-workspaces.md, decision 15, replacing Thomas's 2026-10-14 "no call area out of
   // the call"): the title bar and the saved position, Left included, with or without a call. It is there while a call could
   // be joined here (joinCallWanted) or is on (callAreaWanted), and while the call is out of the column.
@@ -1780,8 +1947,39 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/function popOutCall\(\) \{\n  if \(canvas\.columnMode\(\)\) \{\n    if \(!canvas\.popBuiltin\('conference'\)\)/.test(spaceJs)) fail(F, 'Pop out moves the conference into its own window (canvas.popBuiltin), never a second join');
   if (!/callOutEl\.querySelector\('#call-back'\)\.addEventListener\('click', bringCallBack\)/.test(spaceJs)) fail(F, '#call-back brings the call back (bringCallBack)');
   if (!/function hangUp\(\) \{[\s\S]{0,400}canvas\.returnBuiltin\('conference'\)/.test(spaceJs)) fail(F, 'Hang up brings a call out of the column back to it');
-  if (!/if \(prefs\.callFloat && callWhere\(\) === 'column' && !conferenceShown\(\)\) canvas\.liftBuiltin\('conference', true, 'person'\)/.test(spaceJs)) fail(F, 'Floating window, remembered (prefs.callFloat), floats the call as they join');
-  if (!/callPosition: 'top', callFloat: false,\n/.test(spaceJs)) fail(F, 'the call\'s place is remembered per person (prefs.callPosition, callFloat), and no callTiles any more');
+  if (!/if \(columnPref\.callFloat && callWhere\(\) === 'column' && !conferenceShown\(\)\) canvas\.liftBuiltin\('conference', true, 'person'\)/.test(spaceJs)) fail(F, 'Floating window, remembered (columnPref.callFloat), floats the call as they join');
+  // Where the call sits is remembered per person and per space (plan-workspaces.md, decision 7 and step 5): in the
+  // browser's record for the space, with the column's fold (app.column.<space id>), read whole on entering and written
+  // whole with every choice. Nothing of it is in the call preferences any more (they are not per space), and an aside,
+  // which has no record, writes nothing.
+  if (/prefs\.callPosition|prefs\.callFloat/.test(spaceJs) || /\n  callPosition: 'top', callFloat: false,\n/.test(spaceJs)) fail(F, 'the call\'s place is no longer in the call preferences (prefs): it is per space (columnPref)');
+  if (!/let columnPref = \{ collapsed: false, callPosition: 'top', callFloat: false, conferencePosition: 'beside', conferenceCallOnly: false \};/.test(spaceJs) || spaceJs.indexOf('let columnPref = ') > spaceJs.indexOf('const prefs = loadPrefs();')) fail(F, 'columnPref is declared with the tab shown, before anything can ask for it, with the defaults');
+  if (!/const columnKey = \(id\) => `app\.column\.\$\{id\}`;/.test(spaceJs)) fail(F, 'the record is kept per space (app.column.<space id>)');
+  if (!/function loadColumnPref\(\) \{\n  const id = layoutSpaceId\(\);\n  let raw = null;\n  if \(id\) \{\n    try \{ raw = JSON\.parse\(localStorage\.getItem\(columnKey\(id\)\) \|\| 'null'\); \} catch \{ raw = null; \}\n  \}\n  columnPref = readColumnPref\(raw\);\n\}/.test(spaceJs)) fail(F, 'entering reads the space\'s own record whole (loadColumnPref, readColumnPref); an aside gets the defaults');
+  if (!/function saveColumnPref\(\) \{\n  const id = layoutSpaceId\(\);\n  if \(!id\) return;\n  try \{ localStorage\.setItem\(columnKey\(id\), JSON\.stringify\(columnPref\)\); \}/.test(spaceJs)) fail(F, 'a choice writes the space\'s record whole (saveColumnPref), and nothing in an aside');
+  if (!/function applyColumnPref\(\) \{\n  loadColumnPref\(\);\n  setColumnCollapsed\(columnPref\.collapsed, \{ remember: false \}\);\n\}/.test(spaceJs)) fail(F, 'entering a space applies its record: where the call sits and the fold');
+  if (!/columnPref\.callFloat = pos === 'float';\n  if \(pos !== 'float'\) columnPref\.callPosition = pos;\n  saveColumnPref\(\);/.test(spaceJs)) fail(F, 'a Call position picked beside the work is kept for this space (setCallPosition)');
+  if (!/if \(remember\) \{\n    if \(conferenceShown\(\)\) columnPref\.conferenceCallOnly = on; else columnPref\.collapsed = on;\n    saveColumnPref\(\);\n  \}/.test(spaceJs)) fail(F, 'the fold is kept in the space\'s record without dropping the rest of it; on the Conference layout it is Call only, never the column\'s own fold');
+  // The Conference layout's own Call position (step 5): kept apart from the one beside the work, and Call only apart
+  // from the position, so the chat comes back where it was.
+  {
+    const from = spaceJs.indexOf('function setConferencePosition(pos) {');
+    const body = from < 0 ? '' : spaceJs.slice(from, spaceJs.indexOf('\n}\n', from));
+    if (!body) fail(F, 'the Conference layout\'s Call position is set by setConferencePosition()');
+    else {
+      if (!/columnPref\.conferenceCallOnly = pos === 'only';\n  if \(pos !== 'only' && CONFERENCE_POSITIONS\.includes\(pos\)\) columnPref\.conferencePosition = pos;\n  saveColumnPref\(\);/.test(body)) fail(F, 'a Conference position is kept for this space, and Call only keeps the position under it');
+      if (/columnPref\.callPosition|columnPref\.callFloat|columnPref\.collapsed|savePrefs\(/.test(body)) fail(F, 'a Conference position never changes the position beside the work, nor the column\'s fold');
+      if (!/if \(callWhere\(\) === 'window'\) bringCallBack\(\);/.test(body)) fail(F, 'picking a Conference position brings a call out of its own window back into the page');
+      if (!/setColumnCollapsed\(columnPref\.conferenceCallOnly, \{ remember: false \}\)/.test(body)) fail(F, 'Call only is the column\'s fold on the Conference layout, set without touching the column\'s own');
+      if (/stopCall|hangUp|closeBuiltin|leftCall/.test(body)) fail(F, 'changing the Conference position never hangs up');
+    }
+    for (const label of ['Beside the chat', 'Left of the chat', 'Above the chat', 'Below the chat', 'Call only']) if (!spaceJs.includes(`label: '${label}', onPick: () => setConferencePosition(`)) fail(F, `on the Conference layout Call position offers "${label}"`);
+    if (!/const offered = callPositionsOffered\(\{ conference, column: canvas\.columnMode\(\) \}\);\n  return \[\{ heading: 'Call position' \}, \.\.\.offered\.map\(/.test(spaceJs)) fail(F, 'the Call position menu draws exactly what callPositionsOffered() names for this layout and width');
+    if (!/const on = \(pos\) => inside && page === pos;/.test(spaceJs) || !/const page = conferencePlaceNow\(\);/.test(spaceJs)) fail(F, 'on the Conference layout the choice marked is this space\'s own, while the call is in the page');
+    if (!/for \(const p of \['left', 'above', 'below'\]\) columnEl\.classList\.toggle\(`conf-\$\{p\}`, conf === p\);/.test(spaceJs) || !/const conf = place === 'conference' \? conferencePlaceNow\(\) : null;/.test(spaceJs)) fail(F, 'the Conference position marks the column (.conf-left, .conf-above, .conf-below) only on the Conference layout');
+    if (!/layoutAnnouncer\.textContent = `Call position: \$\{label\}\.`;/.test(spaceJs)) fail(F, 'a changed Call position is said through the page\'s status region (#layout-announce)');
+    if (!/onShow: \(\) => \{ if \(columnCollapsed\(\) && !callFillsArea\(callPlaceNow\(\)\)\) setColumnCollapsed\(false\); \}/.test(spaceJs)) fail(F, 'showing the call opens a folded column only where the fold hides the call (never Call only on the Conference layout)');
+  }
   if (!/if \(open && mode === 'window'\) keepPoppedVideosLive\(\);/.test(spaceJs)) fail(F, 'the call in its own window keeps its videos live (keepPoppedVideosLive)');
   // canvas.js: the window is the conference's own element (openBuiltinWindow); closing it puts it back in the column.
   if (!/function popBuiltin\(id\) \{[\s\S]*?openBuiltinWindow\(def, \{ moving: true \}\)[\s\S]*?\.popped = true;/.test(canvasJs)) fail('public/canvas.js', 'popBuiltin() moves the element into its window (openBuiltinWindow, moving) and marks it the column\'s');
@@ -1798,7 +1996,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!emptyHtml || !/id="call-start" type="button" aria-label="Start call"/.test(emptyHtml) || !/btn btn-primary/.test(emptyHtml)) fail('public/space.html', 'the call\'s own area has the large Start call (#call-start in #call-empty, the accent button)');
   if (emptyAt < html.indexOf('id="call-head"') || emptyAt > html.indexOf('id="side-column-strip"')) fail('public/space.html', '#call-empty sits between the call\'s title bar and the call (#side-column-strip)');
   if (!/\$\('call-start'\)\.addEventListener\('click', \(\) => joinCallButton\.click\(\)\)/.test(spaceJs)) fail(F, 'the large Start call presses the title bar\'s (one way into joinTheCall)');
-  if (!/const callFillsArea = place === 'workspace' \|\| place === 'conference';\n  const empty = callFillsArea && callArea && idle && where !== 'dock' && joinCallWanted\(\);/.test(spaceJs) || !/start\.hidden = !empty;/.test(spaceJs)) fail(F, 'the large Start call shows only where the call fills an area of its own (In the workspace, the Conference layout), never in the side column (Top, Bottom, Left) and never on a call');
+  if (!/function callFillsArea\(place\) \{ return place === 'workspace' \|\| place === 'conference'; \}/.test(spaceJs) || !/const empty = callFillsArea\(place\) && callArea && idle && where !== 'dock' && joinCallWanted\(\);/.test(spaceJs) || !/start\.hidden = !empty;/.test(spaceJs)) fail(F, 'the large Start call shows only where the call fills an area of its own (In the workspace, the Conference layout), never in the side column (Top, Bottom, Left) and never on a call');
   if (!/const verb = liveOthersOnCall\(\)\.length > 0 \? 'Join' : 'Start';\n    start\.querySelector\('#call-start-label'\)\.textContent = `\$\{verb\} call`;/.test(spaceJs)) fail(F, 'the large button reads Join call while a call runs, Start call while none does, as the title bar\'s');
   if (!/if \(headPop\) headPop\.hidden = noPop \|\| idle;/.test(spaceJs)) fail(F, 'out of the call the title bar shows Start call and the menu, not Pop out (the menu still has it)');
   if (!/\.side-column-call-empty \{[^}]*display: flex;/.test(css) || !/\.side-column-call-empty\[hidden\] \{\s*display: none;/.test(css) || !/body\.in-aside \.side-column-call-empty \{\s*display: none;/.test(css)) fail('public/style.css', 'the large Start call is a block of the column, hidden when hidden and in an aside (the aside has its own)');
@@ -1809,10 +2007,10 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   if (!/const conferenceShown = \(\) => currentLayoutTab === 'conference' && Boolean\(columnEl\) && !inAside\(\) && !phoneWidth\(\) && canvas\.columnMode\(\);/.test(spaceJs)) fail(F, 'the Conference layout is shown for its tab only, wider than a phone and never in an aside (conferenceShown)');
   if (!/document\.body\.classList\.toggle\('view-conference', on\);\n  columnEl\?\.parentElement\?\.classList\.toggle\('view-conference', on\);/.test(spaceJs)) fail(F, 'the Conference layout marks the page and the work area (view-conference)');
   if (!/columnEl\.classList\.toggle\('call-page', place === 'conference'\);/.test(spaceJs)) fail(F, 'on the Conference layout the column is the page (.call-page)');
-  if (!/const w = chatWidthShown\(\);\n  columnEl\.style\.setProperty\('--side-column-w', `\$\{w\}px`\);/.test(spaceJs) || !/const chatWidthShown = \(\) => \(conferenceShown\(\) \? conferenceChatWidth\(prefs\.chatWidth, conferencePageWidth\(\)\) : columnWidthNow\(\)\);/.test(spaceJs)) fail(F, 'on the Conference layout the chat keeps the column\'s own width (prefs.chatWidth), held only so the call keeps its least');
-  if (!/if \(!canvas\.columnMode\(\) \|\| conferenceShown\(\)\) return;/.test(spaceJs)) fail(F, 'on the Conference layout a screen share stays in the call\'s tiles (no lift out of the page)');
-  if (!/if \(\['float', 'share'\]\.includes\(callWhere\(\)\)\) canvas\.returnBuiltin\('conference'\);\n    if \(columnCollapsed\(\)\) setColumnCollapsed\(false, \{ remember: false \}\);/.test(spaceJs)) fail(F, 'coming to the Conference layout a floating call goes into the page and a folded column opens, neither remembered');
-  if (!/if \(!inCall\) applyColumnPref\(\);[^\n]*\n    if \(currentLayoutTab === 'conference' && phoneWidth\(\)\) canvas\.showBuiltin\('conference'\);\n    else if \(inCall && prefs\.callFloat && callWhere\(\) === 'column'\) canvas\.liftBuiltin\('conference', true, 'person'\);\n    syncShareLift\(\);/.test(spaceJs)) fail(F, 'leaving the Conference layout puts the call back in the column: open while on a call (else the fold as saved), floating again where that is the choice or a screen is shared; on a phone the call\'s tab');
+  if (!/const w = chatWidthShown\(\);\n  columnEl\.style\.setProperty\('--side-column-w', `\$\{w\}px`\);/.test(spaceJs) || !/const chatWidthShown = \(\) => chatWidthFor\(prefs\.chatWidth\);/.test(spaceJs)) fail(F, 'on the Conference layout the chat keeps the column\'s own width (prefs.chatWidth), held only so the call keeps its least');
+  if (!/if \(!canvas\.columnMode\(\) \|\| callFillsNow\(\)\) return;/.test(spaceJs)) fail(F, 'on the Conference layout, and In the workspace, a screen share stays in the call\'s tiles (no lift out of its own area)');
+  if (!/if \(\['float', 'share'\]\.includes\(callWhere\(\)\)\) canvas\.returnBuiltin\('conference'\);\n    if \(columnCollapsed\(\) !== columnPref\.conferenceCallOnly\) setColumnCollapsed\(columnPref\.conferenceCallOnly, \{ remember: false \}\);/.test(spaceJs)) fail(F, 'coming to the Conference layout a floating call goes into the page and the column is open, or folded for Call only, neither remembered');
+  if (!/const fold = inCall && callPlaceNow\(\) !== 'workspace' \? false : columnPref\.collapsed;\n    if \(columnCollapsed\(\) !== fold\) setColumnCollapsed\(fold, \{ remember: false \}\);\n    if \(currentLayoutTab === 'conference' && phoneWidth\(\)\) canvas\.showBuiltin\('conference'\);\n    else if \(inCall && columnPref\.callFloat && callWhere\(\) === 'column'\) canvas\.liftBuiltin\('conference', true, 'person'\);\n    syncShareLift\(\);/.test(spaceJs)) fail(F, 'leaving the Conference layout puts the call back in the column: open while on a call (else the fold as saved), floating again where that is the choice or a screen is shared; on a phone the call\'s tab');
   // Every way out goes through the same place, and a layout pass asks again, so the page is never left half in the layout.
   if (!/function syncColumn\(\) \{\n  paintJoinCall\(\);\n  if \(currentLayoutTab === 'conference' \|\| conferenceWas\) syncConferenceView\(\);/.test(spaceJs)) fail(F, 'every layout pass asks whether the Conference layout is still the one shown (syncColumn), so it cannot stay half shown');
   if (spaceJs.indexOf('let conferenceWas = false;') < 0 || spaceJs.indexOf('let conferenceWas = false;') > spaceJs.indexOf('const prefs = loadPrefs();')) fail(F, 'conferenceWas is declared with the tab shown, before anything can ask for it');
@@ -1841,7 +2039,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
     if (!/onOpenRef: \(ref\) => \(opened\.get\(m\.id\)\?\.mount === mount \? openRef\(ref\) : false\),/.test(cj)) fail('public/canvas.js', 'a module closed meanwhile opens no object');
   }
   if ((spaceJs.match(/currentLayoutTab = 'workspace'; \/\/[^\n]*\n  syncConferenceView\(\);/g) || []).length !== 2) fail(F, 'leaving a space and entering one drop the Conference layout with the tab');
-  if (!/if \(conferenceShown\(\)\) \{\n    items\.push\(\{ radio: true, checked: where === 'column', icon: 'table-columns', label: 'Beside the chat'/.test(spaceJs)) fail(F, 'on the Conference layout Call position offers Beside the chat and Its own window; nothing floats there');
+  if (!/beside: \{ \.\.\.pick, checked: on\('beside'\), icon: 'table-columns', label: 'Beside the chat'/.test(spaceJs) || !/const from = conference \? conferenceItems : columnItems;/.test(spaceJs)) fail(F, 'on the Conference layout Call position offers its own choices (Beside the chat first) and Its own window; nothing floats there');
   if (!/id="call-empty-note"/.test(emptyHtml) || !/said\.textContent = verb === 'Join' \? 'A call is running\. You are not in it\.' : 'You are not in a call\.';/.test(spaceJs)) fail(F, 'under the large Start call a plain line says there is no call, or that one is running');
   {
     const from = css.indexOf('/* The Conference layout (plan-workspaces.md, step 4');
@@ -1855,6 +2053,18 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
       if (!/\.side-column\.call-page > \.side-column-toggle,\s*\.side-column\.call-page \.side-column-splitter-h,\s*\.side-column\.call-page > \.side-column-rail \{\s*display: none;/.test(block)) fail('public/style.css', 'on the Conference layout the fold handle, the call\'s height line and the rail are not drawn');
       if (!/\.side-column\.call-page \.side-column-call-head \.join-call \{\s*display: none;/.test(block)) fail('public/style.css', 'on the Conference layout the title bar\'s Start call is hidden (the large one is there); it stays in the DOM');
       if (!/\.side-column\.call-page > \.side-column-call-empty \{\s*grid-area: empty;/.test(block)) fail('public/style.css', 'on the Conference layout the large Start call has the call\'s area');
+      // Its own Call position (step 5): Left turns the two round at the same widths; Above and Below stack them, the chat
+      // at a height of its own (no percentage) and the call in the rest; Call only is the fold: the rail, and the call drawn.
+      for (const [re, what] of [
+        [/\.side-column\.call-page\.conf-left \{\s*grid-template-columns: minmax\(0, 1fr\) var\(--side-column-w, 320px\);\s*grid-template-areas: "head chat" "strip chat" "out chat" "empty chat";/, 'Left of the chat: the call has the rest on the left, the chat its own width on the right'],
+        [/\.side-column\.call-page\.conf-above \{\s*grid-template-columns: minmax\(0, 1fr\);\s*grid-template-rows: auto auto auto minmax\(0, 1fr\) var\(--conf-chat-h, 360px\);\s*grid-template-areas: "head" "strip" "out" "empty" "chat";/, 'Above the chat: one column, the call over the chat, which keeps its own height (--conf-chat-h)'],
+        [/\.side-column\.call-page\.conf-above\.in-call:not\(\.call-away\) \{\s*grid-template-rows: auto minmax\(0, 1fr\) auto 0 var\(--conf-chat-h, 360px\);/, 'Above the chat, on the call: the tiles take the height the chat leaves'],
+        [/\.side-column\.call-page\.conf-below \{\s*grid-template-columns: minmax\(0, 1fr\);\s*grid-template-rows: var\(--conf-chat-h, 360px\) auto auto auto minmax\(0, 1fr\);\s*grid-template-areas: "chat" "head" "strip" "out" "empty";/, 'Below the chat: one column, the chat over the call'],
+        [/\.side-column\.call-page\.conf-below\.in-call:not\(\.call-away\) \{\s*grid-template-rows: var\(--conf-chat-h, 360px\) auto minmax\(0, 1fr\) auto 0;/, 'Below the chat, on the call: the tiles take the height the chat leaves'],
+        [/\.side-column\.call-page\.collapsed \{\s*grid-template-columns: 44px minmax\(0, 1fr\);/, 'Call only: the rail in the chat\'s place and the call in the rest'],
+        [/\.side-column\.call-page\.collapsed > \.side-column-rail \{\s*display: flex;\s*grid-area: chat;/, 'Call only: the rail is drawn (its chat button brings the chat back)'],
+        [/\.side-column\.call-page\.collapsed > \.side-column-call-head:not\(\[hidden\]\),\s*\.side-column\.call-page\.collapsed:not\(\.call-away\) > \.side-column-strip,\s*\.side-column\.call-page\.collapsed > \.side-column-call-empty:not\(\[hidden\]\),\s*\.side-column\.call-page\.collapsed > \.side-column-call-out:not\(\[hidden\]\) \{\s*display: flex;/, 'Call only: the call\'s parts stay drawn (the column\'s own fold hides them), and what is hidden stays hidden'],
+      ]) if (!re.test(block)) fail('public/style.css', what);
       if (/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(block)) fail('public/style.css', 'the Conference layout uses the theme\'s tokens only');
       if (/call-page|view-conference/.test(css.slice(0, from))) fail('public/style.css', 'the Conference layout\'s rules live in one block (nothing of it leaks into the column\'s own rules, so the 55% rule holds everywhere else)');
     }
@@ -1898,7 +2108,9 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   }
   // The call at the bottom: the chat first; the strip's line turns round (up grows it).
   if (!/\.side-column\.call-bottom \.side-column-chat \{\s*order: 1;/.test(css)) fail('public/style.css', 'at the bottom of the column the chat comes first');
-  if (!/const flipped = \(\) => which === 'strip' && columnEl\.classList\.contains\('call-bottom'\);/.test(spaceJs)) fail(F, 'with the call at the bottom the strip\'s splitter turns round');
+  if (!/const flipped = \(\) => \(which === 'strip' && columnEl\.classList\.contains\('call-bottom'\)\)/.test(spaceJs)) fail(F, 'with the call at the bottom the strip\'s splitter turns round');
+  if (!/\|\| \(which === 'side' && columnEl\.classList\.contains\('call-right'\)\)/.test(spaceJs)) fail(F, 'right of the chat the call\'s line turns round (the call is on the right)');
+  if (!/\|\| \(which === 'width' && columnEl\.classList\.contains\('conf-left'\)\)\n[^\n]*\n    \|\| \(which === 'chatH' && columnEl\.classList\.contains\('conf-above'\)\);/.test(spaceJs)) fail(F, 'on the Conference layout the chat\'s edge turns round with the call on its left, and its height line with the call above it');
 }
 
 // Each module's title bar told apart (GitHub #229, public/module-tint.js): the manifest's colour when it names a tint,
@@ -2082,7 +2294,7 @@ for (const m of (css + '\n' + chromeBlock).replace(/\/\*[\s\S]*?\*\//g, '').matc
   const intoColumn = place.slice(place.indexOf('if (want)'), place.indexOf('} else {', place.indexOf('openBuiltinIn(def, \'column\'')));
   if (!/def\.shareLift[\s\S]*liftBuiltin\(def\.id, Boolean\(def\.shareLift\(\)\)\)/.test(intoColumn)) fail('public/canvas.js', 'placeBuiltins() must lift the conference again when a screen tile exists (liftBuiltin(def.id, Boolean(def.shareLift()))) after putting it back in the column');
   const conf = spaceJs.slice(spaceJs.indexOf("canvas.registerBuiltin({\n  id: 'conference'"), spaceJs.indexOf("canvas.registerBuiltin({\n  id: 'chat'"));
-  if (!/shareLift: \(\) => !conferenceShown\(\) && screenShared\(\)/.test(conf)) fail('public/space.js', 'the conference must answer shareLift from its screen tiles (screenShared)');
+  if (!/shareLift: \(\) => !callFillsNow\(\) && screenShared\(\)/.test(conf)) fail('public/space.js', 'the conference must answer shareLift from its screen tiles (screenShared)');
   if (!/const screenShared = \(\) => \[\.\.\.tiles\.values\(\)\]\.some\(\(t\) => t\.classList\.contains\('tile-screen'\)\)/.test(spaceJs)) fail('public/space.js', 'screenShared() is whether a tile-screen exists');
   if (!/const sharing = screenShared\(\);/.test(spaceJs.slice(spaceJs.indexOf('function syncShareLift()')))) fail('public/space.js', 'syncShareLift() and the canvas ask the same screenShared()');
 }

@@ -10,6 +10,8 @@
 // rail's icon with its dot and its name. And at the Conference layout (step 4): the large Start call there and only there,
 // the call filling the page beside the chat at the width the chat had, and the call staying on across the Workspace and back.
 // And the call's controls through a pop-out (runPopout): before, in the popup, after the window is closed, after Bring the call back.
+// And Call position (runPositions; steps 5, 9 and 7): Right of the chat, In the workspace and the Conference layout's own five, with
+// no call and on one, the controls answering in each, layouts switched without a hang-up, kept across a reload, and a phone's width.
 // Usage: node tools/check-call-bars.mjs. With no Chromium it says SKIPPED and exits 0 (a skip, never a pass).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -373,6 +375,248 @@ async function runPopout(browser, S, conference) {
   } finally { await tab.close(); }
 }
 
+// Call position (plan-workspaces.md, steps 5, 9 and 7; decisions 17, 29, 30 and 32), in the running product with the
+// stub call. Beside the work: Right of the chat (the Left rule: a column of 560px, else the top, the choice kept) and In
+// the workspace (the same call area, title bar, menu and controls, in the canvas's area; all of it while nothing is
+// docked there, beside the docked modules otherwise). On the Conference layout: Beside, Left, Above, Below and Call only.
+// In every position: with no call the large Start call shows only where the call fills an area of its own (In the
+// workspace, the Conference layout); on a call the call's controls respond to real presses, also after its window was
+// closed and after Bring the call back; switching layouts never hangs up. The choices are kept for the space, apart for
+// the Conference layout, across a reload. At 390px there is no column: nothing of this is drawn or offered, and the
+// canvas is back. The call is the stub's: a real one is not tried here.
+async function runPositions(browser, S) {
+  const tab = new Tab(browser.cdp, S.ctx);
+  await tab.open(1280, 'light', true);
+  const settle = tab.settle.bind(tab); tab.settle = () => Promise.race([settle(), sleep(3000)]);
+  const bad = (text) => failures.push(`Call position, ${text}`);
+  const P = `(() => { const r = (id) => { const e = document.getElementById(id); if (!e) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), shown: !e.hidden && b.width > 0 && b.height > 0 && getComputedStyle(e).visibility !== 'hidden' }; };
+    const col = document.getElementById('side-column'); const head = document.getElementById('call-head'); const dock = document.querySelector('#canvas > .module-docked > .mod-content');
+    return { cls: col.className, work: document.getElementById('work').className, view: document.body.classList.contains('view-conference'), inCall: col.classList.contains('in-call'), win: innerWidth,
+      column: r('side-column'), chat: r('side-column-chat'), head: r('call-head'), empty: r('call-empty'), start: r('call-start'), note: (document.getElementById('call-empty-note') || {}).textContent, strip: r('side-column-strip'), grid: r('grid'), canvas: r('canvas'),
+      rail: r('side-column-rail'), railChat: r('side-column-rail-chat'), out: r('call-out'), join: r('join-call'), more: r('call-more'), toggle: r('side-column-toggle'),
+      headIn: head.parentElement.id, moreIn: head.contains(document.getElementById('call-more')), stripIn: document.getElementById('side-column-strip').parentElement.id, tiles: document.querySelectorAll('#grid .tile').length,
+      docked: document.querySelectorAll('#canvas > .module-docked').length, dockX: dock ? Math.round(dock.getBoundingClientRect().x) : null, canvasVis: getComputedStyle(document.getElementById('canvas')).visibility,
+      tab: (document.querySelector('[data-layout-tab][aria-current=page]') || { dataset: {} }).dataset.layoutTab, wider: document.documentElement.scrollWidth - innerWidth,
+      stored: Object.keys(localStorage).filter((k) => k.startsWith('app.column.')).map((k) => k + '=' + localStorage.getItem(k)), said: (document.getElementById('layout-announce') || {}).textContent || '' }; })()`;
+  const ITEMS = `[...document.querySelectorAll('[role=menuitemradio]')].map((e) => ({ label: (e.querySelector('.host-menu-label') || e).textContent.trim(), text: e.textContent.trim(), checked: e.getAttribute('aria-checked') === 'true', disabled: e.getAttribute('aria-disabled') === 'true' || e.disabled === true }))`;
+  const has = (m, c) => ` ${m.cls} `.includes(` ${c} `);
+  const near = (a, b, by = 3) => Math.abs(a - b) <= by;
+  const esc = async () => { for (let i = 0; i < 2; i++) { await tab.eval(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`); await sleep(150); } };
+  const menu = async () => { await tab.click('#call-more'); await sleep(350); await tab.hover('[role=menu] [role=menuitem]', 'Call position'); await sleep(450); const list = await tab.eval(ITEMS); return list; };
+  const pick = async (label) => { await menu(); await tab.click('[role=menuitemradio]', label); await sleep(900); await esc(); return tab.eval(P); };
+  const press = async (id) => { await tab.eval(`document.querySelector('[data-layout-tab="${id}"]').click()`); await sleep(1400); return tab.eval(P); };
+  const hasTab = (id) => tab.eval(`Boolean(document.querySelector('[data-layout-tab="${id}"]'))`);
+  const waitCall = async (on) => { const end = Date.now() + 10000; while (Date.now() < end && (await tab.eval(`document.getElementById('side-column').classList.contains('in-call')`)) !== on) await sleep(200); await sleep(800); };
+  const keyOn = async (id, key, shift, n) => { for (let i = 0; i < n; i++) { await tab.eval(`document.getElementById('${id}').dispatchEvent(new KeyboardEvent('keydown', { key: '${key}', shiftKey: ${shift}, bubbles: true }))`); await sleep(60); } await sleep(600); };
+  // The call's own controls, pressed with the mouse where they are drawn: each one shown must respond, and one at least is shown.
+  const STATE = `(() => ({ deafen: document.getElementById('deafen')?.classList.contains('off'), layout: document.getElementById('layout-glyph')?.className }))()`;
+  const shown = (id) => tab.eval(`(() => { const e = document.getElementById('${id}'); if (!e) return false; const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && !e.closest('[hidden]'); })()`);
+  const controls = async (where) => {
+    const g = await tab.eval(`(() => { const b = document.getElementById('grid').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+    await tab.mouse('mouseMoved', g.x, g.y, { button: 'none', clickCount: 0 }); await sleep(300); // wake the bars
+    const before = await tab.eval(STATE); const res = {};
+    if (await shown('deafen')) { await tab.click('#deafen'); await sleep(400); res.deafen = (await tab.eval(STATE)).deafen !== before.deafen; await tab.click('#deafen'); await sleep(300); }
+    if (await shown('layout')) { await tab.click('#layout'); await sleep(400); res.layout = (await tab.eval(STATE)).layout !== before.layout; }
+    const dead = Object.keys(res).filter((k) => !res[k]);
+    if (!Object.keys(res).length) bad(`${where}: none of the call's controls is drawn`);
+    if (dead.length) bad(`${where}: the call's controls did not respond: ${dead.join(', ')}`);
+    return dead.length || !Object.keys(res).length ? 'NOT responding' : `respond (${Object.keys(res).join(', ')})`;
+  };
+  const popOut = async () => {
+    await tab.cdp.send('Runtime.evaluate', { expression: `document.getElementById('call-head-popout').click()`, userGesture: true }, tab.sid);
+    const end = Date.now() + 10000;
+    while (Date.now() < end && !(await tab.eval(`(() => { try { const w = ${POPOUT}; return w.document.body.classList.contains('conference-window') && w.document.querySelectorAll('#grid .tile').length >= 1; } catch (e) { return false; } })()`))) await sleep(200);
+    await sleep(800);
+  };
+  const theSame = (m, where, tiles) => { if (!m.inCall || m.tiles !== tiles) bad(`${where}: the call did not stay on (${m.tiles} tiles, in the call: ${m.inCall})`); };
+  const LABELS = ['Top of the column', 'Bottom of the column', 'Left of the chat', 'Right of the chat', 'Floating window', 'In the workspace', 'Its own window'];
+  try {
+    await driveScreen(tab, { id: 'positions', as: 'mia', url: '/#join={trip}', wait: 'button.sdk-strip-fact[data-module=budget]', call: true, steps: [] }, S.base, S.cookies, S.ctx);
+    const before = await tab.eval(P);
+    // The menu beside the work, in a 320px column: all seven, Left and Right saying why they cannot be picked.
+    const m0 = await menu(); await esc();
+    if (m0.map((i) => i.label).join(' / ') !== LABELS.join(' / ')) bad(`beside the work the menu reads "${m0.map((i) => i.label).join(' / ')}", wanted "${LABELS.join(' / ')}"`);
+    for (const l of ['Left of the chat', 'Right of the chat']) { const it = m0.find((i) => i.label === l); if (!it?.disabled || !/Needs a wider column/.test(it.text)) bad(`in a ${before.column.w}px column "${l}" should be disabled and say why (${JSON.stringify(it)})`); }
+    if (!m0.find((i) => i.label === 'Top of the column')?.checked) bad('with nothing chosen Top of the column is not the one marked');
+    // In the workspace, no call: the same call area in the canvas's area, with the large Start call.
+    const w1 = await pick('In the workspace');
+    if (!has(w1, 'call-work') || !/call-in-work/.test(w1.work)) bad(`In the workspace did not mark the column and the work area (${w1.cls} | ${w1.work})`);
+    if (w1.headIn !== 'side-column' || !w1.moreIn || w1.stripIn !== 'side-column' || !w1.head?.shown || !w1.more?.shown) bad(`In the workspace: the call's title bar and menu are not the same ones, shown (${JSON.stringify({ headIn: w1.headIn, moreIn: w1.moreIn, stripIn: w1.stripIn, head: w1.head, more: w1.more })})`);
+    if (!near(w1.chat?.w, before.column.w) || !near(w1.head?.x, w1.chat.x + w1.chat.w)) bad(`In the workspace: the chat is ${w1.chat?.w}px (the column was ${before.column.w}px) and the call starts at ${w1.head?.x}px`);
+    if (!w1.empty?.shown || !w1.start?.shown || w1.start.h < 44 || !/not in a call/i.test(w1.note || '')) bad(`In the workspace, no call: the large Start call is not shown (${JSON.stringify([w1.empty, w1.start, w1.note])})`);
+    if (!w1.join?.shown) bad('In the workspace, no call: the title bar\'s Start call is gone (decision 32: it is on the title bar in every position)');
+    if (w1.wider > 0) bad(`In the workspace: the page is ${w1.wider}px wider than the window`);
+    if (w1.docked > 0) { if (!w1.canvas?.shown || !near(w1.dockX, w1.head.x + w1.head.w, 4)) bad(`In the workspace beside ${w1.docked} docked: the modules do not start where the call ends (call ${JSON.stringify(w1.head)}, module at ${w1.dockX}px, canvas ${JSON.stringify(w1.canvas)})`); }
+    else if (!near(w1.head.x + w1.head.w, w1.win)) bad(`In the workspace with nothing docked: the call does not have the canvas's area (${JSON.stringify(w1.head)})`);
+    if (!/In the workspace/.test(w1.said)) bad(`the change was not said through #layout-announce ("${w1.said}")`);
+    say(`In the workspace, no call, ${w1.docked} docked: chat ${w1.chat?.w}px, call area ${w1.head?.w}px wide from ${w1.head?.x}px, large "Start call" ${w1.start?.w}x${w1.start?.h}px, modules from ${w1.dockX}px; said "${w1.said}"`);
+    // Nothing docked: the call has all of the canvas's area; the canvas keeps its width underneath and shows nothing.
+    const openIds = await tab.eval(`(window.hostModules.captureLayout().modules || []).map((x) => x.id)`);
+    for (const id of openIds) await tab.eval(`window.hostModules.close(${JSON.stringify(id)})`);
+    await sleep(900);
+    const w2 = await tab.eval(P);
+    if (w2.docked !== 0) bad(`the modules did not close (${w2.docked} docked)`);
+    if (!near(w2.empty?.w, w2.win - w2.chat.w) || !near(w2.head.x + w2.head.w, w2.win)) bad(`In the workspace with nothing docked: the call's area is ${w2.empty?.w}px of the ${w2.win - w2.chat.w}px beside the chat`);
+    if (w2.canvasVis !== 'hidden' || !(w2.canvas?.w > 100)) bad(`under the call the empty canvas should show nothing and keep its width (visibility ${w2.canvasVis}, ${w2.canvas?.w}px)`);
+    if (w2.wider > 0) bad(`In the workspace with nothing docked: the page is ${w2.wider}px wider than the window`);
+    // The large button starts the call (a real press: nothing lies over it), and the call fills the area.
+    await tab.click('#call-start'); await waitCall(true);
+    const c1 = await tab.eval(P);
+    if (!c1.inCall || c1.tiles < 1) { bad(`In the workspace: the large Start call did not start the call (${JSON.stringify({ inCall: c1.inCall, tiles: c1.tiles })})`); return; }
+    const tiles = c1.tiles;
+    if (c1.empty?.shown || c1.start?.shown) bad('In the workspace, on the call: Start call is still shown');
+    if (!c1.strip?.shown || !near(c1.strip.x, c1.chat.x + c1.chat.w) || !near(c1.strip.w, c1.win - c1.chat.w) || c1.strip.h + c1.head.h < c1.column.h - 2) bad(`In the workspace, on the call, nothing docked: the call does not fill the canvas's area (${JSON.stringify(c1.strip)}, column ${JSON.stringify(c1.column)})`);
+    const r1 = await controls('In the workspace, nothing docked');
+    // A module docked: the call keeps its own width beside it.
+    await tab.eval(`window.hostModules.open('budget', 'dock')`); await sleep(1600);
+    const c2 = await tab.eval(P);
+    theSame(c2, 'In the workspace, a module docked', tiles);
+    if (c2.docked < 1 || c2.canvasVis !== 'visible' || !near(c2.dockX, c2.strip.x + c2.strip.w, 4) || c2.strip.w > c2.win - c2.chat.w - 200 || c2.strip.w < 240) bad(`In the workspace, a module docked: the call (${JSON.stringify(c2.strip)}) and the module (from ${c2.dockX}px, ${c2.docked} docked, canvas ${c2.canvasVis}) do not sit side by side`);
+    const r2 = await controls('In the workspace, a module docked');
+    say(`In the workspace, on the call: nothing docked the call is ${c1.strip?.w}x${c1.strip?.h}px (controls ${r1}); beside Budget ${c2.strip?.w}x${c2.strip?.h}px, the module from ${c2.dockX}px (controls ${r2})`);
+    // The chat folded: the call stays; unfolded again.
+    await tab.click('#side-column-toggle'); await sleep(600);
+    const f1 = await tab.eval(P);
+    theSame(f1, 'In the workspace, the chat folded', tiles);
+    if (f1.chat?.shown || !f1.rail?.shown || !f1.strip?.shown || !near(f1.strip.x, f1.rail.x + f1.rail.w, 4) || !has(f1, 'call-work')) bad(`In the workspace, the chat folded: the rail and the call are not side by side (${JSON.stringify({ chat: f1.chat, rail: f1.rail, strip: f1.strip })})`);
+    await tab.click('#side-column-toggle'); await sleep(600);
+    // Switching layouts never hangs up, and the call is in the workspace again on the way back.
+    const seen = [];
+    for (const id of ['calendar', 'whiteboard', 'conference', 'workspace']) {
+      if (!(await hasTab(id))) continue;
+      const m = await press(id);
+      theSame(m, `the ${id} tab`, tiles);
+      if (id === 'conference' ? (!has(m, 'call-page') || has(m, 'call-work') || /call-in-work/.test(m.work)) : !has(m, 'call-work')) bad(`the ${id} tab: the call is not where it belongs (${m.cls})`);
+      seen.push(id);
+    }
+    // Its own window from In the workspace: the column keeps its strip meanwhile; closed, or brought back, the call is in the workspace again and its controls respond.
+    await popOut();
+    const o1 = await tab.eval(P);
+    if (has(o1, 'call-work') || !o1.out?.shown) bad(`popped out from In the workspace: the column should keep its slim strip (${o1.cls}, ${JSON.stringify(o1.out)})`);
+    await tab.eval(`${POPOUT}.close()`); await sleep(2500);
+    const o2 = await tab.eval(P);
+    theSame(o2, 'In the workspace, its window closed', tiles);
+    if (!has(o2, 'call-work') || !o2.strip?.shown) bad(`In the workspace, its window closed: the call is not back in the workspace (${o2.cls})`);
+    const r3 = await controls('In the workspace, after its window was closed');
+    await popOut(); await tab.click('#call-back'); await sleep(1500);
+    const o3 = await tab.eval(P);
+    theSame(o3, 'In the workspace, brought back', tiles);
+    if (!has(o3, 'call-work')) bad(`In the workspace, brought back: the call is not back in the workspace (${o3.cls})`);
+    const r4 = await controls('In the workspace, after Bring the call back');
+    say(`In the workspace: layouts ${seen.join(', ')} kept the call on; controls after its window was closed ${r3}, after Bring the call back ${r4}`);
+    // Right of the chat: a column of 560px or more. The call beside the chat on its right, the column's full height.
+    await keyOn('side-column-splitter', 'ArrowRight', true, 5);
+    const mw = await menu(); await esc();
+    for (const l of ['Left of the chat', 'Right of the chat']) if (mw.find((i) => i.label === l)?.disabled) bad(`in a wide column "${l}" is still disabled`);
+    const g1 = await pick('Right of the chat');
+    theSame(g1, 'Right of the chat', tiles);
+    if (!has(g1, 'call-right') || has(g1, 'call-work') || !(g1.chat.x < g1.strip.x) || !near(g1.strip.x + g1.strip.w, g1.column.x + g1.column.w, 4) || !near(g1.chat.x + g1.chat.w, g1.strip.x, 4)) bad(`Right of the chat: the call is not on the right of the chat in the column (${g1.cls}; chat ${JSON.stringify(g1.chat)}, call ${JSON.stringify(g1.strip)}, column ${JSON.stringify(g1.column)})`);
+    if (g1.strip.h + g1.head.h < g1.column.h - 2) bad(`Right of the chat: the call is ${g1.strip.h + g1.head.h}px tall in a ${g1.column.h}px column`);
+    if (g1.empty?.shown || g1.start?.shown) bad('Right of the chat: the large Start call shows in the side column');
+    if (!g1.canvas?.shown || g1.wider > 0) bad(`Right of the chat: the canvas is not beside the column, or the page is wider than the window (${JSON.stringify([g1.canvas, g1.wider])})`);
+    const r5 = await controls('Right of the chat');
+    await popOut(); await tab.eval(`${POPOUT}.close()`); await sleep(2500);
+    const g2 = await tab.eval(P);
+    theSame(g2, 'Right of the chat, its window closed', tiles);
+    if (!has(g2, 'call-right')) bad(`Right of the chat, its window closed: the call is not back on the right (${g2.cls})`);
+    const r6 = await controls('Right of the chat, after its window was closed');
+    await popOut(); await tab.click('#call-back'); await sleep(1500);
+    const r7 = await controls('Right of the chat, after Bring the call back');
+    say(`Right of the chat, on the call: chat ${g1.chat?.w}px, call ${g1.strip?.w}x${g1.strip?.h}px in a ${g1.column?.w}px column; controls ${r5}; after its window was closed ${r6}; after Bring the call back ${r7}`);
+    // A narrow column again: the call shows at the top, the choice kept and still marked.
+    await keyOn('side-column-splitter', 'ArrowLeft', true, 5);
+    const g3 = await tab.eval(P);
+    const mn = await menu(); await esc();
+    if (has(g3, 'call-right') || !(g3.strip.y < g3.chat.y)) bad(`Right chosen in a ${g3.column?.w}px column: the call should show at the top (${g3.cls})`);
+    if (!mn.find((i) => i.label === 'Right of the chat')?.checked || !mn.find((i) => i.label === 'Right of the chat')?.disabled) bad('Right chosen in a narrow column: it should stay marked, and say it needs a wider column');
+    // The Conference layout's own choices, on the call.
+    await pick('In the workspace');
+    let m = await press('conference');
+    const cm = await menu(); await esc();
+    const CONF = ['Beside the chat', 'Left of the chat', 'Above the chat', 'Below the chat', 'Call only', 'Its own window'];
+    if (cm.map((i) => i.label).join(' / ') !== CONF.join(' / ')) bad(`on the Conference layout the menu reads "${cm.map((i) => i.label).join(' / ')}", wanted "${CONF.join(' / ')}"`);
+    if (!cm.find((i) => i.label === 'Beside the chat')?.checked) bad('on the Conference layout Beside the chat is not the one marked at first');
+    const geometry = {
+      'Beside the chat': (v) => !has(v, 'conf-left') && !has(v, 'conf-above') && !has(v, 'conf-below') && v.chat.shown && near(v.chat.x, 0) && near(v.strip.x, v.chat.w) && near(v.strip.w, v.win - v.chat.w),
+      'Left of the chat': (v) => has(v, 'conf-left') && v.chat.shown && near(v.strip.x, 0) && near(v.chat.x, v.strip.w) && near(v.chat.x + v.chat.w, v.win) && near(v.chat.w, before.column.w),
+      'Above the chat': (v) => has(v, 'conf-above') && v.chat.shown && near(v.strip.w, v.win) && near(v.chat.w, v.win) && v.strip.y < v.chat.y && near(v.chat.y + v.chat.h, v.column.y + v.column.h),
+      'Below the chat': (v) => has(v, 'conf-below') && v.chat.shown && near(v.strip.w, v.win) && near(v.chat.w, v.win) && v.chat.y < v.head.y && near(v.strip.y + v.strip.h, v.column.y + v.column.h),
+      'Call only': (v) => has(v, 'collapsed') && !v.chat.shown && v.rail?.shown && v.railChat?.shown && near(v.strip.x, v.rail.w, 4) && near(v.strip.x + v.strip.w, v.win),
+    };
+    const confSeen = [];
+    for (const label of ['Left of the chat', 'Above the chat', 'Below the chat', 'Call only', 'Beside the chat']) {
+      const v = await pick(label);
+      theSame(v, `Conference, ${label}`, tiles);
+      if (!v.view || !has(v, 'call-page') || !v.strip?.shown || !geometry[label](v)) bad(`Conference, ${label}, on the call: the call and the chat are not placed so (${v.cls}; chat ${JSON.stringify(v.chat)}, call ${JSON.stringify(v.strip)}, rail ${JSON.stringify(v.rail)})`);
+      if (v.canvas?.shown || v.wider > 0) bad(`Conference, ${label}: the canvas is drawn or the page is wider than the window`);
+      const marked = (await menu()).filter((i) => i.checked).map((i) => i.label).join(','); await esc();
+      if (marked !== label) bad(`Conference, ${label}: the menu marks "${marked}"`);
+      confSeen.push(`${label} ${v.strip?.w}x${v.strip?.h}px, chat ${v.chat?.shown ? `${v.chat.w}x${v.chat.h}px` : 'folded'}, controls ${await controls(`Conference, ${label}`)}`);
+    }
+    say(`Conference, on the call: ${confSeen.join('; ')}`);
+    // Call only: the rail's chat button brings the chat back where it was.
+    await pick('Below the chat'); await pick('Call only');
+    await tab.click('#side-column-rail-chat'); await sleep(700);
+    const back = await tab.eval(P);
+    theSame(back, 'Conference, the chat brought back from Call only', tiles);
+    if (!back.chat?.shown || !has(back, 'conf-below') || has(back, 'collapsed')) bad(`Conference, Call only: the rail's chat button did not bring the chat back below the call (${back.cls})`);
+    // The Workspace keeps its own choice, and the Conference its own, with no call too.
+    m = await press('workspace');
+    if (!has(m, 'call-work') || has(m, 'collapsed')) bad(`back on the Workspace after the Conference's choices: In the workspace is not kept, or the column is folded (${m.cls})`);
+    await press('conference');
+    await tab.eval(`document.getElementById('hangup').click()`); await waitCall(false);
+    const idleSeen = [];
+    for (const label of ['Beside the chat', 'Left of the chat', 'Above the chat', 'Below the chat', 'Call only']) {
+      const v = await pick(label);
+      if (v.inCall || !v.start?.shown || v.start.h < 44 || !v.empty?.shown || !v.head?.shown) bad(`Conference, ${label}, no call: the large Start call is not shown (${JSON.stringify([v.start, v.empty, v.head])})`);
+      if (label !== 'Call only' && !v.chat?.shown) bad(`Conference, ${label}, no call: the chat is not shown`);
+      idleSeen.push(`${label} ${v.empty?.w}x${v.empty?.h}px`);
+    }
+    await pick('Above the chat');
+    say(`Conference, no call, the large Start call's area: ${idleSeen.join('; ')}`);
+    // Beside the work with no call: the large Start call In the workspace, never Right of the chat.
+    m = await press('workspace');
+    if (!has(m, 'call-work') || !m.start?.shown) bad(`the Workspace, no call: In the workspace with its large Start call is not shown (${m.cls}, ${JSON.stringify(m.start)})`);
+    await keyOn('side-column-splitter', 'ArrowRight', true, 5);
+    const g4 = await pick('Right of the chat');
+    if (!has(g4, 'call-right') || g4.start?.shown || g4.empty?.shown || !g4.join?.shown) bad(`Right of the chat, no call: the title bar's Start call alone should show (${g4.cls}, large ${JSON.stringify(g4.start)}, title bar ${JSON.stringify(g4.join)})`);
+    if (!(g4.chat.x < g4.head.x) || !near(g4.head.x + g4.head.w, g4.column.x + g4.column.w, 4)) bad(`Right of the chat, no call: the call's title bar is not on the right of the chat (${JSON.stringify([g4.chat, g4.head])})`);
+    await keyOn('side-column-splitter', 'ArrowLeft', true, 5);
+    await pick('In the workspace');
+    // Kept for the space across a reload, the Conference's choice apart from the one beside the work.
+    await tab.eval(`location.reload()`); await sleep(1500);
+    await tab.waitFor('button.sdk-strip-fact[data-module=budget]'); await sleep(3500);
+    const a1 = await tab.eval(P);
+    if (!has(a1, 'call-work') || !a1.start?.shown) bad(`after a reload: In the workspace is not kept (${a1.cls})`);
+    const a2 = await press('conference');
+    if (!has(a2, 'conf-above') || !a2.start?.shown) bad(`after a reload: Above the chat is not kept on the Conference layout (${a2.cls})`);
+    if (a1.stored.length !== 1 || !a1.stored[0].startsWith(`app.column.${S.ctx.trip}=`) || !/"callPosition":"workspace"/.test(a1.stored[0]) || !/"conferencePosition":"above"/.test(a1.stored[0])) bad(`the choices are not kept in this space's own record (${a1.stored.join(' ; ')})`);
+    // A phone's width: no column, nothing of the positions, the canvas back; and wider again, as it was.
+    await press('workspace');
+    const size = (w) => tab.cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false }, tab.sid);
+    // A window too narrow for the chat, the call and the canvas at their least (under 780px): the call shows at the top
+    // of the column, the choice kept and still marked, saying why; at 900px it is in the workspace, the canvas keeping 320px.
+    await size(700); await sleep(1500);
+    const n1 = await tab.eval(P);
+    const nm = await menu(); await esc();
+    const inW = nm.find((i) => i.label === 'In the workspace');
+    if (has(n1, 'call-work') || /call-in-work/.test(n1.work) || !n1.head?.shown || n1.head.w > n1.column.w + 1 || n1.start?.shown || !n1.canvas?.shown) bad(`at 700px In the workspace should show the call at the top of the column (${n1.cls}; title bar ${JSON.stringify(n1.head)}, column ${JSON.stringify(n1.column)})`);
+    if (!inW?.checked || !inW?.disabled || !/Needs a wider window/.test(inW.text)) bad(`at 700px In the workspace should stay marked and say it needs a wider window (${JSON.stringify(inW)})`);
+    await size(900); await sleep(1500);
+    const n2 = await tab.eval(P);
+    if (!has(n2, 'call-work') || !n2.start?.shown || n2.head.w < 240 || n2.canvas.w < 320 || n2.wider > 0) bad(`at 900px In the workspace: the call (${n2.head?.w}px) and the canvas (${n2.canvas?.w}px) should both keep their least (${n2.cls})`);
+    say(`In the workspace by width: at 700px the call is at the top of the column ("${inW?.text}"); at 900px chat ${n2.chat?.w}px, call ${n2.head?.w}px, canvas ${n2.canvas?.w}px`);
+    await size(390); await sleep(1500);
+    const p1 = await tab.eval(P);
+    if (p1.column?.shown || p1.more?.shown || p1.start?.shown || p1.canvasVis !== 'visible' || !p1.canvas?.shown || p1.wider > 0) bad(`at 390px: the column, the call's menu or the large Start call is drawn, or the canvas is not back (${JSON.stringify({ column: p1.column, more: p1.more, start: p1.start, canvasVis: p1.canvasVis, canvas: p1.canvas, wider: p1.wider })})`);
+    await size(1280); await sleep(1500);
+    const p2 = await tab.eval(P);
+    if (!has(p2, 'call-work') || !p2.start?.shown) bad(`back at 1280px: In the workspace is not shown again (${p2.cls})`);
+    say(`kept across a reload: In the workspace beside the work, Above the chat on the Conference layout (${a1.stored.join(' ; ')}); at 390px no column, no call menu, the canvas ${p1.canvas?.w}px wide`);
+    await pick('Top of the column');
+  } finally { await tab.close(); }
+}
+
 async function main() {
   const bin = findBrowser();
   if (!bin) { say('SKIPPED. No Chromium found (set CHROME_PATH). This is not a pass; nothing was measured.'); return 0; }
@@ -388,6 +632,7 @@ async function main() {
     await runConference(browser, S);
     await runPopout(browser, S, false);
     await runPopout(browser, S, true);
+    await runPositions(browser, S);
   } finally {
     try { if (browser) { browser.cdp.ws.close(); browser.child.kill(); fs.rmSync(browser.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } } catch { /* best effort */ }
     if (server) await stopServer(server);
