@@ -583,7 +583,7 @@
     }
     const t0 = performance.now();
     const g = dlPageGeometry(sheet.dataset.size);
-    const all = [...HEAD_IDS.map($).filter((n) => !n.hidden).map((n) => ({ node: n, kind: 'block' })), ...flow.entries];
+    const all = [...HEAD_IDS.map($).filter((n) => !n.hidden).map((n) => ({ node: n, kind: 'head' })), ...flow.entries];
     const measure = el('div', 'page dl-flow dl-measure');
     measure.setAttribute('aria-hidden', 'true');
     measure.style.width = `${g.textW}px`;

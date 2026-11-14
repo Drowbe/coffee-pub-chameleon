@@ -9,7 +9,7 @@
 const DL_EDITOR_GAP = 16; // px between two pages while editing: the reading view's gap (--space-4)
 const DL_EDITOR_PAUSE = 150; // ms of quiet after typing before the heights are read
 
-// blocks: [{ height, kind }] for the top-level blocks in order (kind 'heading' | 'code' | 'pagebreak', else a block; a grid is
+// blocks: [{ height, kind }] for the top-level blocks in order (kind 'head' | 'heading' | 'code' | 'pagebreak', else a block; a grid is
 // a block); geometry: { textH, margin, gap } in px. A page is one `pitch` from the next: textH + 2 margins + gap. A block taller
 // than a page takes more than one pitch (the next page starts after it).
 // -> { spacers: [{ beforeIndex, height, pageNumber, isManualBreak }], lastPad, pages }
@@ -23,7 +23,7 @@ function dlEditorPages(blocks, geometry) {
   const pitch = textH + 2 * margin + gap;
   const list = (Array.isArray(blocks) ? blocks : []).map((b) => {
     const k = b && b.kind;
-    return { height: b && Number.isFinite(b.height) && b.height > 0 ? b.height : 0, kind: k === 'pagebreak' || k === 'heading' || k === 'code' ? k : 'block' };
+    return { height: b && Number.isFinite(b.height) && b.height > 0 ? b.height : 0, kind: k === 'pagebreak' || k === 'heading' || k === 'head' || k === 'code' ? k : 'block' };
   });
   const r = dlPageBreaks(list, textH);
   const spacers = r.before.map((i) => ({ beforeIndex: i, height: 0, pageNumber: 0, isManualBreak: true }));
@@ -190,8 +190,8 @@ function dlEditorPagesPlugin(PM, env) {
       const blocks = read(v);
       if (!blocks) return false;
       const g = dlPageGeometry(sizeKey);
-      const head = blocks.head > 0 ? 1 : 0; // the title above the editor stands in as the first block (a heading, so it stays with what follows)
-      const made = dlEditorPages(head ? [{ height: blocks.head, kind: 'heading' }, ...blocks] : blocks, { textH: g.textH, margin: g.margin, gap: DL_EDITOR_GAP });
+      const head = blocks.head > 0 ? 1 : 0; // the title above the editor stands in as the first block (a 'head': it stays with what follows, and a break right after it is still a break at the very start)
+      const made = dlEditorPages(head ? [{ height: blocks.head, kind: 'head' }, ...blocks] : blocks, { textH: g.textH, margin: g.margin, gap: DL_EDITOR_GAP });
       const spacers = made.spacers.map((s) => ({ ...s, atEnd: s.isManualBreak && s.beforeIndex - head === (blocks.length - 1) && s.pageNumber === made.pages, beforeIndex: s.beforeIndex - head, margin: g.margin, height: Math.round(s.height * 100) / 100 }));
       const same = was.on && was.sizeKey === sizeKey && was.pages === made.pages && Math.abs(was.lastPad - made.lastPad) < 0.5
         && was.spacers.length === spacers.length && spacers.every((s, i) => s.beforeIndex === was.spacers[i].beforeIndex && Math.abs(s.height - was.spacers[i].height) < 0.5 && s.isManualBreak === was.spacers[i].isManualBreak);

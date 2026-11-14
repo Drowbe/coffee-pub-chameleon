@@ -1215,6 +1215,15 @@ test('editor: the textarea adapter reads and writes the box, counts input events
     assert.deepEqual(z.pages[0].breaks, [1]);
     assert.deepEqual(shape(L.dlPageBreaks([BR], H)), []);
   });
+  test('pages: a break right after the head (the line under the title) is still a break at the very start (#802)', () => {
+    const HD = B(20, 'head');
+    const a = L.dlPageBreaks([HD, BR, B(10), B(10)], H);
+    assert.deepEqual(shape(a), [[0, 2, 3]], 'no page holds only the head');
+    assert.deepEqual(a.before, [1]);
+    assert.deepEqual(shape(L.dlPageBreaks([HD, B(10), BR, B(10)], H)), [[0, 1], [3]], 'a break after text still starts a page');
+    assert.deepEqual(shape(L.dlPageBreaks([HD, BR], H)), [[0]]);
+    assert.deepEqual(shape(L.dlPageBreaks([HD, B(20, 'head'), BR, B(10)], H)), [[0, 1, 3]], 'a line and the tags, then the break');
+  });
   test('pages: consecutive breaks make an empty page each', () => {
     assert.deepEqual(shape(L.dlPageBreaks([B(10), BR, BR, B(10)], H)), [[0], [], [3]]);
     assert.deepEqual(shape(L.dlPageBreaks([B(10), BR, BR, BR, B(10)], H)), [[0], [], [], [4]]);

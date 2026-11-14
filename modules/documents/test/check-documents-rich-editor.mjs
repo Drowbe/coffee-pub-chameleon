@@ -337,6 +337,21 @@ test('undo and redo, and Backspace joins two blocks', () => {
   assert.equal(ed.getText(), 'one moretwo\n');
 });
 
+test('a page break goes with Backspace at the start of the block after it and Delete at the end of the block before it (#802)', () => {
+  const base = (k) => PM.baseKeymap[k];
+  const press = (md, name, at) => { const ed = open(md); const st = ed.state(); ed.dispatch(st.tr.setSelection(PM.TextSelection.create(st.doc, at(st.doc)))); const done = L.dlRichKeys(PM)[name] && L.dlRichKeys(PM)[name](ed.state(), ed.dispatch) ? true : base(name)(ed.state(), ed.dispatch); return { done, text: ed.getText() }; };
+  const start = (i) => (doc) => posOf(doc, i) + 1;
+  for (const [what, md, i] of [['a paragraph', 'a\n\n_ _ _\n\nb\n', 2], ['a heading', 'a\n\n_ _ _\n\n# b\n', 2], ['a code block', 'a\n\n_ _ _\n\n```\nb\n```\n', 2]]) {
+    const r = press(md, 'Backspace', start(i));
+    assert.equal(r.done, true, `Backspace in ${what} after a break`);
+    assert.equal(r.text.includes('_ _ _'), false, `the break is gone (${what}): ${JSON.stringify(r.text)}`);
+  }
+  const first = press('_ _ _\n\nb\n', 'Backspace', start(1));
+  assert.equal(first.done, true); assert.equal(first.text, 'b\n', 'a break that is the first block goes too');
+  const del = press('a\n\n_ _ _\n\nb\n', 'Delete', (doc) => endOf(doc, 0));
+  assert.equal(del.done, true); assert.equal(del.text, 'a\n\nb\n', 'Delete at the end of the block before the break');
+});
+
 // ---- 6. what Markdown cannot say ---------------------------------------------------------------------------------------------
 const row = (checked = null) => N.list_item.create({ checked }, [N.paragraph.create()]);
 const STATES = [
@@ -1848,6 +1863,13 @@ test('grid menu: dlRichInGrid, the menu model, the caret-cell decoration', () =>
   const sp = (blocks) => L.dlEditorPages(blocks, geo);
   test('pages 13a: an empty document is one page, no spacers, a whole page below', () => {
     const r = sp([]); assert.deepEqual(r.spacers, []); assert.equal(r.pages, 1); assert.equal(r.lastPad, geo.textH);
+  });
+  test('pages 13b2: a break first in the text makes no blank first page, with the head above it or not (#802)', () => {
+    const none = sp([BR, B(100), B(100)]);
+    const head = sp([{ height: 40, kind: 'head' }, BR, B(100), B(100)]);
+    for (const r of [none, head]) { assert.equal(r.pages, 1, 'one page'); assert.deepEqual(r.spacers.map((s) => [s.isManualBreak, s.height]), [[true, 0]], 'the break takes no height'); }
+    const after = sp([{ height: 40, kind: 'head' }, B(100), BR, B(100)]);
+    assert.equal(after.pages, 2); assert.equal(after.spacers[0].height, pitch - 140, 'a break after text still fills the page');
   });
   test('pages 13b: one block is one page; the last page is padded to a whole page', () => {
     const r = sp([B(100)]); assert.deepEqual(r.spacers, []); assert.equal(r.pages, 1); assert.equal(r.lastPad, geo.textH - 100);
