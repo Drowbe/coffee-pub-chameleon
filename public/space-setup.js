@@ -82,6 +82,38 @@ export const FIELD_TAB = Object.freeze({
 // A module's settings, in the save's lists and its words, are `module:<id>`; they live on the Settings tab (id `modules`), as does the First visit section.
 // The tab the budget is on: the phases tab (every role with a Set up has it), else, when the template has no phases, the
 // space tab (an owner's), else the Settings tab (a moderator's, with First visit). `tabs` is the tabs the person has.
+// The Modules tab by kind of workspace (plan-workspaces.md, decisions 33 to 35). A Customizable Workspace (the Workspace, a saved
+// layout) shows the canvas menu: the modules, Arrange, Layouts, Open for you. A Fixed Workspace (Conference, Calendar, Map,
+// Whiteboards, Documents) shows none of that: only the switches its layouts entry offers (`settings`, from the server), or a
+// sentence saying there is nothing to configure.
+export const FIXED_WORKSPACES = Object.freeze(['conference', 'calendar', 'map', 'whiteboard', 'documents']);
+export const NOTHING_TO_CONFIGURE = 'There is nothing to configure here.';
+// The layouts entry of the Fixed Workspace shown, or null (a Customizable Workspace, or no entry yet).
+export function fixedWorkspaceOf(system = [], shownId = 'workspace') {
+  if (!FIXED_WORKSPACES.includes(shownId)) return null;
+  const entry = (Array.isArray(system) ? system : []).find((l) => l && l.id === shownId);
+  return entry && Array.isArray(entry.settings) ? entry : null;
+}
+// Why a switch is dimmed, by the scope of the setting it writes.
+// `word` is the page's word helper (the template's words for the roles); the default says the role names as they are.
+export const fixedSwitchReason = (scope, word = (w) => w) => (scope === 'space' ? `Only the ${word('owner')} or the ${word('moderator')} can change this.` : `Only the ${word('owner')} can change this.`);
+// What the tab draws: { fixed, canvasControls, heading, rows, empty }. A row is { id, module, key, scope, label, note, on, disabled }.
+// `note` is the setting's help, then the reason when the person may not change it. All of it is text for textContent.
+export function modulesTabView(entry = null, word = undefined) {
+  if (!entry || !Array.isArray(entry.settings)) return { fixed: false, canvasControls: true, heading: '', rows: [], empty: '' };
+  const rows = entry.settings.filter((d) => d && d.type === 'boolean' && typeof d.module === 'string' && typeof d.key === 'string').map((d) => ({
+    id: `${d.module}:${d.key}`,
+    module: d.module,
+    key: d.key,
+    scope: d.scope === 'space' || d.scope === 'person' ? d.scope : 'environment',
+    label: String(d.label || d.key),
+    note: [d.help ? String(d.help) : '', d.canChange ? '' : fixedSwitchReason(d.scope, word)].filter(Boolean).join(' '),
+    on: Boolean(d.value),
+    disabled: !d.canChange,
+  }));
+  return { fixed: true, canvasControls: false, heading: String(entry.name || entry.defaultName || entry.id || ''), rows, empty: rows.length ? '' : NOTHING_TO_CONFIGURE };
+}
+
 export const budgetTabOf = (tabs) => (tabs.includes('phases') ? 'phases' : tabs.includes('space') ? 'space' : 'modules');
 // Closing a space is an owner's on the Members tab, and a moderator's on the Settings tab (which has no Members tab).
 export const tabOfField = (f, tabs = null) => (f === 'budget' && tabs ? budgetTabOf(tabs) : f === 'closed' && tabs && !tabs.includes('members') ? 'modules' : FIELD_TAB[f] || (String(f).startsWith('module:') ? 'modules' : null));
@@ -722,10 +754,72 @@ export function createSpaceSetup(deps) {
   }
 
   // The Modules tab (id `show`): the page's menu of modules, Arrange and Layouts (canvas.mountMenu), drawn into the tab and kept up to date.
+  // In a Fixed Workspace (opts.fixedWorkspace() gives its layouts entry) the tab is that workspace's switches instead (modulesTabView).
   function mountShow() {
     const holder = q('#setup-show');
     if (!holder || typeof state.opts.show !== 'function') return;
-    state.showView = state.opts.show(holder);
+    const entry = typeof state.opts.fixedWorkspace === 'function' ? state.opts.fixedWorkspace() : null;
+    const view = modulesTabView(entry, word);
+    const sig = view.fixed ? JSON.stringify([entry.id, view.heading, view.empty, view.rows.map((r) => [r.id, r.label, r.note, r.disabled])]) : 'canvas'; // not the values: a save's own answer must not redraw the row
+    if (state.showSig === sig) return;
+    state.showSig = sig;
+    state.showView?.destroy();
+    state.showView = null;
+    holder.replaceChildren();
+    for (const id of ['#setup-show-hint', '#setup-modules-note']) { const n = q(id); if (n) n.hidden = view.fixed; }
+    if (!view.fixed) { state.showView = state.opts.show(holder); return; }
+    drawFixedModules(holder, view);
+  }
+  // The heading, then one switch row per setting (texts set with textContent: they come from module manifests), or the sentence.
+  function drawFixedModules(holder, view) {
+    const head = doc.createElement('h3');
+    head.className = 'setup-heading';
+    head.id = 'setup-fixed-heading';
+    head.textContent = view.heading;
+    holder.appendChild(head);
+    if (!view.rows.length) {
+      const p = doc.createElement('p');
+      p.className = 'hint';
+      p.id = 'setup-fixed-empty';
+      p.textContent = view.empty;
+      holder.appendChild(p);
+      return;
+    }
+    const list = doc.createElement('div');
+    list.className = 'switch-list';
+    list.id = 'setup-fixed-switches';
+    list.innerHTML = switchListHtml(view.rows.map((r) => ({ id: r.id, name: ' ', note: r.note ? ' ' : '', on: r.on, disabled: r.disabled })), 'fixed');
+    const boxes = [...list.querySelectorAll('input.sdk-switch')];
+    view.rows.forEach((r, i) => {
+      const row = boxes[i].closest('label');
+      row.querySelector('.sdk-choice-label').textContent = r.label;
+      const desc = row.querySelector('.sdk-choice-desc');
+      if (desc) desc.textContent = r.note;
+      boxes[i].addEventListener('change', () => saveFixedSwitch(r, boxes[i]));
+    });
+    wireSwitchList(list);
+    holder.appendChild(list);
+    const say = doc.createElement('p');
+    say.className = 'hint';
+    say.id = 'setup-fixed-status';
+    say.setAttribute('role', 'status');
+    holder.appendChild(say);
+  }
+  // A switch saves at once, through the module's own settings route (what the Settings tab of Manage writes); a refusal puts it back.
+  async function saveFixedSwitch(r, box) {
+    const on = box.checked;
+    const status = () => q('#setup-fixed-status');
+    box.disabled = true;
+    try {
+      await api('PUT', `/api/modules/${encodeURIComponent(r.module)}/settings/${r.scope}`, { values: { [r.key]: on }, ...(r.scope === 'space' ? { space: state.space.id } : {}) });
+      box.disabled = false;
+      if (status()) status().textContent = 'Saved.';
+      if (typeof state.opts.onFixedSaved === 'function') state.opts.onFixedSaved();
+    } catch (err) {
+      box.checked = !on;
+      box.disabled = false;
+      if (status()) status().textContent = (err && err.message) || 'That did not work. Try again.';
+    }
   }
 
   // The tabs that fit show; the rest go into the "..." after them (tabOverflow: the first tab and the one shown never
@@ -1715,7 +1809,7 @@ export function createSpaceSetup(deps) {
   }
   // The keyboard goes to the tab's first field: the name, the first member's switch, the first phase's start (or the
   // first step's day), the first visit's choice, the first module setting.
-  const FIRST_FIELD = { show: '#setup-show .host-menu-item[tabindex="0"]', space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', modules: '#setup-first-visit input:checked, #setup-first-visit input, #setup-module-settings input, #setup-module-settings select' };
+  const FIRST_FIELD = { show: '#setup-show .host-menu-item[tabindex="0"], #setup-fixed-switches input:not(:disabled)', space: '#setup-name', members: '#setup-members input, #setup-allow-guests', phases: '#setup-phase-list input:not(:disabled), #setup-phase-list .phase-add', modules: '#setup-first-visit input:checked, #setup-first-visit input, #setup-module-settings input, #setup-module-settings select' };
   function focusFirst() {
     const content = q(`#setup-content-${state.tab}`);
     const firstStep = state.tab === 'phases' && q('#setup-phase-first') && !q('#setup-phase-first').hidden ? q('#setup-phase-first-day') : null;
@@ -1853,5 +1947,5 @@ export function createSpaceSetup(deps) {
     paintBudget();
   }
 
-  return { el, open, close, done, cancel, offerBudget, select: (id) => select(id, { focus: true }), isOpen: () => Boolean(state) };
+  return { el, open, close, done, cancel, offerBudget, redrawShow: () => { if (state) mountShow(); }, select: (id) => select(id, { focus: true }), isOpen: () => Boolean(state) };
 }
