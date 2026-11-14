@@ -149,7 +149,7 @@ fieldset.hc-part > legend.hc-part-name + * { clear: both; }
 
 .hc-chips-cell > .sdk-status { margin: 0 var(--space-1) var(--space-1) 0; }
 .hc-used { min-width: 180px; }
-.hc-more-names { color: var(--text-muted); }
+.hc-more-names, .hc-spaces { color: var(--text-muted); }
 .hc-tpls tbody tr { height: 52px; }
 /* the editor: its parts in a column, the jump list beside them */
 .hc-editor { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: var(--space-4); min-width: 0; }

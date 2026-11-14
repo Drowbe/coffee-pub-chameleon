@@ -507,10 +507,18 @@
         </div>
       </div>
 
+      <!-- Whether a space may read a template of its own (plan-space-templates.md). Saved as it is switched. -->
+      <div class="panel" id="space-templates-section">
+        <h2 data-fill>{Space} templates</h2>
+        <label class="sdk-choice-row" data-fill><span class="sdk-choice-text"><span class="sdk-choice-label">Let {a space} use its own template</span></span><input type="checkbox" class="sdk-switch" role="switch" id="set-space-templates"></label>
+        <p class="hint" data-fill>Off, every {space} reads this {environment}'s template. What each {space} chose is kept, and comes back when you turn this on.</p>
+        <span class="status" id="space-templates-status" role="status"></span>
+      </div>
+
       <!-- What people read for each level and role here (plan-environment-templates, "The vocabulary"): drawn by admin.js. -->
       <div class="panel" id="words-panel">
       <h2>Words</h2>
-      <p class="hint" data-fill>What people read here for each level and role: in the header, on every page and in {modules}. Type each as it reads in the middle of a sentence (capitals are added where one is needed). <span id="words-blank">Leave a word blank for its default.</span> The host and admin words are the host's own and don't change.</p>
+      <p class="hint" data-fill>What people read here for each level and role: in the header, on every page and in {modules}. Type each as it reads in the middle of a sentence (capitals are added where one is needed). <span id="words-blank">Leave a word blank for its default.</span> The host and admin words are the host's own and don't change. Words you set here apply in every {space}, whatever its template.</p>
       <div class="words-list" id="words-list"></div>
       <div class="row">
         <button class="btn btn-primary" id="save-words" type="button">Save</button>

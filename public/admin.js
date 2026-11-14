@@ -4,6 +4,7 @@ import { CHANGEABLE, DEFAULTS, homeDefault, words, fill as fillWords, VERBS, DEF
 import { wireFlightSchedule } from '/flight-schedule.js';
 import '/slot-paste.js'; // paste a picture into any image slot
 import { renderOffer, switchConfirm } from '/template-offer.js';
+import { addSpaceFlow } from '/template-choice.js';
 import { confirmDialog } from '/confirm.js';
 import { fileText } from '/file-text.js';
 import { rowTabs } from '/page-tabs.js';
@@ -545,8 +546,14 @@ $('spaces').addEventListener('click', (event) => {
 
 $('add-space').addEventListener('click', async () => {
   try {
-    const { space } = await api('POST', '/api/spaces', { name: `${word('space', { cap: true })} ${spaces.length}`, description: '', members: [] });
-    openSetup(space.id); // into the new space with Set up open: its name, members and picture right away
+    // With the choice on, a small dialog asks for the Template first (template-choice.js); a refusal reads there.
+    await addSpaceFlow({
+      api, word,
+      run: async (chosen) => {
+        const { space } = await api('POST', '/api/spaces', { name: `${word('space', { cap: true })} ${spaces.length}`, description: '', members: [], ...chosen });
+        openSetup(space.id); // into the new space with Set up open: its name, members and picture right away
+      },
+    });
   } catch (err) {
     say($('spaces-status'), err.message, true);
   }
@@ -596,12 +603,22 @@ async function saveSettings(patch, statusEl) {
     }
     await loadBranding();
     say(statusEl, 'saved');
+    return true;
   } catch (err) {
     say(statusEl, err.message, true);
+    return false;
   }
 }
 $('save-settings').addEventListener('click', () => saveSettings({ environmentName: $('set-environment-name').value }, $('settings-status')));
 // The home icon, on the Template tab (addendum 2): saved on its own.
+// Whether a space may use its own template: saved as it is switched; the server keeps each space's choice either way.
+$('set-space-templates').addEventListener('change', async (e) => {
+  const box = e.target;
+  box.disabled = true;
+  if (!await saveSettings({ spaceTemplates: box.checked }, $('space-templates-status'))) box.checked = !box.checked; // refused: as it was
+  box.disabled = false;
+  box.focus();
+});
 $('save-home-icon').addEventListener('click', () => saveSettings({ homeIcon: selectedHomeIcon }, $('home-icon-status')));
 // --- words ---------------------------------------------------------------------
 // The Words group (Environment tab): the ten level and role words an owner may change, each a singular, a plural and,
@@ -2726,6 +2743,7 @@ async function init() {
     $('set-picture-scale').value = String(settings.pictureScale || 100);
     $('set-allow-screen-share').checked = settings.allowScreenShare !== false;
     $('set-allow-asides').checked = settings.allowAsides !== false;
+    $('set-space-templates').checked = settings.spaceTemplates !== false;
     $('set-allow-private').checked = settings.allowPrivate !== false;
     $('set-allow-reactions').checked = settings.allowReactions !== false;
     $('set-auto-join-call').checked = settings.autoJoinCall === true;
