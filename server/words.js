@@ -16,6 +16,10 @@
 
 const KEYS = ['host', 'environment', 'space', 'home', 'aside', 'canvas', 'module', 'object', 'admin', 'owner', 'moderator', 'member', 'guest'];
 const FIXED = ['host', 'admin'];
+// The words a space's own template changes inside that space (plan-space-templates.md, question 2b); the keys that name
+// things above a space (environment, owner, home) and the `enter` verb stay the environment's.
+const SPACE_KEYS = ['space', 'aside', 'canvas', 'module', 'object', 'moderator', 'member', 'guest'];
+const SPACE_VERBS = ['layout'];
 const CHANGEABLE = KEYS.filter((k) => !FIXED.includes(k));
 
 const capital = (text) => (text ? text.charAt(0).toLocaleUpperCase('en') + text.slice(1) : text);
@@ -216,6 +220,6 @@ function resolveVerbs(ownerVerbs, templateVerbs) {
 }
 
 module.exports = {
-  KEYS, FIXED, CHANGEABLE, DEFAULTS, MAX_LENGTH, homeDefault, cleanWord, applyPatch, ownOnly, resolve, format, word, fill, useCurrent,
+  KEYS, FIXED, SPACE_KEYS, SPACE_VERBS, CHANGEABLE, DEFAULTS, MAX_LENGTH, homeDefault, cleanWord, applyPatch, ownOnly, resolve, format, word, fill, useCurrent,
   VERBS, DEFAULT_VERBS, VERB_MAX_LENGTH, cleanVerb, unknownVerb, applyVerbsPatch, ownVerbsOnly, resolveVerbs,
 };

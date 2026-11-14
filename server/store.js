@@ -274,6 +274,8 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const SITE_IMAGES = ['icon', 'background'];
 // Every user belongs to the Lobby; it cannot be deleted.
 const LOBBY = 'lobby';
+// A template's id (server/templates.js ID_RE): the only shape a space's `template` may have.
+const TEMPLATE_ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 // A user's own mic/camera processing settings -- everything in the call
 // settings popover except which physical device to use (that's per-machine,
@@ -684,6 +686,12 @@ class Store {
     // The icons installed and built-in modules have of their own (their manifests'), which a display icon may also be;
     // set by the environment's build (environment.js, index.js).
     this.moduleIconIds = () => [];
+    // A template, by id, as the environment's catalog has it ({ words, verbs, phases, moduleNames, moduleIcons, spaceDefaults,
+    // hidden, ...}) or null; and the id of the space the current request is about, or null (plan-space-templates.md). Both are
+    // set by the environment's build in index.js; a Store on its own reads no space's template.
+    this.templateById = () => null;
+    this.currentSpace = () => null;
+    this.unknownTemplatesLogged = new Set();
   }
 
   load() {
@@ -871,6 +879,9 @@ class Store {
       // The space's guests see the fields modules keep from guests (a module's guards.hidden: the Planner's costs and
       // booking codes, Budget's amounts); an owner turns it on. Absent means they don't.
       ...(r.guestsSeeHidden === true ? { guestsSeeHidden: true } : {}),
+      // The template this space reads (plan-space-templates.md): an id; absent means the environment's. Kept as stored, whether or
+      // not this server has it (an unknown one reads as the environment's). Never on the Lobby.
+      ...(id !== LOBBY && typeof r.template === 'string' && TEMPLATE_ID_RE.test(r.template) ? { template: r.template } : {}),
       // The template's phases' dates on this space, { <id>: { start?, end? } } (plan-one-bar.md, step 1; the rule is
       // public/phases.js); absent while none is set. Kept as stored: the rule's refusals are updateSpace's.
       ...(Object.keys(phaseRule.cleanDates(r.phases)).length ? { phases: phaseRule.cleanDates(r.phases) } : {}),
@@ -1062,6 +1073,64 @@ class Store {
     return (this.data.settings.icons || []).map((i) => i.id);
   }
 
+  // --- a space's own template (plan-space-templates.md) ---------------------------------------------------------------
+  // Whether a space may read a template of its own (settings.spaceTemplates; absent means on). Off, every space reads the
+  // environment's and the keys stay on the records.
+  spaceTemplatesOn() {
+    return this.data.settings.spaceTemplates !== false;
+  }
+
+  // The template a space (or an aside, through the space it was pulled out of) reads, from the catalog, or null: the space has
+  // no key, the switch is off, it is the Lobby, or the id is one this server no longer has (said once in the log).
+  // Never answers a thing about a space that is not in this environment.
+  spaceTemplateFor(id) {
+    if (!this.spaceTemplatesOn() || typeof id !== 'string') return null;
+    let space = this.data.spaces.find((r) => r.id === id) || null;
+    if (!space) {
+      const aside = this.data.asides.find((a) => a.id === id);
+      space = aside && aside.origin ? this.data.spaces.find((r) => r.id === aside.origin) || null : null;
+    }
+    if (!space || space.id === LOBBY || typeof space.template !== 'string') return null;
+    const found = this.templateById(space.template);
+    if (!found && !this.unknownTemplatesLogged.has(space.template)) {
+      this.unknownTemplatesLogged.add(space.template);
+      console.warn(`A space uses the template "${space.template.slice(0, 40)}", which this server does not have, so it reads the environment's.`);
+    }
+    return found || null;
+  }
+
+  // What a space (or an aside) reads, in the order the owner's own words and module names first, then the space's template,
+  // then the environment's template, then the defaults: { words, verbs, phases, template }. Only the keys in words.SPACE_KEYS
+  // and the verbs in words.SPACE_VERBS change; `host`, `admin`, `environment`, `owner`, `home` and `enter` are the environment's.
+  // An aside has no phases of its own: its phases are the environment's. With no space, no key, or the switch off, it answers
+  // what resolvedWords(), resolvedVerbs() and templatePhases answer.
+  lookOf(id = null) {
+    const env = { words: this.resolvedWords(), verbs: this.resolvedVerbs(), phases: this.templatePhases, template: null };
+    const t = id ? this.spaceTemplateFor(id) : null;
+    if (!t) return env;
+    const full = words.resolve(this.data.settings.words, { ...words.ownOnly(this.templateWords), ...words.ownOnly(t.words) });
+    for (const k of words.SPACE_KEYS) env.words[k] = full[k];
+    const fullVerbs = words.resolveVerbs(this.data.settings.verbs, { ...words.ownVerbsOnly(this.templateVerbs), ...words.ownVerbsOnly(t.verbs) });
+    for (const k of words.SPACE_VERBS) env.verbs[k] = fullVerbs[k];
+    const isSpace = this.data.spaces.some((r) => r.id === id);
+    if (isSpace) env.phases = Array.isArray(t.phases) ? t.phases : [];
+    env.template = t.id;
+    return env;
+  }
+
+  // The phases a space record reads, for a draft not saved yet: its template's (live), else the environment's.
+  phasesOfDraft(draft) {
+    const t = this.spaceTemplatesOn() && draft.id !== LOBBY && typeof draft.template === 'string' ? this.templateById(draft.template) : null;
+    if (t) return Array.isArray(t.phases) ? t.phases : [];
+    return Array.isArray(this.templatePhases) ? this.templatePhases : [];
+  }
+
+  // The words in force for the current request: the space's when the request is about one (currentSpace), else the environment's.
+  wordsNow() {
+    const id = typeof this.currentSpace === 'function' ? this.currentSpace() : null;
+    return id ? this.lookOf(id).words : this.resolvedWords();
+  }
+
   // Every level's and role's words for this environment (server/words.js): the owner's, else the template's, else
   // the default.
   resolvedWords() {
@@ -1097,28 +1166,32 @@ class Store {
   // What a module is called and shown as in this environment, by module id (installed, bundled or built in): the
   // owner's own (settings.moduleNames / settings.moduleIcons), else the template's, else null, meaning the module's
   // own name and icon from its manifest. `ownName`/`ownIcon`: the owner's alone, for Manage's fields.
-  moduleDisplay(id) {
+  moduleDisplay(id, spaceId = null) {
     const own = (map) => { const v = this.data.settings[map]?.[id]; return typeof v === 'string' && v ? v : null; };
     const from = (map) => { const v = map && typeof map === 'object' ? map[id] : null; return typeof v === 'string' && v ? v : null; };
+    // In a space with a template of its own: the owner's, then the space's template's, then the environment's template's.
+    const st = spaceId && this.data.spaces.some((r) => r.id === spaceId) ? this.spaceTemplateFor(spaceId) : null;
+    const templateName = (st && from(st.moduleNames)) || from(this.templateModuleNames);
+    const templateIcon = (st && from(st.moduleIcons)) || from(this.templateModuleIcons);
     const ownName = own('moduleNames');
     const ownIcon = own('moduleIcons');
     // An icon applies only while it can be drawn (displayIconIds); one that cannot now (its module uninstalled, its
     // entry taken off the icon list) is kept as the owner's, and reported as such, but reads the next one down.
     // The list of drawable icons is built only when there is an icon to check: a name is asked for far more often.
-    const wanted = [ownIcon, from(this.templateModuleIcons)];
-    const icons = wanted.some(Boolean) ? this.displayIconIds() : [];
+    const wanted = [ownIcon, templateIcon];
+    const icons = wanted.some(Boolean) ? this.displayIconIds(st) : [];
     const icon = wanted.find((i) => i && icons.includes(i)) || null;
     // templateName/templateIcon: what the template gives, whether or not the owner's own is set over it.
-    return { name: ownName || from(this.templateModuleNames), icon, ownName, ownIcon, templateName: from(this.templateModuleNames), templateIcon: from(this.templateModuleIcons) };
+    return { name: ownName || templateName, icon, ownName, ownIcon, templateName, templateIcon };
   }
 
   // What a display icon may be: one the pages can draw as a module's icon (`fa-solid fa-<id>`), so one of this
   // environment's icons whose classes are exactly that, or any installed or built-in module's own icon.
   // A template's module icons count too: server/templates.js only takes Font Awesome Free solid icons.
-  displayIconIds() {
+  displayIconIds(spaceTemplate = null) {
     const solid = (this.data.settings.icons || []).filter((i) => i.classes === `fa-solid fa-${i.id}`).map((i) => i.id);
-    const template = this.templateModuleIcons && typeof this.templateModuleIcons === 'object' ? Object.values(this.templateModuleIcons) : [];
-    return [...new Set([...solid, ...this.moduleIconIds(), ...template])];
+    const of = (t) => (t && typeof t === 'object' ? Object.values(t) : []);
+    return [...new Set([...solid, ...this.moduleIconIds(), ...of(this.templateModuleIcons), ...of(spaceTemplate && spaceTemplate.moduleIcons)])];
   }
 
   // The template this environment was made from, as recorded, or null (server/templates.js).
@@ -1211,7 +1284,7 @@ class Store {
   // One level's or role's word in this environment (server/words.js's format): the defaults while app.json is still
   // being read.
   word(key, options) {
-    return words.format(this.data ? this.resolvedWords() : null, key, options);
+    return words.format(this.data ? this.wordsNow() : null, key, options);
   }
 
   // Every field is checked into a draft first and the draft applied at the end, so a refused field
@@ -1289,6 +1362,12 @@ class Store {
     if (patch.otherCalendars !== undefined) {
       if (typeof patch.otherCalendars !== 'boolean') throw new StoreError('otherCalendars is true or false');
       s.otherCalendars = patch.otherCalendars;
+    }
+    // Whether a space may read a template of its own (plan-space-templates.md, question 6): on unless stored false. Off keeps
+    // every space's key and ignores it.
+    if (patch.spaceTemplates !== undefined) {
+      if (typeof patch.spaceTemplates !== 'boolean') throw new StoreError('spaceTemplates is true or false');
+      s.spaceTemplates = patch.spaceTemplates;
     }
     if (patch.publishedCalendar !== undefined) {
       if (typeof patch.publishedCalendar !== 'boolean') throw new StoreError('publishedCalendar is true or false');
@@ -1893,17 +1972,32 @@ class Store {
   // people lists; never twice, and the Lobby (made by the store itself) is not made here. The host admin's stand-in
   // (hostAdmin: true) does not join what it makes (GitHub #334): it manages everything without being a member, and it can
   // still be added on purpose.
-  addSpace({ name, description, members, profile, link, linkIcon, creator }) {
+  addSpace({ name, description, members, profile, link, linkIcon, creator, template }) {
     let id;
     do id = randomKey();
     while (this.idTaken(id));
-    const startsWith = profile ?? this.data.settings.spaceDefaults?.profile; // the environment's default (a template's)
-    const space = this.sanitizeSpace({ id, name: name || `New ${this.word('space')}`, description, members, profile: startsWith, link, linkIcon, createdAt: new Date().toISOString() });
+    // A template of its own (checked as updateSpace checks it): its starting profile and opens-with, else the environment's.
+    const own = template === undefined || template === null ? null : this.chosenTemplate(template, null);
+    const startsWith = profile ?? own?.spaceDefaults?.profile ?? this.data.settings.spaceDefaults?.profile; // the environment's default (a template's)
+    const space = this.sanitizeSpace({ id, name: name || `New ${this.word('space')}`, description, members, profile: startsWith, link, linkIcon, createdAt: new Date().toISOString(), ...(own ? { template: own.id } : {}) });
+    const opensWith = own?.spaceDefaults?.opensWith;
+    if (Array.isArray(opensWith) && opensWith.length && cleanOpensWith(opensWith)) space.opensWith = cleanOpensWith(opensWith);
     space.members = space.members.filter((k) => this.userByKey(k));
     if (creator && this.userByKey(creator) && !this.userByKey(creator).hostAdmin && !space.members.includes(creator)) space.members.push(creator);
     this.data.spaces.push(space);
     this.save();
     return this.spaceById(id);
+  }
+
+  // A template named for a space, checked: the catalog's entry. 400 with one sentence for a value that is not an id, an id
+  // this environment cannot see, or one hidden now unless the space already has it (`current`); 409 while the switch is off.
+  chosenTemplate(value, current) {
+    if (!this.spaceTemplatesOn()) throw new StoreError(`A ${this.word('space')} can't use its own template while that is turned off in this ${this.word('environment')}.`, 409);
+    const shown = typeof value === 'string' ? value.slice(0, 40) : 'that';
+    if (typeof value !== 'string' || !TEMPLATE_ID_RE.test(value)) throw new StoreError(`There is no template called ${shown}.`, 400);
+    const found = this.templateById(value);
+    if (!found || (found.hidden && value !== current)) throw new StoreError(`There is no template called ${shown}.`, 400);
+    return found;
   }
 
   // Whether a space or an aside already has this id: the two share the call's names and the `space` a person is in.
@@ -1963,6 +2057,14 @@ class Store {
     const draft = { ...space };
     if (patch.name !== undefined) draft.name = cleanText(patch.name, 40) || draft.name;
     if (patch.description !== undefined) draft.description = String(patch.description ?? '').trim().slice(0, 300);
+    // The space's own template (plan-space-templates.md): an id, or null to read the environment's again. Changes the live part
+    // only: nothing else on the record is touched. Who may send it is the route's to decide (owners and the admin).
+    if (patch.template !== undefined) {
+      if (id === LOBBY) throw new StoreError(`The Lobby reads the ${this.word('environment')}'s template and takes none of its own.`, 400);
+      if (patch.template === null) delete draft.template;
+      else if (patch.template === space.template) { /* the id already stored: nothing to check or change, even if it is gone or the switch is off */ }
+      else draft.template = this.chosenTemplate(patch.template, space.template).id;
+    }
     if (patch.members !== undefined && id !== LOBBY) {
       if (!Array.isArray(patch.members)) throw new StoreError('members must be a list of user keys');
       draft.members = [...new Set(patch.members.filter((k) => typeof k === 'string' && this.userByKey(k)))];
@@ -2080,9 +2182,20 @@ class Store {
       if (patch.phases === null) {
         delete draft.phases;
       } else {
-        const problem = phaseRule.problemOf(Array.isArray(this.templatePhases) ? this.templatePhases : [], patch.phases, { created: draft.createdAt });
+        // The phases are the ones this space reads (its own template's, else the environment's). A whole-map save from a space
+        // whose template changed echoes dates for ids the template lacks: those are left out of the check and stay on the
+        // record as they are; an id the template lacks that the record does not hold is still refused.
+        const list = this.phasesOfDraft(draft);
+        const known = new Set(list.map((p) => p.id));
+        const stored = space.phases && typeof space.phases === 'object' ? space.phases : {};
+        const stale = (k) => !known.has(k) && Object.prototype.hasOwnProperty.call(stored, k);
+        const given = patch.phases && typeof patch.phases === 'object' && !Array.isArray(patch.phases)
+          ? Object.fromEntries(Object.entries(patch.phases).filter(([k]) => !stale(k)))
+          : patch.phases;
+        const problem = phaseRule.problemOf(list, given, { created: draft.createdAt });
         if (problem) throw new StoreError(problem);
-        const dates = phaseRule.cleanDates(patch.phases);
+        const dates = { ...phaseRule.cleanDates(given) };
+        for (const k of Object.keys(stored)) if (stale(k)) dates[k] = stored[k];
         if (Object.keys(dates).length) draft.phases = dates;
         else delete draft.phases;
       }
@@ -2106,6 +2219,7 @@ class Store {
     if (!('publishCalendar' in draft)) delete space.publishCalendar;
     if (!('guestsSeeHidden' in draft)) delete space.guestsSeeHidden;
     if (!('phases' in draft)) delete space.phases;
+    if (!('template' in draft)) delete space.template;
     if (!('entry' in draft)) delete space.entry;
     if (!('requestAccess' in draft)) delete space.requestAccess;
     if (!('closed' in draft)) delete space.closed;

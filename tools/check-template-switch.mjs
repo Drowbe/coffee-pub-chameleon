@@ -470,7 +470,7 @@ try {
     assert.equal((await console_('PATCH', '/api/host/templates/harbour', { hidden: true })).json.template.version, 2, 'hiding is not a new version');
     assert.deepEqual(await console_('POST', '/api/host/environments', { slug: 'sail2', name: 'Sail 2', template: 'harbour' }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called harbour.' }]);
     assert.equal((await asOwner('GET', '/api/environment/template')).json.choices.some((c) => c.id === 'harbour'), true, 'the one it has is still listed for it');
-    assert.deepEqual(await console_('DELETE', '/api/host/templates/harbour').then((r) => [r.status, r.json]), [409, { error: 'Environments use this template: Sail. Hide it instead.' }]);
+    assert.deepEqual(await console_('DELETE', '/api/host/templates/harbour').then((r) => [r.status, r.json]), [409, { error: 'Environments or spaces use this template: Sail. Hide it instead.' }]);
     // Export, then import under a new id; an import with a taken id is refused.
     const file = await console_('GET', '/api/host/templates/harbour/export');
     assert.equal(file.headers['content-disposition'], 'attachment; filename="harbour.template.json"');
