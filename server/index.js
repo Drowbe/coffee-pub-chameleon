@@ -4749,6 +4749,9 @@ app.get('/api/spaces/:id', requireUser, (req, res) => {
   if (isOwner(req)) return res.json({ space: { ...space, template: space.template || null }, look: lookView(space.id) });
   if (!moderates(currentUser(req), space)) return res.status(403).json({ error: `${word('owner', { many: true })} only` });
   const theirs = { id: space.id, template: space.template || null }; // a moderator reads the template and does not choose it
+  // The name of that same template (the one the owner's list shows), so Set up can say it: never another template's, and none when the space has none or the server no longer has it.
+  const own = space.template ? templateFor(currentEnvironment(), space.template) : null;
+  if (own && own.name) theirs.templateName = own.name;
   for (const k of MODERATOR_SPACE_FIELDS) if (k in space) theirs[k] = space[k];
   res.json({ space: theirs, look: lookView(space.id) });
 });

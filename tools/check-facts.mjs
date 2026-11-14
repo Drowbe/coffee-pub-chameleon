@@ -421,7 +421,7 @@ try {
   assert.deepEqual((await call('GET', P, { cookie: admin })).json.space.budget, { amount: 500, currency: 'USD' }, 'Set up\'s read carries it for the admin');
   const moRead = (await expect('the moderator\'s Set up read', 200, 'GET', P, { cookie: mo })).json.space;
   assert.deepEqual(moRead.budget, { amount: 500, currency: 'USD' }, 'it carries the budget for the moderator');
-  ok(Object.keys(moRead).every((k) => ['id', 'template', 'phases', 'opensWith', 'defaultLayout', 'tabs', 'budget'].includes(k)) && !('name' in moRead) && !('guestToken' in moRead), `only the moderator's fields (${Object.keys(moRead)})`);
+  ok(Object.keys(moRead).every((k) => ['id', 'template', 'templateName', 'phases', 'opensWith', 'defaultLayout', 'tabs', 'budget'].includes(k)) && !('name' in moRead) && !('guestToken' in moRead), `only the moderator's fields (${Object.keys(moRead)})`);
   for (const [label, cookie] of [['a member', pat], ['someone outside', out]]) {
     const r = await call('GET', P, { cookie });
     ok((label === 'a member' ? r.status === 403 && r.json?.error === 'owners only' : r.status === 404 && r.json?.error === 'no such space') && !r.text.includes('budget'), `${label} cannot read Set up's record (${r.status})`);
