@@ -43,6 +43,8 @@ const FIELDS = ['id', 'name', 'description', 'version', 'words', 'home', 'icons'
 const MODULE_KEYS = ['name', 'icon', 'settings', 'labels', 'starter'];
 const MODULE_KEYS_SENTENCE = 'a template sets only name, icon, settings, labels and starter.';
 const MAX_MODULES = 60;
+// A template's version: a whole number, at most this.
+const MAX_VERSION = 1000000;
 const MAX_PHASES = 12;
 const MAX_OPENS_WITH = 20;
 const PHASE_KEYS = ['id', 'label', 'main', 'icon'];
@@ -190,7 +192,7 @@ function moduleEntryProblems(id, entry, manifest, faDir, say) {
         if (REFUSED_SETTING_TYPES.includes(def.type)) { say(`${where}.settings: "${key}" is a ${def.type}, so a template can't set it.`); continue; }
         if (def.scope === 'person' && def.template === 'driven') { say(`${where}.settings: "${key}" is each person's own, so a template can only suggest it.`); continue; }
         try {
-          cleanValue(def, value); // the module's own rules for the value (server/module-settings.js)
+          cleanValue({ ...def, label: def.label || key }, value); // the module's own rules (server/module-settings.js); a setting with no label is named by its key
         } catch (err) {
           say(`${where}.settings: ${err.message}.`);
         }
@@ -238,7 +240,7 @@ function problemsOf(raw, { file = null, manifests = null, faDir = FA_FREE_SOLID 
   else if (file && path.basename(file, '.json') !== raw.id) say(`"id" must match the file's name (${path.basename(file)}).`);
   if (!plainText(raw.name, 40)) say('"name" must be plain text of 1 to 40 characters.');
   if (!plainText(raw.description, 200)) say('"description" must be plain text of 1 to 200 characters.');
-  if (raw.version !== undefined && (!Number.isInteger(raw.version) || raw.version < 1)) say('"version" must be a whole number, 1 or more.');
+  if (raw.version !== undefined && (!Number.isInteger(raw.version) || raw.version < 1 || raw.version > MAX_VERSION)) say(`"version" must be a whole number from 1 to ${MAX_VERSION}.`);
 
   if (raw.words !== undefined) {
     if (!isObject(raw.words)) say('"words" must be an object of words by name.');
@@ -686,5 +688,5 @@ module.exports = {
   PARTS, partFingerprints, appliedPartsChanged, appliedOnceFingerprint, wholeFingerprint, loadTemplates, problemsOf, cleanTemplate, storedFields,
   get, list, all, defaultTemplate, useLive, applyTemplate, withRequirements, addIcons, turnOnModules, offerFor, applyOffer, moduleIdsOf, offers,
   bundledManifests, FIELDS, MODULE_KEYS, BUILTIN_MODULE_IDS, SETTINGS, TEMPLATES_DIR, DEFAULT_ID, CALL_POSITIONS, CALL_LAYOUTS, PHASE_MEASURES,
-  FIXED_WORKSPACES, MAX_TEMPLATE_BYTES, MAX_STARTER_BYTES, MAX_STARTER_KEYS, MAX_REACTIONS, MAX_ICON_SET, MAX_STARTER_SPACES, MAX_MODULES,
+  FIXED_WORKSPACES, MAX_VERSION, MAX_TEMPLATE_BYTES, MAX_STARTER_BYTES, MAX_STARTER_KEYS, MAX_REACTIONS, MAX_ICON_SET, MAX_STARTER_SPACES, MAX_MODULES,
 };

@@ -156,7 +156,9 @@ try {
     assert.deepEqual(problems(minimal(), { file: 'other.json' }), ['"id" must match the file\'s name (other.json).']);
     assert.deepEqual(problems(minimal({ name: '<b>x</b>' })), ['"name" must be plain text of 1 to 40 characters.']);
     assert.deepEqual(problems(minimal({ description: 'x'.repeat(201) })), ['"description" must be plain text of 1 to 200 characters.']);
-    assert.deepEqual(problems(minimal({ version: 0 })), ['"version" must be a whole number, 1 or more.']);
+    assert.deepEqual(problems(minimal({ version: 0 })), ['"version" must be a whole number from 1 to 1000000.']);
+    for (const version of [9e15, 1000001, 1.5]) assert.deepEqual(problems(minimal({ version })), ['"version" must be a whole number from 1 to 1000000.'], String(version));
+    assert.deepEqual(problems(minimal({ version: 1000000 })), [], 'the highest version is accepted');
     assert.deepEqual(problems(minimal({ settings: { activeThemeId: null } })), [`settings: "activeThemeId" is not a setting a template can give; those are ${Object.keys(templates.SETTINGS).join(', ')}.`], 'the theme left templates (decision 13)');
     assert.deepEqual(problems(minimal({ settings: { themeMode: 'dark' } }))[0].slice(0, 30), 'settings: "themeMode" is not a');
     assert.deepEqual(problems(minimal({ settings: { clock: '13' } })), ['settings: "13" is not a value "clock" takes.']);
@@ -230,6 +232,7 @@ try {
         { key: 'own', label: 'Own', type: 'boolean', scope: 'space' },
         { key: 'key', label: 'Key', type: 'secret', scope: 'environment', template: 'default', maxLength: 10 },
         { key: 'site', label: 'Site', type: 'url', scope: 'environment', template: 'driven' },
+        { key: 'count', type: 'number', scope: 'space', template: 'default', min: 1, max: 5 },
       ],
       labels: { milestone: { one: 'milestone', many: 'milestones' } },
       starter: true,
@@ -244,6 +247,7 @@ try {
     assert.deepEqual(p({ settings: { site: 'https://example.com' } }), ['modules.fake.settings: "site" is a url, so a template can\'t set it.']);
     assert.deepEqual(p({ settings: { view: 'a' } }), ['modules.fake.settings: "view" is each person\'s own, so a template can only suggest it.']);
     assert.deepEqual(p({ settings: [] }), ['modules.fake.settings must be an object of settings by key.']);
+    assert.deepEqual(p({ settings: { count: 9 } }), ['modules.fake.settings: count must be between 1 and 5.'], 'a setting with no label is named by its key');
     assert.deepEqual(p({ labels: { milestone: { one: 'session', many: 'sessions' } } }), []);
     assert.deepEqual(p({ labels: { goal: { one: 'x', many: 'xs' } } }), ['modules.fake.labels: "goal" is not a word the fake module lets a template rename.']);
     assert.deepEqual(p({ labels: { milestone: { one: '<b>', many: 'x' } } }), ['modules.fake.labels: The word for milestone can use only letters, spaces, hyphens and apostrophes.']);
@@ -533,7 +537,7 @@ try {
       const file = path.join(single, 'app.json');
       const app = JSON.parse(fs.readFileSync(file, 'utf8'));
       const good = { id: 'kept', name: 'Kept', description: 'Fine.', modules: { chat: {} }, version: 1 };
-      app.templates = [good, { ...good, id: 'reach', name: 'Reach', modules: { chat: { permissions: { view: ['guest'] } } } }, { ...good, id: 'themed', name: 'Themed', theme: { name: 'x' } }, { ...good, id: 'default', name: 'Fake default' }];
+      app.templates = [good, { ...good, id: 'topped', name: 'Topped', version: 1000000 }, { ...good, id: 'huge', name: 'Huge', version: 9e15 }, { ...good, id: 'reach', name: 'Reach', modules: { chat: { permissions: { view: ['guest'] } } } }, { ...good, id: 'themed', name: 'Themed', theme: { name: 'x' } }, { ...good, id: 'default', name: 'Fake default' }];
       fs.writeFileSync(file, JSON.stringify(app));
       server = await startServer(single, { ADMIN_PASSWORD: 'admin-password-1' });
       const again = cookieOf(await call(server, '', 'POST', '/api/login', { body: { login: 'admin', password: 'admin-password-1' } }));
@@ -543,6 +547,15 @@ try {
       assert.deepEqual(list.filter((t) => t.id === 'default').map((t) => [t.source, t.name]), [['bundled', 'Default']], 'nothing replaces the Default template');
       assert.match(server.output(), /The template "reach" could not be read \(modules\.chat: a template sets only name, icon, settings, labels and starter\.\); it is left out\./);
       assert.match(server.output(), /The template "default" is left out: another template already has that id\./);
+      // Read again and again: each bad one is said once in the log, not on every read.
+      for (let i = 0; i < 5; i += 1) await call(server, '', 'GET', '/api/environment/templates', { cookie: again });
+      for (const id of ['reach', 'themed', 'huge']) assert.equal(server.output().split(`The template "${id}" could not be read`).length - 1, 1, `${id} logged once`);
+      assert.match(server.output(), /The template "huge" could not be read \("version" must be a whole number from 1 to 1000000\.\)/);
+      const topped = await call(server, '', 'PATCH', '/api/environment/templates/topped', { cookie: again, body: { name: 'Over' } });
+      assert.deepEqual([topped.status, topped.json.error], [409, 'This template has reached its highest version; copy it to go on changing it.']);
+      assert.equal((await call(server, '', 'DELETE', '/api/environment/templates/topped', { cookie: again })).status, 200);
+      const tooNew = await call(server, '', 'POST', '/api/templates/import?id=too-new', { cookie: again, body: { ...(await call(server, '', 'GET', '/api/templates/travel/export', { cookie: again })).json, version: 9e15 } });
+      assert.deepEqual([tooNew.status, tooNew.json.error], [400, '"version" must be a whole number from 1 to 1000000.']);
       await server.stop();
       server = await startServer(single, { ADMIN_PASSWORD: 'admin-password-1' });
       const fresh = cookieOf(await call(server, '', 'POST', '/api/login', { body: { login: 'admin', password: 'admin-password-1' } }));
@@ -630,6 +643,13 @@ try {
     assert.equal((await call(server, 'out', 'DELETE', '/api/environment/templates/all-mine', { cookie: owner })).status, 200);
     assert.equal((await call(server, 'out', 'DELETE', '/api/environment/templates/outings', { cookie: owner })).status, 200);
     assert.equal((await console_('DELETE', '/api/host/templates/everything')).status, 200);
+    // A template the host hid is no template at all to an owner who does not use it: 404 on every route, delete included.
+    assert.equal((await console_('POST', '/api/host/templates/travel/duplicate', { id: 'secret-plan', name: 'Secret plan' })).status, 201);
+    assert.equal((await console_('PATCH', '/api/host/templates/secret-plan', { hidden: true })).status, 200);
+    for (const [method, url, body] of [['GET', '/api/environment/templates/secret-plan'], ['PATCH', '/api/environment/templates/secret-plan', { name: 'x' }], ['DELETE', '/api/environment/templates/secret-plan'], ['GET', '/api/templates/secret-plan/export']]) {
+      assert.deepEqual(await call(server, 'out', method, url, { cookie: owner, body }).then((r) => [r.status, r.json]), [404, { error: 'There is no template called secret-plan.' }], `${method} ${url}`);
+    }
+    assert.equal((await console_('DELETE', '/api/host/templates/secret-plan')).status, 200);
     // A host template body with an unknown or old field is refused, never dropped.
     const old = await console_('POST', '/api/host/templates', { id: 'old-shape', name: 'Old', description: 'Old.', modules: { chat: {} }, verbs: { enter: 'Board' } });
     assert.deepEqual([old.status, old.json.error.slice(0, 32)], [400, '"verbs" is not a template field;']);

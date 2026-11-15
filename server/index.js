@@ -903,11 +903,16 @@ function readStoredTemplate(t, manifests) {
   // Every key but the record's own (hidden and the dates): an unknown one is refused, as it is from a route.
   const fields = Object.fromEntries(Object.entries(t).filter(([k]) => !STORED_TEMPLATE_KEYS.includes(k)));
   const key = `${[...manifests.values()].map((m) => `${m.id}@${m.version}`).join(',')}|${JSON.stringify(fields)}`;
-  if (storedTemplateCache.has(key)) return storedTemplateCache.get(key);
-  const problems = templates.problemsOf(fields, { manifests });
-  if (problems.length) throw new Error(problems[0]);
-  const clean = templates.cleanTemplate(fields, { manifests });
+  if (storedTemplateCache.has(key)) {
+    const known = storedTemplateCache.get(key);
+    // A refusal is remembered too, and thrown as already said, so its log line is written once, not on every read.
+    if (known instanceof Error) { const again = new Error(known.message); again.said = true; throw again; }
+    return known;
+  }
   if (storedTemplateCache.size > 500) storedTemplateCache.clear();
+  const problems = templates.problemsOf(fields, { manifests });
+  if (problems.length) { storedTemplateCache.set(key, new Error(problems[0])); throw new Error(problems[0]); }
+  const clean = templates.cleanTemplate(fields, { manifests });
   storedTemplateCache.set(key, clean);
   return clean;
 }
@@ -923,7 +928,7 @@ function templateCatalog(env) {
     try {
       out.set(t.id, { ...readStoredTemplate(t, bundledManifestMap), source: 'host', hidden: Boolean(t.hidden), createdAt: t.createdAt || null, updatedAt: t.updatedAt || null });
     } catch (err) {
-      console.error(`The host template "${String(t.id).slice(0, 40)}" could not be read (${err.message}); it is left out.`);
+      if (!err.said) console.error(`The host template "${String(t.id).slice(0, 40)}" could not be read (${err.message}); it is left out.`);
     }
   }
   for (const b of templates.all().values()) {
@@ -949,7 +954,7 @@ function templateCatalog(env) {
         update: notice ? { shippedVersion: b.version } : null,
       });
     } catch (err) {
-      console.error(`The edits for the bundled template "${b.id}" could not be read (${err.message}); the shipped template is used.`);
+      if (!err.said) console.error(`The edits for the bundled template "${b.id}" could not be read (${err.message}); the shipped template is used.`);
       out.set(b.id, { ...b, source: 'bundled', hidden: false, edited: false, update: null });
     }
   }
@@ -966,7 +971,7 @@ function templateCatalog(env) {
         const copiedFrom = t.copiedFrom && typeof t.copiedFrom.id === 'string' ? { id: t.copiedFrom.id.slice(0, 40), version: Number.isInteger(t.copiedFrom.version) ? t.copiedFrom.version : null } : null;
         out.set(t.id, { ...readStoredTemplate(t, manifests), source: 'own', hidden: false, createdAt: t.createdAt || null, updatedAt: t.updatedAt || null, copiedFrom });
       } catch (err) {
-        console.error(`${env.slug ? `[${env.slug}] ` : ''}The template "${String(t.id).slice(0, 40)}" could not be read (${err.message}); it is left out.`);
+        if (!err.said) console.error(`${env.slug ? `[${env.slug}] ` : ''}The template "${String(t.id).slice(0, 40)}" could not be read (${err.message}); it is left out.`);
       }
     }
   }
@@ -2268,6 +2273,7 @@ hostRouter.patch('/api/host/templates/:id', requireHostAdmin, templateJson, (req
     const merged = mergeTemplate(stored, edits, t.id);
     const problems = templates.problemsOf(merged, { manifests: templates.bundledManifests() });
     if (problems.length) return res.status(400).json({ error: problems[0], problems });
+    if ((stored.version || 1) >= templates.MAX_VERSION) return res.status(409).json({ error: VERSION_SPENT });
     next = { ...storedTemplate(templates.cleanTemplate(merged)), version: (stored.version || 1) + 1, hidden: next.hidden, createdAt: stored.createdAt, updatedAt: new Date().toISOString() };
   }
   hostRegistry.putTemplate(next);
@@ -2346,6 +2352,8 @@ hostRouter.post('/api/host/templates/import', requireHostAdmin, sameOriginOnly, 
 });
 
 // The Default template's two refusals (plan-templates-redesign.md, "The Default template").
+// An edit raises a template's version, which stops at templates.MAX_VERSION.
+const VERSION_SPENT = 'This template has reached its highest version; copy it to go on changing it.';
 const DEFAULT_FIXED = "The Default template can't be changed; copy it to make your own.";
 const defaultNotDeleted = () => `The Default template can't be deleted; every ${word('environment')} falls back to it.`;
 // A template's own fields from a request body, checked for what a body may hold: { fields } or { error }, one sentence.
@@ -2423,6 +2431,7 @@ function patchBundledTemplate(t, edits, hiddenGiven, res) {
   const changed = Object.keys(edits).length > 0;
   const hidden = hiddenGiven !== undefined ? hiddenGiven : Boolean(record?.hidden);
   const versionNow = record?.version ?? shipped.version;
+  if (Object.keys(edits).length && versionNow >= templates.MAX_VERSION) return res.status(409).json({ error: VERSION_SPENT });
   const base = record?.base || bundledBase(shipped);
   if (!changed) {
     saveBundledEdit(t.id, { template: record?.template ?? null, version: versionNow, base, hidden });
@@ -12047,6 +12056,7 @@ app.patch('/api/environment/templates/:id', requireOwner, templateJson, (req, re
   const merged = mergeTemplate(stored, read.fields, t.id);
   const problems = templates.problemsOf(merged, { manifests });
   if (problems.length) return res.status(400).json({ error: problems[0], problems });
+  if ((Number.isInteger(stored.version) ? stored.version : 1) >= templates.MAX_VERSION) return res.status(409).json({ error: VERSION_SPENT });
   env.store.putOwnTemplate({ ...storedTemplate(templates.cleanTemplate(merged, { manifests })), version: (Number.isInteger(stored.version) ? stored.version : 1) + 1, createdAt: stored.createdAt || null, updatedAt: new Date().toISOString(), copiedFrom: stored.copiedFrom || null });
   if (env.store.templateRecord?.id === t.id) templates.useLive(env.store, templateFor(env, t.id));
   res.json({ template: { ...fullTemplate(templateFor(env, t.id)), editable: true } });
@@ -12057,7 +12067,8 @@ app.patch('/api/environment/templates/:id', requireOwner, templateJson, (req, re
 app.delete('/api/environment/templates/:id', requireOwner, async (req, res) => {
   const env = currentEnvironment();
   const t = templateFor(env, req.params.id);
-  if (!t) return noSuchTemplate(res, req.params.id);
+  // A template the host hid reads as no template at all here, as it does on every other route (unless it is the one in use).
+  if (!t || (t.hidden && env.store.templateRecord?.id !== t.id)) return noSuchTemplate(res, req.params.id);
   if (t.id === templates.DEFAULT_ID) return res.status(403).json({ error: defaultNotDeleted() });
   if (t.source !== 'own') return res.status(403).json({ error: "Shipped templates can't be deleted." });
   await env.templateReady;
