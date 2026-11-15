@@ -51,7 +51,7 @@ function seededApp(secrets = strong) {
     templates: [{ id: 'mine', name: 'Mine' }],
     secrets,
     settings: {
-      environmentName: 'Seeded', mfaRequired: true, words: { space: { one: 'trip' } }, verbs: { join: 'Board' },
+      environmentName: 'Seeded', mfaRequired: true, words: { space: { one: 'trip' } },
       spaceDefaults: { profile: 'characters', opensWith: ['todo'] }, otherCalendars: true, publishedCalendar: true,
       publishedCalendarFeed: feed(),
     },

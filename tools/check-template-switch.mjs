@@ -227,12 +227,10 @@ try {
   await test('an owner switches to travel: the words at once, the owner\'s own word and home icon kept, and the offer', async () => {
     const icon = (await as('GET', '/api/settings')).json.settings.icons.at(-1).id;
     assert.equal((await as('PATCH', '/api/settings', { words: { member: { one: 'player', many: 'players' } }, homeIcon: icon })).status, 200);
-    // Addendum 4: no template, the default verb; the owner's own set before the switch.
+    // The verbs are locked (plan-templates-redesign.md, decisions 5 and 32): the defaults, whatever the template.
     assert.deepEqual((await words()).verbs, { enter: 'Enter', layout: 'Layout' });
-    const ownVerb = await as('PATCH', '/api/settings', { verbs: { enter: 'Step in' } });
-    assert.deepEqual([ownVerb.status, ownVerb.json.settings.verbs, ownVerb.json.settings.ownVerbs, ownVerb.json.settings.templateVerbs], [200, { enter: 'Step in', layout: 'Layout' }, { enter: 'Step in' }, null], ownVerb.text);
     assert.deepEqual(await as('PATCH', '/api/settings', { template: 'nope' }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called nope.' }]);
-    assert.deepEqual(await as('PATCH', '/api/settings', { template: 5 }).then((r) => [r.status, r.json]), [400, { error: 'A template is named by its id, or "none" for no template.' }]);
+    assert.deepEqual(await as('PATCH', '/api/settings', { template: 5 }).then((r) => [r.status, r.json]), [400, { error: 'A template is named by its id.' }]);
     const r = await as('PATCH', '/api/settings', { template: 'travel' });
     assert.equal(r.status, 200, r.text);
     assert.ok(r.json.settings, 'the settings, as before');
@@ -242,17 +240,13 @@ try {
     assert.deepEqual(r.json.offer.spaceDefaults, { profile: 'participants', opensWith: ['travel', 'chat'] });
     const b = await words();
     assert.deepEqual([b.words.space.one, b.words.member.one, b.homeIcon], ['trip', 'player', icon], 'the template\'s words at once; the owner\'s own still win');
-    assert.deepEqual(b.verbs, { enter: 'Step in', layout: 'Layout' }, 'the owner\'s verb kept over the template\'s');
-    assert.deepEqual([r.json.settings.ownVerbs, r.json.settings.templateVerbs], [{ enter: 'Step in' }, {}], 'Travel sets no verb of its own');
-    assert.equal('verbs' in r.json.offer, false, 'a live part: never in the offer');
-    const cleared = await as('PATCH', '/api/settings', { verbs: { enter: null } });
-    assert.deepEqual([cleared.json.settings.verbs, cleared.json.settings.ownVerbs], [{ enter: 'Enter', layout: 'Layout' }, {}], 'null: the template\'s, here the default');
-    assert.equal((await as('PATCH', '/api/settings', { verbs: { enter: 'Step in' } })).status, 200);
+    assert.deepEqual(b.verbs, { enter: 'Enter', layout: 'Layout' }, 'the verbs stay the defaults');
+    assert.equal('verbs' in r.json.offer, false, 'never in the offer');
     assert.equal((await as('GET', '/api/modules')).json.modules.some((m) => m.id === 'travel'), false, 'nothing turned on before it is confirmed');
     const again = await as('PATCH', '/api/settings', { template: 'travel' });
     assert.deepEqual([again.status, again.json.template.offerOpen], [200, true], 'the same template: nothing changes');
     const view = (await as('GET', '/api/environment/template')).json;
-    assert.deepEqual([view.template.id, view.template.source, view.offer.modules.length, view.choices.map((c) => c.id)], ['travel', 'bundled', 6, ['games', 'travel']]);
+    assert.deepEqual([view.template.id, view.template.source, view.offer.modules.length, view.choices.map((c) => c.id)], ['travel', 'bundled', 6, ['default', 'games', 'travel']]);
   });
 
   await test('switching to a template puts its phases on the module context at once', async () => {
@@ -281,19 +275,16 @@ try {
     assert.deepEqual(await as('POST', '/api/environment/template/apply', {}).then((r2) => [r2.status, r2.json]), [409, { error: 'This template has already been applied.' }]);
   });
 
-  await test('switching to none: the words go back, the modules stay on, the owner\'s own kept; then 409; the history', async () => {
-    const r = await as('PATCH', '/api/settings', { template: 'none' });
-    assert.deepEqual([r.status, r.json.template, r.json.offer], [200, null, null]);
+  await test('switching to the Default template: the words go back, the modules stay on, the owner\'s own kept; no offer; the history', async () => {
+    assert.deepEqual(await as('PATCH', '/api/settings', { template: 'none' }).then((r) => [r.status, r.json]), [400, { error: 'Every environment has a template; pick Default for the plain one.' }]);
+    const r = await as('PATCH', '/api/settings', { template: 'default' });
+    assert.deepEqual([r.status, r.json.template.id, r.json.template.offerOpen, r.json.offer], [200, 'default', false, null]);
     const b = await words();
     assert.deepEqual([b.words.space.one, b.words.member.one], ['space', 'player']);
-    assert.deepEqual(b.verbs, { enter: 'Step in', layout: 'Layout' }, 'the owner\'s verb kept');
-    const st = (await as('GET', '/api/settings')).json.settings;
-    assert.deepEqual([st.templateVerbs, st.ownVerbs], [null, { enter: 'Step in' }]);
-    assert.deepEqual((await as('PATCH', '/api/settings', { verbs: { enter: null } })).json.settings.verbs, { enter: 'Enter', layout: 'Layout' }, 'no template: the default');
     assert.equal((await as('GET', '/api/modules')).json.modules.find((m) => m.id === 'travel').enabled, true, 'still on');
-    assert.deepEqual(await as('POST', '/api/environment/template/apply', {}).then((r2) => [r2.status, r2.json]), [409, { error: 'This environment has no template to apply.' }]);
+    assert.deepEqual(await as('POST', '/api/environment/template/apply', {}).then((r2) => [r2.status, r2.json]), [409, { error: 'This template has already been applied.' }]);
     const app = readJson(path.join(single, 'app.json'));
-    assert.deepEqual(app.templateHistory.map((h) => [h.from, h.to]), [[null, 'travel'], ['travel', null]]);
+    assert.deepEqual(app.templateHistory.map((h) => [h.from, h.to]), [['default', 'travel'], ['travel', 'default']]);
     assert.ok(app.templateHistory.every((h) => typeof h.by === 'string' && h.by !== 'host' && h.at));
   });
 
@@ -326,20 +317,19 @@ try {
     assert.equal((await as('PATCH', `/api/spaces/${side}`, { aiOff: false })).status, 200);
     assert.notDeepEqual(await as('POST', `/api/spaces/${side}/ai`, { question: 'hello there' }).then((x) => [x.status, x.json]), [403, aiOffSentence], 'turned back on');
   });
-  await test('a single install imports, exports and deletes its own templates; one in use can\'t be deleted', async () => {
+  await test('a single install imports, exports and deletes its own templates; one in use is deleted and the environment reads the Default', async () => {
     const travel = await as('GET', '/api/templates/travel/export');
     assert.deepEqual([travel.status, travel.headers['content-disposition']], [200, 'attachment; filename="travel.template.json"'], 'a bundled one exports');
     assert.deepEqual([travel.json.format, travel.json.formatVersion], ['template', 1]);
     for (const old of oldFiles('template')) assert.deepEqual(await call(server, '', 'POST', '/api/templates/import?id=old-trips', { cookie, raw: old }).then((r) => [r.status, r.json]), [400, { error: 'That template file is in an older format. Export the template again and import the new file.' }], 'an old template file, with its sentence');
     assert.deepEqual(await as('POST', '/api/templates/import', travel.json).then((r) => [r.status, r.json]), [409, { error: 'There is already a template called travel.' }]);
     const mine = await as('POST', '/api/templates/import?id=my-trips', { ...travel.json, name: 'My trips' });
-    assert.deepEqual([mine.status, mine.json.template.source, mine.json.template.name], [201, 'imported', 'My trips'], mine.text);
-    assert.deepEqual((await as('GET', '/api/environment/template')).json.choices.map((c) => [c.id, c.source]), [['my-trips', 'imported'], ['games', 'bundled'], ['travel', 'bundled']]);
+    assert.deepEqual([mine.status, mine.json.template.source, mine.json.template.name], [201, 'own', 'My trips'], mine.text);
+    assert.deepEqual((await as('GET', '/api/environment/template')).json.choices.map((c) => [c.id, c.source]), [['default', 'bundled'], ['games', 'bundled'], ['travel', 'bundled'], ['my-trips', 'own']]);
     assert.equal((await as('PATCH', '/api/settings', { template: 'my-trips' })).status, 200);
-    assert.deepEqual(await as('DELETE', '/api/templates/my-trips').then((r) => [r.status, r.json]), [409, { error: 'This environment uses this template. Switch to another one first.' }]);
-    assert.equal((await as('PATCH', '/api/settings', { template: 'travel' })).status, 200);
-    assert.equal((await as('DELETE', '/api/templates/my-trips')).status, 200);
-    assert.deepEqual(await as('DELETE', '/api/templates/travel').then((r) => [r.status, r.json]), [403, { error: "Bundled templates can't be deleted." }]);
+    assert.deepEqual(await as('DELETE', '/api/environment/templates/my-trips').then((r) => [r.status, r.json]), [200, { spaces: [], environment: true }]);
+    assert.equal((await as('GET', '/api/environment/template')).json.template.id, 'default');
+    assert.deepEqual(await as('DELETE', '/api/environment/templates/travel').then((r) => [r.status, r.json]), [403, { error: "Shipped templates can't be deleted." }]);
     assert.deepEqual(await as('POST', '/api/templates/import', '{ not json').then((r) => [r.status, r.json]), [400, { error: `That isn't a ${PRODUCT} template file.` }]);
   });
   await server.stop();
@@ -362,7 +352,7 @@ try {
     assert.deepEqual(r.json.environment.offer.modules.find((m) => m.id === 'maps'), { id: 'maps', name: 'Maps', allowed: false, why: 'not in the plan' });
     const review = await console_('GET', '/api/host/environments/beta/template');
     assert.equal(review.status, 200, review.text);
-    assert.deepEqual([review.json.template.id, review.json.template.offerOpen, review.json.offer.modules.length, review.json.choices.map((c) => c.id)], ['travel', true, r.json.environment.offer.modules.length, ['games', 'travel']], 'the console reads the offer without switching again');
+    assert.deepEqual([review.json.template.id, review.json.template.offerOpen, review.json.offer.modules.length, review.json.choices.map((c) => c.id)], ['travel', true, r.json.environment.offer.modules.length, ['default', 'games', 'travel']], 'the console reads the offer without switching again');
     assert.deepEqual(await console_('GET', '/api/host/environments/nope/template').then((x) => [x.status, x.json]), [404, { error: 'no such environment' }]);
     assert.equal(readJson(path.join(hosted, 'environments', 'beta', 'app.json')).templateHistory.length, 1, 'reading it switched nothing');
     const shownIcon = (await call(server, 'beta', 'GET', '/api/branding')).json.homeIcon;
@@ -390,8 +380,8 @@ try {
     assert.equal((await call(server, 'beta', 'GET', '/api/modules/for-space?space=lobby', { cookie: owner })).json.opensWith, null, 'null clears it');
     assert.equal((await call(server, 'beta', 'GET', '/api/environment', { cookie: owner })).json.template.id, 'travel');
     const history = readJson(path.join(hosted, 'environments', 'beta', 'app.json')).templateHistory;
-    assert.deepEqual(history.map((h) => [h.from, h.to, h.by]), [[null, 'travel', 'host']]);
-    assert.equal((await console_('PATCH', '/api/host/environments/beta', { template: 'none' })).json.environment.template, null);
+    assert.deepEqual(history.map((h) => [h.from, h.to, h.by]), [['default', 'travel', 'host']]);
+    assert.equal((await console_('PATCH', '/api/host/environments/beta', { template: 'default' })).json.environment.template.id, 'default');
   });
 
   // plan-template-games.md: an environment made from the games template reads in its words and opens with the chat and Sessions.
@@ -403,7 +393,7 @@ try {
     for (let i = 0; i < 100 && !server.output().includes('[dice] Applied the "games" template'); i += 1) await new Promise((r) => setTimeout(r, 50));
     assert.ok(server.output().includes('[dice] Applied the "games" template'), 'applied at creation');
     const b = (await asOwner('GET', '/api/branding')).json;
-    assert.deepEqual([b.words.environment.one, b.words.space.one, b.words.home.many, b.words.owner.one, b.words.aside.one, b.words.member.one, b.words.moderator.one, b.words.guest.one], ['group', 'campaign', 'Campaigns', 'game master', 'whisper', 'player', 'moderator', 'guest']);
+    assert.deepEqual([b.words.environment.one, b.words.space.one, b.words.home.many, b.words.owner.one, b.words.aside.one, b.words.member.one, b.words.moderator.one, b.words.guest.one], ['environment', 'campaign', 'Campaigns', 'owner', 'aside', 'player', 'moderator', 'guest'], 'environment, owner and aside are locked');
     assert.equal(b.homeIcon, 'dice-d20');
     assert.deepEqual(b.phases || [], [], 'no phases');
     const lobby = (await asOwner('GET', '/api/spaces')).json.spaces.find((s) => s.id === 'lobby');
@@ -429,27 +419,30 @@ try {
   // --- addendum 2: the host's own templates and template files (#68) ------------------------------------------------
   await test('hosted: a host template is made, used, edited (live at once, a new module offered), hidden, refused deletion, exported and imported', async () => {
     const set = { 'surface-page': '#ffffff', 'surface-panel': '#f5f7f8', 'edge-hairline': '#dde3e6', 'text-primary': '#222222', 'text-muted': '#6b7479', 'accent-fill': '#1c7c8c', 'text-on-accent': '#ffffff' };
-    const harbour = { id: 'harbour', name: 'Harbour', description: 'Sailing trips.', words: { space: { one: 'voyage', many: 'voyages' } }, verbs: { enter: 'Board' }, modules: ['travel', 'maps', 'chat', 'conference'], reactions: [{ id: 'wave', glyph: '👋', label: 'Wave' }], theme: { name: 'Harbour', light: set, dark: null } };
+    const harbour = { id: 'harbour', name: 'Harbour', description: 'Sailing trips.', words: { space: { one: 'voyage', many: 'voyages' } }, modules: { travel: {}, maps: {}, chat: {}, conference: {} }, reactions: [{ id: 'sail', glyph: '\u26f5', label: 'Sail' }] };
+    for (const [field, value] of [['verbs', { enter: 'Board' }], ['theme', { name: 'Harbour', light: set, dark: null }]]) {
+      const old = await console_('POST', '/api/host/templates', { ...harbour, [field]: value });
+      assert.deepEqual([old.status, old.json.error.slice(0, field.length + 30)], [400, `"${field}" is not a template field; the fie`.slice(0, field.length + 30)], field);
+    }
     const made = await console_('POST', '/api/host/templates', harbour);
     assert.equal(made.status, 201, made.text);
     assert.deepEqual([made.json.template.source, made.json.template.version, made.json.template.hidden], ['host', 1, false]);
     assert.deepEqual(await console_('POST', '/api/host/templates', { ...harbour, id: 'travel' }).then((r) => [r.status, r.json]), [409, { error: 'There is already a template called travel.' }]);
-    const bad = await console_('POST', '/api/host/templates', { ...harbour, id: 'bad', modules: ['travel'] });
+    const bad = await console_('POST', '/api/host/templates', { ...harbour, id: 'bad', modules: { travel: {} } });
     assert.deepEqual([bad.status, bad.json.error], [400, 'modules: "chat" must be listed; Chat can\'t be switched off yet.']);
     assert.equal((await console_('POST', '/api/host/environments', { slug: 'sail', name: 'Sail', template: 'harbour', owner: { login: 'owner', password: 'owner-password-1' } })).status, 201);
     const owner = cookieOf(await call(server, 'sail', 'POST', '/api/login', { body: { login: 'owner', password: 'owner-password-1' } }));
     const asOwner = (method, url, body) => call(server, 'sail', method, url, { cookie: owner, body });
     for (let i = 0; i < 100 && !server.output().includes('[sail] Applied the "harbour" template'); i += 1) await new Promise((r) => setTimeout(r, 50));
     const settings = (await asOwner('GET', '/api/settings')).json.settings;
-    assert.deepEqual([settings.words.space.one, settings.reactions.map((r) => r.id), settings.template.source, settings.template.appliedVersion], ['voyage', ['wave'], 'host', 1]);
-    assert.deepEqual([settings.verbs, settings.templateVerbs, settings.ownVerbs], [{ enter: 'Board', layout: 'Layout' }, { enter: 'Board' }, {}], 'the host template\'s verb');
-    assert.equal((await asOwner('GET', '/api/themes')).json.themes.find((t) => t.id === settings.activeThemeId).name, 'Harbour', 'its theme added and active');
+    assert.deepEqual([settings.words.space.one, settings.reactions.at(-1).id, settings.reactions[0].id, settings.template.source, settings.template.appliedVersion], ['voyage', 'sail', 'heart', 'host', 1], 'its reaction added after the core set');
+    assert.deepEqual(settings.verbs, { enter: 'Enter', layout: 'Layout' });
     assert.deepEqual((await asOwner('GET', '/api/modules/travel/context?scope=environment')).json.phases, [], 'no phases until the template lists them');
     const list = (await console_('GET', '/api/host/templates')).json.templates;
     assert.deepEqual(list.find((t) => t.id === 'harbour').usedBy, ['sail']);
     assert.equal(list.find((t) => t.id === 'travel').source, 'bundled');
     // An edit: the words at once, the version up, the new module offered on the Template tab, nothing forced.
-    const edited = await console_('PATCH', '/api/host/templates/harbour', { words: { space: { one: 'sail', many: 'sails' } }, modules: [...harbour.modules, 'calendar'], phases: [{ id: 'planning', label: 'Planning' }, { id: 'sailing', label: 'Sailing', main: true }] });
+    const edited = await console_('PATCH', '/api/host/templates/harbour', { words: { space: { one: 'sail', many: 'sails' } }, modules: { ...harbour.modules, calendar: {} }, phases: [{ id: 'planning', label: 'Planning' }, { id: 'sailing', label: 'Sailing', main: true }] });
     assert.deepEqual([edited.status, edited.json.template.version], [200, 2], edited.text);
     assert.equal((await call(server, 'sail', 'GET', '/api/branding')).json.words.space.one, 'sail', 'live at once');
     const crossing = await asOwner('POST', '/api/spaces', { name: 'Crossing' });
@@ -475,56 +468,39 @@ try {
     // Export, then import under a new id; an import with a taken id is refused.
     const file = await console_('GET', '/api/host/templates/harbour/export');
     assert.equal(file.headers['content-disposition'], 'attachment; filename="harbour.template.json"');
-    assert.deepEqual([file.json.format, file.json.formatVersion, file.json.version, file.json.theme.name], ['template', 1, 2, 'Harbour']);
-    assert.equal('format' in file.json.theme, false, 'the embedded theme carries no marker');
+    assert.deepEqual([file.json.format, file.json.formatVersion, file.json.version, 'theme' in file.json], ['template', 1, 2, false]);
     assert.deepEqual(await console_('POST', '/api/host/templates/import', file.json).then((r) => [r.status, r.json]), [409, { error: 'There is already a template called harbour.' }]);
-    const copy = await console_('POST', '/api/host/templates/import?id=harbour-copy', { ...file.json, extra: 1 });
-    assert.deepEqual([copy.status, copy.json.template.id, copy.json.template.version, copy.json.dropped], [201, 'harbour-copy', 2, ['extra']], 'the file\'s version kept');
+    const extra = await console_('POST', '/api/host/templates/import?id=harbour-copy', { ...file.json, extra: 1 });
+    assert.deepEqual([extra.status, extra.json.error.slice(0, 31)], [400, '"extra" is not a template field'], 'an unknown key is refused, never dropped');
+    const copy = await console_('POST', '/api/host/templates/import?id=harbour-copy', file.json);
+    assert.deepEqual([copy.status, copy.json.template.id, copy.json.template.version], [201, 'harbour-copy', 2], 'the file\'s version kept');
     assert.deepEqual(await console_('POST', '/api/host/templates/import', { ...file.json, formatVersion: 2 }).then((r) => [r.status, r.json]), [400, { error: `This template was made by a newer version of ${PRODUCT}.` }]);
     for (const old of oldFiles('template')) assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/templates/import?id=old-harbour', { cookie: host, raw: old }).then((r) => [r.status, r.json]), [400, { error: 'That template file is in an older format. Export the template again and import the new file.' }]);
     assert.equal((await console_('DELETE', '/api/host/templates/harbour-copy')).status, 200, 'an unused one can be deleted');
-    // The template editor's theme picker asks the server about a theme file (plan-kind-names.md): read as an import
-    // reads it, nothing stored, the sentence on a refusal.
+    // The theme left templates (decision 13): the console's theme check for the template editor is gone.
     const themeText = (await asOwner('GET', '/api/themes/default/export')).text;
-    const checked = await call(server, 'admin', 'POST', '/api/host/themes/check', { cookie: host, raw: themeText, type: 'application/octet-stream' });
-    assert.equal(checked.status, 200, checked.text);
-    // The default theme is the product's own, named by the product's short name (store.js DEFAULT_THEME); Strong Coffee is now a built-in beside the others. The test product has one word, so its short name is PRODUCT.
-    assert.deepEqual([Object.keys(checked.json).sort(), Object.keys(checked.json.theme), checked.json.theme.name, checked.json.dropped], [['dropped', 'theme'], ['name', 'light', 'dark'], PRODUCT, []]);
-    assert.deepEqual(checked.json.theme.dark, JSON.parse(themeText).dark, 'the colors as the file has them');
-    assert.equal((await console_('POST', '/api/host/themes/check', JSON.parse(themeText))).status, 200, 'sent as JSON too');
-    const themeRefusals = [
-      ...oldFiles('theme').map((old) => [old, 'That theme file is in an older format. Export the theme again and import the new file.']),
-      [JSON.stringify({ someTheme: 1, name: 'x', light: {}, dark: {} }), `That isn't a ${PRODUCT} theme file.`],
-      [JSON.stringify({ ...JSON.parse(themeText), formatVersion: 2 }), `This theme was made by a newer version of ${PRODUCT}.`],
-      ['not json', `That isn't a ${PRODUCT} theme file.`],
-      [JSON.stringify({ ...JSON.parse(themeText), name: 'x'.repeat(20 * 1024) }), `That isn't a ${PRODUCT} theme file.`],
-      [JSON.stringify({ format: 'theme', formatVersion: 1, name: 'Empty', light: null, dark: null }), 'This theme has no complete light or dark set: each needs all seven base colors.'],
-    ];
-    for (const [raw, error] of themeRefusals) {
-      assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/themes/check', { cookie: host, raw }).then((r) => [r.status, r.json]), [400, { error }], raw.slice(0, 40));
-    }
-    assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/themes/check', { raw: themeText }).then((r) => [r.status, r.json]), [401, { error: 'sign in first' }], 'host admins only');
-    assert.equal((await call(server, 'sail', 'POST', '/api/host/themes/check', { cookie: owner, raw: themeText })).status, 404, 'not on an environment');
-    // Owners on a hosted server export only their own template; import and delete are the host's.
+    assert.equal((await call(server, 'admin', 'POST', '/api/host/themes/check', { cookie: host, raw: themeText })).status, 404);
+    // Owners on a hosted server (plan-templates-redesign.md, "Owners' own templates"): export any template they may use,
+    // and import one as their own; the host's stays the host's.
     const own = await asOwner('GET', '/api/templates/harbour/export');
     assert.deepEqual([own.status, own.json.id, own.json.version], [200, 'harbour', 2]);
-    assert.deepEqual(await asOwner('GET', '/api/templates/travel/export').then((r) => [r.status, r.json]), [403, { error: 'On a hosted server, the host manages templates.' }]);
-    assert.deepEqual(await asOwner('POST', '/api/templates/import', own.json).then((r) => [r.status, r.json]), [403, { error: 'On a hosted server, the host manages templates.' }]);
+    assert.equal((await asOwner('GET', '/api/templates/travel/export')).status, 200);
+    assert.deepEqual(await asOwner('POST', '/api/templates/import', own.json).then((r) => [r.status, r.json]), [409, { error: 'There is already a template called harbour.' }]);
+    const ownCopy = await asOwner('POST', '/api/templates/import?id=my-harbour', own.json);
+    assert.deepEqual([ownCopy.status, ownCopy.json.template.source], [201, 'own'], ownCopy.text);
+    assert.equal((await asOwner('DELETE', '/api/environment/templates/my-harbour')).status, 200);
+    assert.deepEqual(await asOwner('DELETE', '/api/environment/templates/harbour').then((r) => [r.status, r.json]), [403, { error: "Shipped templates can't be deleted." }]);
     // A newer version that changed only the words: the Template tab offers nothing (every part fingerprinted when applied).
-    // Verbs are live too (addendum 4): an edit reaches branding at once and offers nothing.
-    assert.equal((await console_('PATCH', '/api/host/templates/harbour', { words: { space: { one: 'crossing', many: 'crossings' } }, verbs: { enter: 'Sail into' } })).json.template.version, 3);
-    assert.deepEqual((await call(server, 'sail', 'GET', '/api/branding')).json.verbs, { enter: 'Sail into', layout: 'Layout' }, 'the edited verb, at once');
+    assert.equal((await console_('PATCH', '/api/host/templates/harbour', { words: { space: { one: 'crossing', many: 'crossings' } } })).json.template.version, 3);
+    assert.equal((await call(server, 'sail', 'GET', '/api/branding')).json.words.space.one, 'crossing', 'the edited word, at once');
     const after = (await asOwner('GET', '/api/environment/template')).json;
     assert.deepEqual([after.template.version, after.template.offerOpen, after.offer], [3, false, null], 'no offer: nothing it applies once changed');
     const card = () => console_('GET', '/api/host/environments').then((r) => r.json.environments.find((e) => e.slug === 'sail').template);
     assert.deepEqual(await card().then((t) => [t.version, t.appliedVersion, t.offerOpen]), [3, 2, false], 'the console\'s card agrees');
-    assert.equal((await console_('PATCH', '/api/host/templates/harbour', { modules: [...harbour.modules, 'calendar', 'polls'] })).json.template.version, 4);
+    assert.equal((await console_('PATCH', '/api/host/templates/harbour', { modules: { ...harbour.modules, calendar: {}, polls: {} } })).json.template.version, 4);
     assert.deepEqual(await card().then((t) => [t.version, t.appliedVersion, t.offerOpen]), [4, 2, true], 'a changed module list flags the card');
-    // Hosted switch: the owner's own verb stays over the new template's; cleared, it is the new template's.
-    assert.equal((await asOwner('PATCH', '/api/settings', { verbs: { enter: 'Cast off' } })).status, 200);
     const switched = await asOwner('PATCH', '/api/settings', { template: 'travel' });
-    assert.deepEqual([switched.status, switched.json.settings.verbs, switched.json.settings.templateVerbs], [200, { enter: 'Cast off', layout: 'Layout' }, {}], switched.text);
-    assert.deepEqual((await asOwner('PATCH', '/api/settings', { verbs: { enter: null } })).json.settings.verbs, { enter: 'Enter', layout: 'Layout' });
+    assert.deepEqual([switched.status, switched.json.settings.verbs], [200, { enter: 'Enter', layout: 'Layout' }], switched.text);
   });
 
   await test('hosted: the host settings list the modules the image ships, with names and icons, for the template editor', async () => {

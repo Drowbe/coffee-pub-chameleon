@@ -143,14 +143,10 @@ await test('the top bar keys and the four status fills: in every exported set; a
   assert.deepEqual([bad.light['surface-bar-brand'], bad.light['text-bar-right'], bad.light['text-bar-brand'], bad.light['status-info-fill']], [null, null, NAV['text-bar-brand'], null]);
 });
 
-await test('a theme file, a template\'s theme and the bundled templates that set none of the optional keys still load, on Auto', () => {
+await test('a theme file and the built-in themes that set none of the optional keys still load, on Auto', () => {
   const plain = tf.readThemeFile(file(), sanitize); // file() sets only the seven base colours
   assert.deepEqual(plain.dropped, []);
   for (const key of [...Object.keys(NAV), ...Object.keys(STATUS)]) assert.equal(plain.light[key], null, key);
-  const templates = require('../server/templates.js');
-  const embedded = templates.readEmbeddedTheme({ name: 'Trip', light: set(), dark: null });
-  assert.deepEqual(embedded.dropped, []);
-  for (const key of Object.keys(NAV)) assert.equal(embedded.theme.light[key], null, key);
   for (const id of BUILTIN_THEME_IDS) {
     const theme = store.themes.find((t) => t.id === id);
     for (const mode of ['light', 'dark']) for (const key of [...Object.keys(NAV), ...Object.keys(STATUS)]) assert.ok(theme[mode][key] == null, `${id} ${mode} ${key}`);
@@ -256,9 +252,9 @@ await test('Store.importTheme: the 101st theme is refused with its sentence, and
 });
 
 // Only these parsers in the app read a body a page on another origin can send without asking first (text/plain, a
-// form, multipart): the theme import and the host's theme file check, the template and objects imports (a module's check, and Chat's), which refuse anything but their own origin. Every other body is JSON, which the browser won't send cross-origin without a
+// form, multipart): the theme import, the template and objects imports (a module's check, and Chat's), which refuse anything but their own origin. Every other body is JSON, which the browser won't send cross-origin without a
 // preflight the server never answers. A new parser taking one of those types must be added here, with its guard.
-await test('only /api/themes/import, the host\'s theme check, the two template imports and the objects checks read a body another origin can send; each is behind sameOriginOnly', () => {
+await test('only /api/themes/import, the two template imports and the objects checks read a body another origin can send; each is behind sameOriginOnly', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
   const SIMPLE = /text\/|x-www-form-urlencoded|multipart\/form-data|\*\/\*|=>/;
   const found = [];
@@ -272,9 +268,9 @@ await test('only /api/themes/import, the host\'s theme check, the two template i
   const uses = [...src.matchAll(/(?:app|hostRouter)\.(?:post|put|patch|delete)\(([^\n]*?\b(?:themeFileText|templateFileText|objectsFileText)\b[^\n]*)/g)].map((m) => m[1]);
   assert.equal(uses.filter((u) => u.includes('templateFileText')).length, 2, 'the template file parser is used by the two imports only');
   assert.equal(uses.filter((u) => u.includes('objectsFileText')).length, 2, 'the objects file parser is used by the module and Chat checks only');
-  assert.equal(uses.filter((u) => u.includes('themeFileText')).length, 2, 'the theme file parser is used by the import and the host\'s theme check only');
+  assert.equal(uses.filter((u) => u.includes('themeFileText')).length, 1, 'the theme file parser is used by the import only');
   for (const u of uses) {
-    if (u.includes('themeFileText')) assert.match(u, /^'\/api\/(themes\/import', requireOwner|host\/themes\/check', requireHostAdmin), sameOriginOnly, themeFileText,/);
+    if (u.includes('themeFileText')) assert.match(u, /^'\/api\/themes\/import', requireOwner, sameOriginOnly, themeFileText,/);
     else if (u.includes('objectsFileText')) assert.match(u, /^'\/api\/(modules|spaces)\/:id\/objects\/check', sameOriginOnly, objectsFileType, objectsFileText,/);
     else assert.match(u, /^'\/api\/(templates\/import', requireOwner|host\/templates\/import', requireHostAdmin), sameOriginOnly, templateFileText,/);
   }

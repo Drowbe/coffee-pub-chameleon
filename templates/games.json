@@ -2,19 +2,24 @@
   "id": "games",
   "name": "Games",
   "description": "Run a campaign together: the chat, the calendar for sessions, a campaign planner, quests, lore and polls, and every player as an OBS source.",
-  "version": 3,
+  "version": 4,
   "words": {
-    "environment": { "one": "group", "many": "groups" },
     "space": { "one": "campaign", "many": "campaigns" },
-    "owner": { "one": "game master", "many": "game masters" },
-    "aside": { "one": "whisper", "many": "whispers" },
     "member": { "one": "player", "many": "players" }
   },
   "icons": { "home": "dice-d20" },
-  "moduleNames": { "travel": "Campaign planner", "calendar": "Sessions", "todo": "Quests", "research": "Lore", "vault": "Handouts" },
-  "moduleIcons": { "travel": "scroll" },
-  "modules": ["travel", "calendar", "polls", "todo", "research", "vault", "assistant", "chat", "conference"],
-  "settings": { "showCalendar": true, "showMap": false, "calendarFeeds": true },
   "lobby": { "name": "Common room", "description": "Everyone in every campaign." },
-  "spaceDefaults": { "opensWith": ["chat", "calendar"] }
+  "modules": {
+    "travel": { "name": "Campaign planner", "icon": "scroll" },
+    "calendar": { "name": "Sessions" },
+    "polls": {},
+    "todo": { "name": "Quests" },
+    "research": { "name": "Lore" },
+    "vault": { "name": "Handouts" },
+    "assistant": {},
+    "chat": {},
+    "conference": {}
+  },
+  "workspace": { "opensWith": ["chat", "calendar"] },
+  "settings": { "showCalendar": true, "showMap": false, "calendarFeeds": true }
 }

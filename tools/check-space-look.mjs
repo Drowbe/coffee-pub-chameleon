@@ -119,7 +119,7 @@ try {
       assert.equal(s.space, 'campaign');
       assert.equal(s.spaces, 'campaigns');
       assert.equal(s.member, 'player');
-      assert.equal(s.aside, 'whisper');
+      assert.equal(s.aside, 'aside', 'the aside word is locked (plan-templates-redesign.md, decision 32)');
       assert.equal(s.env, 'environment', 'the words above a space stay the environment\'s');
       assert.equal(s.owner, 'owner');
       assert.equal(s.home, 'Trips');

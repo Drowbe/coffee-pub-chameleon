@@ -403,7 +403,8 @@ test('a manifest\'s text a person reads is filled with the environment\'s words;
   const f = fillManifest(m, words);
   assert.notEqual(f, m);
   assert.equal(m.description, 'For every {space}.', 'the stored manifest is untouched');
-  assert.deepEqual(manifestTexts(f).map(([o, k]) => o[k]), ['For every trip.', 'Trips', 'Edit a trip', 'Per tool', 'Each trip {x}', 'Tools', 'a trip', 'In a trip', 'Open a tool', 'Trip note']);
+  // The module word is locked (plan-templates-redesign.md, decision 5): "tool" is ignored, and {module} reads "module".
+  assert.deepEqual(manifestTexts(f).map(([o, k]) => o[k]), ['For every trip.', 'Trips', 'Edit a trip', 'Per module', 'Each trip {x}', 'Modules', 'a trip', 'In a trip', 'Open a module', 'Trip note']);
   assert.equal(f.name, 'The {Space} Tool', 'a name is a name, never filled');
   assert.equal(fillManifest(m, null).description, 'For every space.', 'no words: the defaults');
 });

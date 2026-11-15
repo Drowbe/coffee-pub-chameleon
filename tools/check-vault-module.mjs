@@ -52,8 +52,8 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
   if (!/sandbox', 'allow-scripts'\)/.test(read('public/file-viewer-views.js')) || /allow-same-origin/.test(read('public/file-viewer-views.js').replace(/\/\/.*$/gm, ''))) fail('the PDF frame must be sandbox="allow-scripts" and never allow-same-origin');
   const travel = JSON.parse(read('templates/travel.json'));
   const games = JSON.parse(read('templates/games.json'));
-  if (travel.moduleNames.vault !== 'Documents' || !travel.modules.includes('vault')) fail('the travel template does not show the Vault as Documents');
-  if (games.moduleNames.vault !== 'Handouts' || !games.modules.includes('vault')) fail('the games template does not show the Vault as Handouts');
+  if (travel.modules?.vault?.name !== 'Documents') fail('the travel template does not show the Vault as Documents');
+  if (games.modules?.vault?.name !== 'Handouts') fail('the games template does not show the Vault as Handouts');
   // What the page promises it keeps: the sentence "Your choice is remembered." needs a write to the person's own data and a read of it.
   const html = read('modules/vault/src/vault.html');
   if (/Your choice is remembered/.test(html) && !(/host\.storage\.set\([^)]*scope: 'person'/.test(js) && /host\.storage\.list\([^)]*scope: 'person'/.test(js))) fail('the page says "Your choice is remembered." but does not store and read it per person');

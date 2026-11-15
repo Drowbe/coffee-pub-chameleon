@@ -677,8 +677,6 @@ class Store {
     // The words this environment's template gives (plan-environment-templates.md): none until templates are built,
     // so every key reads the owner's word or the default.
     this.templateWords = null;
-    // The verbs this environment's template gives (addendum 4): null with no template.
-    this.templateVerbs = null;
     // The module display names and icons this environment's template gives, by module id (step 3; none until then).
     this.templateModuleNames = null;
     this.templateModuleIcons = null;
@@ -686,8 +684,8 @@ class Store {
     // The icons installed and built-in modules have of their own (their manifests'), which a display icon may also be;
     // set by the environment's build (environment.js, index.js).
     this.moduleIconIds = () => [];
-    // A template, by id, as the environment's catalog has it ({ words, verbs, phases, moduleNames, moduleIcons, spaceDefaults,
-    // hidden, ...}) or null; and the id of the space the current request is about, or null (plan-space-templates.md). Both are
+    // A template, by id, as the environment's catalog has it (server/templates.js cleanTemplate's shape: { words, phases,
+    // modules, workspace, spaceDefaults, hidden, ... }) or null; and the id of the space the current request is about, or null (plan-space-templates.md). Both are
     // set by the environment's build in index.js; a Store on its own reads no space's template.
     this.templateById = () => null;
     this.currentSpace = () => null;
@@ -728,7 +726,8 @@ class Store {
       // names migration part. { id, appliedAt (null until applied), skipped: [{ id, why }] }.
       ...(cleanTemplateRecord(raw.template) ? { template: cleanTemplateRecord(raw.template) } : {}),
       ...(cleanTemplateHistory(raw.templateHistory).length ? { templateHistory: cleanTemplateHistory(raw.templateHistory) } : {}),
-      // Templates an owner imported on a single install (addendum 2), checked by server/templates.js before saving.
+      // The owner's own templates (plan-templates-redesign.md, "Owners' own templates"), checked by server/templates.js
+      // before saving and again on every read of the catalog.
       ...(Array.isArray(raw.templates) && raw.templates.length ? { templates: raw.templates.filter((t) => t && typeof t === 'object' && typeof t.id === 'string') } : {}),
       // A key that is not the shape this server makes (a hand-edited file, say) is replaced with a new one: nobody
       // chooses the key that signs this environment's sessions or opens its stream. A new session key signs everyone out.
@@ -1099,19 +1098,17 @@ class Store {
     return found || null;
   }
 
-  // What a space (or an aside) reads, in the order the owner's own words and module names first, then the space's template,
-  // then the environment's template, then the defaults: { words, verbs, phases, template }. Only the keys in words.SPACE_KEYS
-  // and the verbs in words.SPACE_VERBS change; `host`, `admin`, `environment`, `owner`, `home` and `enter` are the environment's.
-  // An aside has no phases of its own: its phases are the environment's. With no space, no key, or the switch off, it answers
-  // what resolvedWords(), resolvedVerbs() and templatePhases answer.
+  // What a space (or an aside) reads, in the order the owner's own words first, then the space's template, then the
+  // environment's template, then the defaults: { words, verbs, phases, template }. Only the keys in words.SPACE_KEYS
+  // change; every locked word and both verbs read the same everywhere (plan-templates-redesign.md, decisions 5 and 32), and
+  // `home` is the environment's. An aside has no phases of its own: its phases are the environment's. With no space, no
+  // key, or the switch off, it answers what resolvedWords(), resolvedVerbs() and templatePhases answer.
   lookOf(id = null) {
     const env = { words: this.resolvedWords(), verbs: this.resolvedVerbs(), phases: this.templatePhases, template: null };
     const t = id ? this.spaceTemplateFor(id) : null;
     if (!t) return env;
     const full = words.resolve(this.data.settings.words, { ...words.ownOnly(this.templateWords), ...words.ownOnly(t.words) });
     for (const k of words.SPACE_KEYS) env.words[k] = full[k];
-    const fullVerbs = words.resolveVerbs(this.data.settings.verbs, { ...words.ownVerbsOnly(this.templateVerbs), ...words.ownVerbsOnly(t.verbs) });
-    for (const k of words.SPACE_VERBS) env.verbs[k] = fullVerbs[k];
     const isSpace = this.data.spaces.some((r) => r.id === id);
     if (isSpace) env.phases = Array.isArray(t.phases) ? t.phases : [];
     env.template = t.id;
@@ -1147,19 +1144,9 @@ class Store {
     return words.ownOnly(this.data.settings.words);
   }
 
-  // Every verb for this environment (server/words.js, addendum 4): the owner's, else the template's, else the default.
+  // Every verb (server/words.js): locked, so the defaults everywhere.
   resolvedVerbs() {
-    return words.resolveVerbs(this.data.settings.verbs, this.templateVerbs);
-  }
-
-  // The template's own verbs, unresolved ({ <key>: "<text>" }), or null for an environment with no template.
-  templateVerbsView() {
-    return this.templateVerbs ? words.ownVerbsOnly(this.templateVerbs) : null;
-  }
-
-  // The owner's own verbs as stored (settings.verbs), unresolved: { <key>: "<text>" }, {} when none are set.
-  ownVerbs() {
-    return words.ownVerbsOnly(this.data.settings.verbs);
+    return words.resolveVerbs();
   }
 
   // --- module display names and icons (plan-environment-templates.md, "Module display names and icons") -------
@@ -1171,8 +1158,11 @@ class Store {
     const from = (map) => { const v = map && typeof map === 'object' ? map[id] : null; return typeof v === 'string' && v ? v : null; };
     // In a space with a template of its own: the owner's, then the space's template's, then the environment's template's.
     const st = spaceId && this.data.spaces.some((r) => r.id === spaceId) ? this.spaceTemplateFor(spaceId) : null;
-    const templateName = (st && from(st.moduleNames)) || from(this.templateModuleNames);
-    const templateIcon = (st && from(st.moduleIcons)) || from(this.templateModuleIcons);
+    // A space's template keeps its names and icons in `modules` (server/templates.js), one entry per module id.
+    const entry = (t) => (t && t.modules && typeof t.modules === 'object' && Object.hasOwn(t.modules, id) ? t.modules[id] : null);
+    const text = (v) => (typeof v === 'string' && v ? v : null);
+    const templateName = (st && text(entry(st)?.name)) || from(this.templateModuleNames);
+    const templateIcon = (st && text(entry(st)?.icon)) || from(this.templateModuleIcons);
     const ownName = own('moduleNames');
     const ownIcon = own('moduleIcons');
     // An icon applies only while it can be drawn (displayIconIds); one that cannot now (its module uninstalled, its
@@ -1191,7 +1181,8 @@ class Store {
   displayIconIds(spaceTemplate = null) {
     const solid = (this.data.settings.icons || []).filter((i) => i.classes === `fa-solid fa-${i.id}`).map((i) => i.id);
     const of = (t) => (t && typeof t === 'object' ? Object.values(t) : []);
-    return [...new Set([...solid, ...this.moduleIconIds(), ...of(this.templateModuleIcons), ...of(spaceTemplate && spaceTemplate.moduleIcons)])];
+    const ofModules = (t) => (t && t.modules && typeof t.modules === 'object' ? Object.values(t.modules).map((m) => m && m.icon).filter((i) => typeof i === 'string') : []);
+    return [...new Set([...solid, ...this.moduleIconIds(), ...of(this.templateModuleIcons), ...ofModules(spaceTemplate)])];
   }
 
   // The template this environment was made from, as recorded, or null (server/templates.js).
@@ -1206,21 +1197,31 @@ class Store {
     this.save();
   }
 
-  // Templates imported on this install (a single install's own; addendum 2), as saved.
-  get importedTemplates() {
+  // The owner's own templates (plan-templates-redesign.md, "Owners' own templates"), as saved: each a template's fields
+  // with its version, createdAt, updatedAt and copiedFrom ({ id, version } or null).
+  get ownTemplates() {
     return structuredClone(this.data.templates || []);
   }
 
-  putImportedTemplate(template) {
+  putOwnTemplate(template) {
     const list = (this.data.templates || []).filter((t) => t.id !== template.id);
     this.data.templates = [...list, structuredClone(template)];
     this.save();
   }
 
-  removeImportedTemplate(id) {
+  removeOwnTemplate(id) {
     this.data.templates = (this.data.templates || []).filter((t) => t.id !== id);
     if (!this.data.templates.length) delete this.data.templates;
     this.save();
+  }
+
+  // Every space that names template `id` as its own reads the environment's again: the key comes off each record, whether
+  // or not the switch is on. Answers the names of the spaces that changed.
+  dropSpaceTemplate(id) {
+    const moved = this.data.spaces.filter((r) => r.template === id);
+    for (const r of moved) delete r.template;
+    if (moved.length) this.save();
+    return moved.map((r) => r.name);
   }
 
   // The last switches of template, oldest first (see cleanTemplateHistory).
@@ -1300,14 +1301,8 @@ class Store {
       if (Object.keys(next).length) s.words = next;
       else { delete s.words; clearWords = true; }
     }
-    // The owner's verbs (settings.verbs, addendum 4), the same way: null returns one to the template's or the default.
-    let clearVerbs = false;
-    if (patch.verbs !== undefined) {
-      const { verbs: next, error } = words.applyVerbsPatch(s.verbs, patch.verbs);
-      if (error) throw new StoreError(error);
-      if (Object.keys(next).length) s.verbs = next;
-      else { delete s.verbs; clearVerbs = true; }
-    }
+    // The verbs are locked (plan-templates-redesign.md, decisions 5 and 32): nobody changes them.
+    if (patch.verbs !== undefined) throw new StoreError(words.LOCKED_VERBS);
     if (patch.environmentName !== undefined) s.environmentName = cleanText(patch.environmentName, 60) || DEFAULT_SETTINGS.environmentName;
     // null (or '') goes back to the template's home icon, else the default.
     if (patch.homeIcon !== undefined) {
@@ -1449,7 +1444,6 @@ class Store {
     }
     Object.assign(this.data.settings, s);
     if (clearWords) delete this.data.settings.words;
-    if (clearVerbs) delete this.data.settings.verbs;
     if (clearSpaceDefaults) delete this.data.settings.spaceDefaults;
     this.save();
     return this.data.settings;
@@ -1980,7 +1974,7 @@ class Store {
     const own = template === undefined || template === null ? null : this.chosenTemplate(template, null);
     const startsWith = profile ?? own?.spaceDefaults?.profile ?? this.data.settings.spaceDefaults?.profile; // the environment's default (a template's)
     const space = this.sanitizeSpace({ id, name: name || `New ${this.word('space')}`, description, members, profile: startsWith, link, linkIcon, createdAt: new Date().toISOString(), ...(own ? { template: own.id } : {}) });
-    const opensWith = own?.spaceDefaults?.opensWith;
+    const opensWith = own?.workspace?.opensWith;
     if (Array.isArray(opensWith) && opensWith.length && cleanOpensWith(opensWith)) space.opensWith = cleanOpensWith(opensWith);
     space.members = space.members.filter((k) => this.userByKey(k));
     if (creator && this.userByKey(creator) && !this.userByKey(creator).hostAdmin && !space.members.includes(creator)) space.members.push(creator);

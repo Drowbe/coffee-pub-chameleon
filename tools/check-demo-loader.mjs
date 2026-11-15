@@ -266,8 +266,10 @@ try {
   });
 
   await step('(h) the sentences use the words function: a skip and a refusal read the environment\'s own words', async () => {
-    const set = WORDS.resolve({ space: { one: 'quest', many: 'quests' }, environment: { one: 'campaign', many: 'campaigns' } }, null);
-    const words = (key, opts) => WORDS.format(set, key, opts);
+    // The environment word is locked (plan-templates-redesign.md, decision 5), so a words function of its own stands in
+    // for one that reads otherwise: what is checked is that the sentences go through the function they are given.
+    const set = WORDS.resolve({ space: { one: 'quest', many: 'quests' } }, null);
+    const words = (key, opts) => (key === 'environment' ? WORDS.format({ ...set, environment: { one: 'campaign', many: 'campaigns', a: 'a campaign' } }, key, opts) : WORDS.format(set, key, opts));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-files-'));
     try {
       const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates', 'demo', 'travel.json'), 'utf8'));

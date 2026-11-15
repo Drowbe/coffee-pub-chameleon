@@ -423,7 +423,10 @@ try {
     const as = (method, u, body) => call(p2, method, 'admin', u, body, { cookie: c2 });
     let r = await as('PUT', '/api/host/plans', { free: { name: 'Free', caps: {} }, mark: { name: MARK, caps: { modules: 'all', members: 5 } } });
     assert.equal(r.status, 200, r.text);
-    r = await as('POST', '/api/host/templates', { id: 'marked', name: MARK, description: `${MARK}<script>__xss=1</script>`, modules: ['chat', 'conference'] });
+    // A template's name and description are plain text (plan-templates-redesign.md, step 1): markup is refused at the door.
+    r = await as('POST', '/api/host/templates', { id: 'marked', name: MARK, description: `${MARK}<script>__xss=1</script>`, modules: { chat: {}, conference: {} } });
+    assert.deepEqual([r.status, r.json.problems], [400, ['"name" must be plain text of 1 to 40 characters.', '"description" must be plain text of 1 to 200 characters.']], r.text);
+    r = await as('POST', '/api/host/templates', { id: 'marked', name: 'Marked', description: 'Marked.', modules: { chat: {}, conference: {} } });
     assert.equal(r.status, 201, r.text);
     r = await as('POST', '/api/host/environments', { slug: 'marked', name: `${MARK}<script>__xss=1</script>`, plan: { name: 'mark', modules: 'all', members: 5 }, template: 'marked', owner: { login: 'own-marked', displayName: MARK, password: 'owner-password-1' } });
     assert.equal(r.status, 201, r.text);

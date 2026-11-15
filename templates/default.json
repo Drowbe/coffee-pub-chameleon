@@ -1,0 +1,8 @@
+{
+  "id": "default",
+  "name": "Default",
+  "description": "Every module this server has, with the usual words. Copy it to make your own.",
+  "version": 1,
+  "modules": "*",
+  "call": { "joinOnEntry": false, "position": "top", "layout": "grid" }
+}

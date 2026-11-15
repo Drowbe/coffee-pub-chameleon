@@ -2,14 +2,24 @@
   "id": "travel",
   "name": "Travel",
   "description": "Plan trips together: the itinerary, places, maps, research and a calendar.",
-  "version": 10,
+  "version": 11,
   "words": { "space": { "one": "trip", "many": "trips" } },
   "icons": { "home": "suitcase-rolling" },
-  "moduleNames": { "travel": "Itinerary", "vault": "Documents" },
-  "moduleIcons": {},
-  "modules": ["travel", "maps", "research", "vault", "assistant", "calendar", "budget", "polls", "todo", "chat", "conference"],
-  "settings": { "showCalendar": true, "showMap": true, "calendarFeeds": true, "otherCalendars": true },
   "lobby": { "name": "Home base", "description": "Everyone on every trip." },
+  "modules": {
+    "travel": { "name": "Itinerary" },
+    "maps": {},
+    "research": {},
+    "vault": { "name": "Documents" },
+    "assistant": {},
+    "calendar": {},
+    "budget": {},
+    "polls": {},
+    "todo": {},
+    "chat": {},
+    "conference": {}
+  },
+  "workspace": { "opensWith": ["travel", "chat"] },
   "phases": [
     { "id": "planning", "icon": "clipboard-list", "label": "Planning" },
     { "id": "booking", "icon": "ticket", "label": "Booking" },
@@ -18,5 +28,6 @@
     { "id": "trip", "icon": "plane", "label": "Trip", "main": true },
     { "id": "post-trip", "icon": "camera", "label": "Post-trip" }
   ],
-  "spaceDefaults": { "profile": "participants", "opensWith": ["travel", "chat"] }
+  "spaceDefaults": { "profile": "participants" },
+  "settings": { "showCalendar": true, "showMap": true, "calendarFeeds": true, "otherCalendars": true }
 }

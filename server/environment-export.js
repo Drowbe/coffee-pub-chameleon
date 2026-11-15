@@ -55,7 +55,7 @@ const ASIDE_FIELDS = ['id', 'members', 'origin', 'private', 'createdAt'];
 const SETTINGS_FIELDS = [
   ...Object.keys(DEFAULT_SETTINGS),
   'builtinThemesSeeded', 'iconsSeeded', 'reactionsCuratedSeeded', 'iconsCuratedSeeded', 'homeIconChoiceSeeded',
-  'words', 'verbs', 'spaceDefaults', 'otherCalendars', 'spaceTemplates',
+  'words', 'spaceDefaults', 'otherCalendars', 'spaceTemplates',
 ];
 const SETTINGS_LEFT_OUT = ['publishedCalendarFeed'];
 

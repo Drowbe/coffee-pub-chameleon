@@ -151,17 +151,15 @@ test('a hosted install: each environment\'s store moves on its own', () => {
   }
 });
 
-test('a template may carry the full reaction set and icon set', () => {
-  const bundled = bundledModules(path.join(ROOT, 'modules')).map((m) => m.id);
+// plan-templates-redesign.md, decision 12: the core reactions and icons are fixed; a template only adds to them.
+test('a template only adds reactions and icons: a repeat of the core set is refused', () => {
   const travel = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates', 'travel.json'), 'utf8'));
-  const problems = (patch) => templates.problemsOf({ ...travel, ...patch }, { file: 'travel.json', bundled });
-  assert.deepEqual(problems({ reactions: clone(DEFAULT_REACTION_LIST) }), [], '105 reactions are accepted');
-  const solid = DEFAULT_ICON_LIST.filter((i) => i.classes.startsWith('fa-solid ')).map((i) => i.id);
-  assert.deepEqual(problems({ iconSet: solid }), [], `the ${solid.length} solid default icons are accepted as an iconSet`);
-  const tooMany = Array.from({ length: 121 }, (_, i) => ({ glyph: '🎲', label: `Die ${i}` }));
-  assert.deepEqual(problems({ reactions: tooMany }), ['"reactions" must be a list of at most 120 reactions.'], 'past the cap is refused, in a sentence');
-  const cleaned = templates.cleanTemplate({ ...travel, reactions: clone(DEFAULT_REACTION_LIST) });
-  assert.deepEqual(cleaned.reactions, DEFAULT_REACTION_LIST, 'the cleaned template keeps all 105');
+  const problems = (patch) => templates.problemsOf({ ...travel, ...patch }, { file: 'travel.json' });
+  const core = clone(DEFAULT_REACTION_LIST).slice(0, 2);
+  assert.deepEqual(problems({ reactions: core }), core.map((r, i) => `reactions[${i}]: ${r.glyph} is in the core set already; a template only adds.`));
+  const solid = DEFAULT_ICON_LIST.filter((i) => i.classes.startsWith('fa-solid ')).map((i) => i.id).slice(0, 1);
+  assert.deepEqual(problems({ iconSet: solid }), [`iconSet: "${solid[0]}" is in the core set already; a template only adds.`]);
+  assert.deepEqual(problems({ reactions: [{ id: 'die', glyph: '\u{1f3b2}', label: 'Die' }] }), [], 'an addition is accepted');
 });
 
 fs.rmSync(base, { recursive: true, force: true });

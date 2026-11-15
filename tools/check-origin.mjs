@@ -142,7 +142,8 @@ try {
     ['host console: rename an environment', 'PATCH', 'admin', '/api/host/environments/bbb', { name: 'Taken over' }, undefined, 'host'],
     ['host console: plans', 'PUT', 'admin', '/api/host/plans', {}, undefined, 'host'],
     ['host console: sign out', 'POST', 'admin', '/api/host/logout', undefined, undefined, 'host'],
-    ['host console: theme file check (text/plain)', 'POST', 'admin', '/api/host/themes/check', JSON.stringify({ format: 'theme', formatVersion: 1, name: 'Cross', light: set }), 'text/plain', 'host'],
+    ['host console: template file import (text/plain)', 'POST', 'admin', '/api/host/templates/import', JSON.stringify({ format: 'template', formatVersion: 1, id: 'cross', name: 'Cross', description: 'Cross.', modules: { chat: {} } }), 'text/plain', 'host'],
+    ['an owner\'s own template: a copy', 'POST', 'aaa', '/api/environment/templates', { from: 'default', id: 'cross', name: 'Cross' }],
   ];
   const cookieFor = (kind) => (kind === 'host' ? hostCookie : ownerCookie);
 
@@ -269,7 +270,7 @@ try {
   await test('hiding a template takes it out of the templates the start page offers; showing it brings it back', async () => {
     const hide = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: true } });
     assert.equal(hide.status, 200, hide.text);
-    assert.deepEqual((await call('GET', '', '/api/product')).json.templates.map((t) => t.id), ['games']);
+    assert.deepEqual((await call('GET', '', '/api/product')).json.templates.map((t) => t.id), ['default', 'games']);
     const show = await call('PATCH', 'admin', '/api/host/templates/travel', { headers: same('admin'), body: { hidden: false } });
     assert.equal(show.status, 200, show.text);
     assert.ok((await call('GET', '', '/api/product')).json.templates.some((t) => t.id === 'travel'), 'shown again');

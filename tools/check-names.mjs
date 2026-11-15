@@ -474,11 +474,14 @@ const VOCABULARY_ENFORCED = ['server/', 'public/', 'modules/'];
 const VOCABULARY_SCOPE = ['server/', 'public/', 'modules/'];
 const WORDS = require('../server/words.js');
 const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const vocabularyForms = () => WORDS.CHANGEABLE.flatMap((k) => [WORDS.DEFAULTS[k].one, WORDS.DEFAULTS[k].many]);
+// Every word but the host's own: the changeable ones and the locked ones (plan-templates-redesign.md, decisions 5 and 32)
+// alike, so a page or a sentence reads each through word() and never types it.
+const VOCABULARY_KEYS = WORDS.KEYS.filter((k) => !WORDS.FIXED.includes(k));
+const vocabularyForms = () => VOCABULARY_KEYS.flatMap((k) => [WORDS.DEFAULTS[k].one, WORDS.DEFAULTS[k].many]);
 // A form as a word of its own: not part of a name (module.json, module-settings, spaceId), a path, or a {space}
 // placeholder for fill().
 const VOCABULARY_WORD = new RegExp(`(?<![\\w.\\-/{$])(?<!\\{[aA] )(?<!\\{[aA]n )(?:${vocabularyForms().map(escapeRe).join('|')})(?![\\w\\-/}]|\\.\\w)`, 'gi');
-const MANY_FORMS = new Set(WORDS.CHANGEABLE.concat(WORDS.FIXED).map((k) => WORDS.DEFAULTS[k].many));
+const MANY_FORMS = new Set(VOCABULARY_KEYS.concat(WORDS.FIXED).map((k) => WORDS.DEFAULTS[k].many));
 const ALL_FORMS = new Set(WORDS.KEYS.flatMap((k) => [WORDS.DEFAULTS[k].one, WORDS.DEFAULTS[k].many]));
 // A placeholder with an article ({a space}): fill() fills it only for a singular form it knows.
 const ARTICLE_PLACEHOLDER = /\{(?:a|an|A|An) ([A-Za-z]+)\}/g;
@@ -619,10 +622,12 @@ function wordsCheck() {
     try { fn(); n += 1; } catch (err) { fail(`check-names words: ${name}: ${err.message}`); }
   };
   const { Store } = require('../server/store.js');
-  test('the vocabulary is the eleven changeable keys and the two fixed ones, in the Names\' order, home after space', () => {
+  test('the vocabulary: three changeable keys, the rest locked, the host\'s two among them, in the Names\' order, home after space', () => {
     assert.deepEqual(WORDS.KEYS, ['host', 'environment', 'space', 'home', 'aside', 'canvas', 'module', 'object', 'admin', 'owner', 'moderator', 'member', 'guest']);
     assert.deepEqual(WORDS.FIXED, ['host', 'admin']);
-    assert.equal(WORDS.CHANGEABLE.length, 11);
+    assert.deepEqual(WORDS.CHANGEABLE, ['space', 'home', 'member']);
+    assert.deepEqual(WORDS.LOCKED, ['host', 'environment', 'aside', 'canvas', 'module', 'object', 'admin', 'owner', 'moderator', 'guest']);
+    assert.deepEqual(WORDS.SPACE_KEYS, ['space', 'member']);
   });
   // plan-primary-nav.md, decision 13: the home page's word, by default the space word's plural with a capital.
   test('home follows the space word unless it is set: the owner\'s, else the template\'s, else the space word\'s plural', () => {
@@ -662,7 +667,7 @@ function wordsCheck() {
     assert.deepEqual(WORDS.applyPatch({ home: { one: 'Campaign', many: 'Campaigns' } }, { home: null }), { words: {} });
     assert.equal(WORDS.applyPatch({}, { home: { one: 'Campaign' } }).error, 'The word for the home page needs both its singular and its plural.');
     assert.equal(WORDS.applyPatch({}, { home: { one: 'Camp<i>', many: 'x' } }).error, 'The word for the home page can use only letters, spaces, hyphens and apostrophes.');
-    assert.match(WORDS.applyPatch({}, { lobby: { one: 'a', many: 'b' } }).error, /the words are environment, space, home, aside, /);
+    assert.equal(WORDS.applyPatch({}, { lobby: { one: 'a', many: 'b' } }).error, 'There is no word called lobby; the words you can change are space, home, member.');
   });
   test('with nothing set, every key reads today\'s words, with the usual article', () => {
     const r = WORDS.resolve(null, null);
@@ -682,17 +687,21 @@ function wordsCheck() {
     assert.equal(r.admin.one, 'admin');
     assert.equal(r.guest.one, 'guest');
     assert.equal(WORDS.resolve({ space: { one: '<b>', many: 'x' } }, null).space.one, 'space', 'a bad stored word reads the default');
-    assert.equal(WORDS.resolve({ object: { one: 'hour', many: 'hours', a: 'an hour' } }, null).object.a, 'an hour');
+    assert.equal(WORDS.resolve({ member: { one: 'hour', many: 'hours', a: 'an hour' } }, null).member.a, 'an hour');
+    // Locked words (decisions 5 and 32) read their defaults, whoever stored another.
+    const locked = WORDS.resolve({ owner: { one: 'boss', many: 'bosses' }, aside: { one: 'whisper', many: 'whispers' } }, { environment: { one: 'group', many: 'groups' }, object: { one: 'thing', many: 'things' } });
+    assert.deepEqual([locked.owner.one, locked.aside.one, locked.environment.one, locked.object.one], ['owner', 'aside', 'environment', 'object']);
   });
   test('format and fill give each form, with capitals from the helper', () => {
-    const r = WORDS.resolve({ space: { one: 'trip', many: 'trips' }, aside: { one: 'huddle', many: 'huddles' } }, null);
+    const r = WORDS.resolve({ space: { one: 'trip', many: 'trips' }, member: { one: 'huddler', many: 'huddlers' } }, null);
     assert.equal(WORDS.format(r, 'space'), 'trip');
     assert.equal(WORDS.format(r, 'space', { many: true, cap: true }), 'Trips');
-    assert.equal(WORDS.format(r, 'aside', { a: true }), 'a huddle');
-    assert.equal(WORDS.format(r, 'aside', { a: true, cap: true }), 'A huddle');
+    assert.equal(WORDS.format(r, 'member', { a: true }), 'a huddler');
+    assert.equal(WORDS.format(r, 'member', { a: true, cap: true }), 'A huddler');
+    assert.equal(WORDS.format(r, 'aside', { a: true }), 'an aside');
     assert.throws(() => WORDS.format(r, 'room'), /no word called room/);
-    assert.equal(WORDS.fill('{Spaces}: manage {a space}\'s {guest} link, {an aside}, {spaces} and {x}.', r), 'Trips: manage a trip\'s guest link, a huddle, trips and {x}.');
-    assert.equal(WORDS.fill('In the {Space}; {A aside}', r), 'In the Trip; A huddle');
+    assert.equal(WORDS.fill('{Spaces}: manage {a space}\'s {guest} link, {an aside}, {a member}, {spaces} and {x}.', r), 'Trips: manage a trip\'s guest link, an aside, a huddler, trips and {x}.');
+    assert.equal(WORDS.fill('In the {Space}; {A aside}', r), 'In the Trip; An aside');
     assert.equal(WORDS.word('space', { many: true }), 'spaces', 'outside a request, the defaults');
   });
   test('a change is checked word by word, and host, admin, unknown keys and bad words are refused with a sentence', () => {
@@ -702,7 +711,8 @@ function wordsCheck() {
     const refused = (patch) => WORDS.applyPatch({}, patch).error;
     assert.equal(refused({ host: { one: 'a', many: 'b' } }), "The host word is the host's own and can't be changed.");
     assert.equal(refused({ admin: null }), "The admin word is the host's own and can't be changed.");
-    assert.match(refused({ room: { one: 'a', many: 'b' } }), /^There is no word called room; the words are environment, space, /);
+    assert.equal(refused({ room: { one: 'a', many: 'b' } }), 'There is no word called room; the words you can change are space, home, member.');
+    for (const key of ['environment', 'aside', 'canvas', 'module', 'object', 'owner', 'moderator', 'guest']) assert.equal(refused({ [key]: { one: 'a', many: 'b' } }), `The ${key} word reads the same everywhere, so it can't be changed.`, key);
     assert.equal(refused({ space: 'trip' }), 'The word for space must be its singular and plural, or null to use the default.');
     assert.equal(refused({ space: { one: 'trip' } }), 'The word for space needs both its singular and its plural.');
     assert.equal(refused({ space: { one: 'trip', many: 'trips', icon: 'x' } }), 'The word for space takes only one, many and a.');

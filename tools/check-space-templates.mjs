@@ -68,7 +68,7 @@ await test('the resolution order: the owner, the space template, the environment
   assert.equal(look.template, 'games');
   assert.equal(wordOf(look, 'space'), 'campaign', "the space's template over the environment's trip");
   assert.equal(wordOf(look, 'member'), 'player');
-  assert.equal(wordOf(look, 'aside'), 'whisper');
+  assert.equal(wordOf(look, 'aside'), 'aside', 'aside is locked (plan-templates-redesign.md, decision 32)');
   assert.equal(wordOf(look, 'canvas'), 'canvas', 'neither template has it: the default');
   assert.equal(look.words.space.a, 'a campaign');
   assert.deepEqual(look.phases, [], 'games has no phases, so a space of it has none');
@@ -155,7 +155,7 @@ await test('the off switch, an unknown id, the Lobby, an aside and another space
   assert.equal(store.sanitizeSpace({ id: 'lobby', name: 'L', template: 'games' }).template, undefined);
   // An aside reads the words of the space it came from, and the environment's phases and module names.
   const aside = store.addAside([], a.id);
-  assert.equal(wordOf(store.lookOf(aside.id), 'aside'), 'whisper');
+  assert.equal(wordOf(store.lookOf(aside.id), 'space'), 'campaign');
   assert.equal(store.lookOf(aside.id).phases.length, 6, 'an aside has no phases of its own');
   assert.equal(store.moduleDisplay('travel', aside.id).name, 'Itinerary');
   const orphan = store.addAside([], 'gone1234');
@@ -637,7 +637,7 @@ try {
     assert.equal((await asAdmin('GET', `/api/spaces/${campaign.id}`)).json.look.words.space.one, 'campaign');
   });
 
-  await test('the access key reads no template on a space list; a single install cannot delete a template a space names', async () => {
+  await test('the access key reads no template on a space list; an owner\'s own template a space names is deleted, and the space reads the environment\'s again', async () => {
     const key = (await asAdmin('GET', '/api/settings')).json.streamKey;
     const keyed = await call(server, 'GET', '/api/spaces', { cookie: '', body: undefined });
     assert.equal(keyed.status, 401);
@@ -648,16 +648,15 @@ try {
     const status = await call(server, 'GET', `/api/status?s=${encodeURIComponent(key)}`);
     for (const sp of status.json.spaces) assert.equal('template' in sp, false, 'nor on the stream status');
     assert.equal((await asAdmin('GET', '/api/spaces')).json.spaces.find((s) => s.id === campaign.id).template, 'games', 'a signed-in owner still reads it');
-    // An imported template a space names.
+    // An imported template a space names (plan-templates-redesign.md, "Owners' own templates": deleted while in use).
     const file = (await asAdmin('GET', '/api/templates/games/export')).json;
     const imp = await call(server, 'POST', '/api/templates/import?id=mine', { cookie: admin, body: file });
     assert.equal(imp.status, 201, imp.text);
     assert.equal((await asAdmin('PATCH', `/api/spaces/${trip.id}`, { template: 'mine' })).status, 200);
-    const refused = await asAdmin('DELETE', '/api/templates/mine');
-    assert.equal(refused.status, 409);
-    assert.match(refused.json.error, /^Environments or trips use this template: .+\. Hide it instead\.$/);
-    assert.equal((await asAdmin('PATCH', `/api/spaces/${trip.id}`, { template: null })).status, 200);
-    assert.equal((await asAdmin('DELETE', '/api/templates/mine')).status, 200);
+    const name = (await asAdmin('GET', `/api/spaces/${trip.id}`)).json.space.name;
+    const deleted = await asAdmin('DELETE', '/api/environment/templates/mine');
+    assert.deepEqual([deleted.status, deleted.json], [200, { spaces: [name], environment: false }]);
+    assert.equal((await asAdmin('GET', `/api/spaces/${trip.id}`)).json.space.template, null, 'the space reads the environment\'s again');
   });
 
   await test('the stored file: the key on the record, no other file changed in shape, and a restart reads it back', async () => {

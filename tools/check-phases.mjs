@@ -559,7 +559,7 @@ try {
   });
 
   await test('branding carries the template\'s phases for the chip (step 3): [] with no template, the ordered list with one', async () => {
-    assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'no template: an empty list, not missing');
+    assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'the Default template: an empty list, not missing');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, [], 'the same through /api/config');
     assert.equal((await asAdmin('PATCH', '/api/settings', { template: 'travel' })).status, 200);
     const ICONS = { planning: 'clipboard-list', booking: 'ticket', buffer: 'hourglass-half', 'pre-trip': 'suitcase-rolling', trip: 'plane', 'post-trip': 'camera' };
@@ -567,8 +567,8 @@ try {
     assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, expected, 'the travel template\'s phases, in order, main marked, with no restart');
     assert.deepEqual((await asAdmin('GET', '/api/config')).json.phases, expected);
     assert.deepEqual(P.cleanPhases(expected), TRAVEL.map((p) => ({ id: p.id, label: p.label, main: p.main === true, icon: ICONS[p.id] })), 'the shape the chip cleans');
-    assert.equal((await asAdmin('PATCH', '/api/settings', { template: null })).status, 200);
-    assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'back to none when the template is dropped');
+    assert.equal((await asAdmin('PATCH', '/api/settings', { template: 'default' })).status, 200);
+    assert.deepEqual((await call(server, 'GET', '/api/branding')).json.phases, [], 'back to none with the Default template');
   });
 
   // The travel template, for its phases; To-do on in the trip, for a member with write there.

@@ -1,26 +1,31 @@
 // The words a person reads for each level and role (documentation/plans/plan-environment-templates.md, "The
-// vocabulary"). The code names never change; only what a person reads does. Each key has a singular (`one`), a plural
-// (`many`) and, when the usual "a"/"an" is wrong for it, its singular with its article (`a`, such as "an hour").
+// vocabulary"; documentation/plans/plan-templates-redesign.md, decisions 5, 6 and 32). The code names never change;
+// only what a person reads does, and only for three of them. Each key has a singular (`one`), a plural (`many`) and,
+// when the usual "a"/"an" is wrong for it, its singular with its article (`a`, such as "an hour").
 //
-// Where a word comes from, in order: the owner's own (settings.words.<key>), else the environment's template's, else
-// the default below. `host` and `admin` are the host's own words and always read their defaults: neither an owner nor a
-// template can change them (decision 18). Resolved per request, so a change is live on the next one.
+// Most words are locked: they read the same everywhere, and neither an owner nor a template can change them (decision
+// 5: environment, canvas, module, object, owner, moderator and guest; decision 32: aside; and the host's own words,
+// host and admin). Only `space`, `member` and `home` may be changed (decision 6). Where one of those comes from, in
+// order: the owner's own (settings.words.<key>), else the template's, else the default below. Resolved per request, so
+// a change is live on the next one.
 //
 // `home` (plan-primary-nav.md, decision 13) is what the home page, the list of spaces, is called: it is not always the
 // plural of space ("Campaigns" against "Game"). With no word of its own (the owner's, else the template's), it follows
 // the resolved space word: both its forms are the space word's plural with a capital ("Spaces", "Trips"). Its entry in
-// DEFAULTS is that for today's space word, and fill() has no placeholder for it.
+// DEFAULTS is that for today's space word, and fill() has no placeholder for it. Home is the environment's, so only the
+// environment's default template gives it (a template's `home` field), never a space's own template.
 //
 // The server's sentences that name a level or role go through word() (or fill(), for fixed text such as a
 // permission's label), never a typed word: tools/check-names.mjs --words holds them to it.
 
 const KEYS = ['host', 'environment', 'space', 'home', 'aside', 'canvas', 'module', 'object', 'admin', 'owner', 'moderator', 'member', 'guest'];
+// The host's own words: always their defaults.
 const FIXED = ['host', 'admin'];
-// The words a space's own template changes inside that space (plan-space-templates.md, question 2b); the keys that name
-// things above a space (environment, owner, home) and the `enter` verb stay the environment's.
-const SPACE_KEYS = ['space', 'aside', 'canvas', 'module', 'object', 'moderator', 'member', 'guest'];
-const SPACE_VERBS = ['layout'];
-const CHANGEABLE = KEYS.filter((k) => !FIXED.includes(k));
+// The words that may be changed, by the owner or by a template (decision 6). Every other key is locked.
+const CHANGEABLE = ['space', 'home', 'member'];
+const LOCKED = KEYS.filter((k) => !CHANGEABLE.includes(k));
+// The words a space's own template changes inside that space: home is the environment's, so it stays the environment's.
+const SPACE_KEYS = ['space', 'member'];
 
 const capital = (text) => (text ? text.charAt(0).toLocaleUpperCase('en') + text.slice(1) : text);
 
@@ -82,6 +87,9 @@ function cleanWord(code, raw) {
   return { word };
 }
 
+// The sentence for a locked word (decisions 5 and 32).
+const lockedWord = (key) => `The ${key} word reads the same everywhere, so it can't be changed.`;
+
 // The owner's words after a change: `patch` is { <key>: { one, many, a? } | null }, null returning that key to the
 // template's word or the default. Answers { words } (the whole new set, keys in vocabulary order; {} when none are the
 // owner's own) or { error }, one sentence; on an error nothing is changed.
@@ -90,7 +98,8 @@ function applyPatch(current, patch) {
   const next = { ...ownOnly(current) };
   for (const [key, raw] of Object.entries(patch)) {
     if (FIXED.includes(key)) return { error: `The ${key} word is the host's own and can't be changed.` };
-    if (!CHANGEABLE.includes(key)) return { error: `There is no word called ${key}; the words are ${CHANGEABLE.join(', ')}.` };
+    if (LOCKED.includes(key)) return { error: lockedWord(key) };
+    if (!CHANGEABLE.includes(key)) return { error: `There is no word called ${String(key).slice(0, 40)}; the words you can change are ${CHANGEABLE.join(', ')}.` };
     if (raw === null) { delete next[key]; continue; }
     const { word, error } = cleanWord(key, raw);
     if (error) return { error };
@@ -111,15 +120,15 @@ function ownOnly(set) {
   return out;
 }
 
-// Every key's words, resolved: the owner's, else the template's, else the default; `host` and `admin` always the
-// default. Each is { one, many, a }, `a` filled in with the usual article when the word did not give its own.
+// Every key's words, resolved: the owner's, else the template's, else the default, for the changeable keys; every
+// locked key always its default. Each is { one, many, a }, `a` filled in with the usual article when the word did not give its own.
 function resolve(ownerWords, templateWords) {
   const owner = ownOnly(ownerWords);
   const template = ownOnly(templateWords);
   const out = {};
   for (const key of KEYS) {
     const fallback = key === 'home' ? homeDefault(out.space) : DEFAULTS[key]; // `space` comes before `home` in KEYS
-    const w = (!FIXED.includes(key) && (owner[key] || template[key])) || fallback;
+    const w = (CHANGEABLE.includes(key) && (owner[key] || template[key])) || fallback;
     out[key] = { one: w.one, many: w.many, a: w.a || usualArticle(w.one) };
   }
   return out;
@@ -164,62 +173,20 @@ function fill(text, resolved) {
   });
 }
 
-// --- verbs (addendum 4, "the word for entering a space"; and the space bar's Layout button) ---------------------------
-// The actions a person reads on a button, beside the nouns above and resolved the same way: the owner's own
-// (settings.verbs.<key>), else the environment's template's, else the default. Each is one string, as it reads at the
-// start of a button ("Enter", "Board", "Go to"): no plural, no article, never lower-cased or conjugated. A verb is not
-// a level or role, so it is kept out of `words` and the Names vocabulary. The key is a code name and never changes.
+// --- verbs (addendum 4; plan-templates-redesign.md, decisions 5 and 32) --------------------------------------------
+// The actions a person reads on a button: the space's Enter and the space bar's Layout. Both are locked: they read the
+// same everywhere, and neither an owner nor a template changes them. A verb is not a level or role, so it is kept out of
+// `words` and the Names vocabulary. The key is a code name and never changes.
 const VERBS = ['enter', 'layout'];
 const DEFAULT_VERBS = Object.freeze({ enter: 'Enter', layout: 'Layout' });
-const VERB_MAX_LENGTH = 20;
+const LOCKED_VERBS = 'The enter and layout verbs read the same everywhere, so they can\'t be changed.';
 
-// One verb as given, checked: { verb } (tidied) or { error }, one sentence.
-function cleanVerb(key, raw) {
-  if (typeof raw !== 'string') return { error: `The ${key} verb must be text, or null to use the default.` };
-  const verb = tidy(raw);
-  if (!verb || verb.length > VERB_MAX_LENGTH) return { error: `The ${key} verb must be 1 to ${VERB_MAX_LENGTH} characters.` };
-  if (!WORD_RE.test(verb)) return { error: `The ${key} verb can use only letters, spaces, hyphens and apostrophes.` };
-  return { verb };
-}
-
-const unknownVerb = (key) => `There is no verb called ${String(key).slice(0, 40)}; the verbs are ${VERBS.join(', ')}.`;
-
-// The owner's verbs after a change: `patch` is { <key>: "<text>" | null }, null returning that key to the template's
-// verb or the default. Answers { verbs } (the whole new set; {} when none are the owner's own) or { error }, one
-// sentence; on an error nothing is changed.
-function applyVerbsPatch(current, patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return { error: 'Verbs must be given by name, each as text.' };
-  const next = { ...ownVerbsOnly(current) };
-  for (const [key, raw] of Object.entries(patch)) {
-    if (!VERBS.includes(key)) return { error: unknownVerb(key) };
-    if (raw === null) { delete next[key]; continue; }
-    const { verb, error } = cleanVerb(key, raw);
-    if (error) return { error };
-    next[key] = verb;
-  }
-  return { verbs: Object.fromEntries(VERBS.filter((k) => next[k]).map((k) => [k, next[k]])) };
-}
-
-// A stored set, keeping only the known keys whose verbs are still good.
-function ownVerbsOnly(set) {
-  if (!set || typeof set !== 'object' || Array.isArray(set)) return {};
-  const out = {};
-  for (const key of VERBS) {
-    if (set[key] === undefined || set[key] === null) continue;
-    const { verb } = cleanVerb(key, set[key]);
-    if (verb) out[key] = verb;
-  }
-  return out;
-}
-
-// Every verb, resolved: the owner's, else the template's, else the default. { enter: "Enter", layout: "Layout" }.
-function resolveVerbs(ownerVerbs, templateVerbs) {
-  const owner = ownVerbsOnly(ownerVerbs);
-  const template = ownVerbsOnly(templateVerbs);
-  return Object.fromEntries(VERBS.map((key) => [key, owner[key] || template[key] || DEFAULT_VERBS[key]]));
+// Every verb: the defaults. { enter: "Enter", layout: "Layout" }.
+function resolveVerbs() {
+  return { ...DEFAULT_VERBS };
 }
 
 module.exports = {
-  KEYS, FIXED, SPACE_KEYS, SPACE_VERBS, CHANGEABLE, DEFAULTS, MAX_LENGTH, homeDefault, cleanWord, applyPatch, ownOnly, resolve, format, word, fill, useCurrent,
-  VERBS, DEFAULT_VERBS, VERB_MAX_LENGTH, cleanVerb, unknownVerb, applyVerbsPatch, ownVerbsOnly, resolveVerbs,
+  KEYS, FIXED, LOCKED, SPACE_KEYS, CHANGEABLE, DEFAULTS, MAX_LENGTH, homeDefault, cleanWord, applyPatch, ownOnly, resolve, format, word, fill, useCurrent, lockedWord,
+  VERBS, DEFAULT_VERBS, LOCKED_VERBS, resolveVerbs,
 };

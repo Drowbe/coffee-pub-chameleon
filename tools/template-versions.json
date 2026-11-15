@@ -1,10 +1,14 @@
 {
+  "default": {
+    "version": 1,
+    "fingerprint": "60581f0eec0832c0"
+  },
   "games": {
-    "version": 3,
-    "fingerprint": "8ad128cc95d8fb65"
+    "version": 4,
+    "fingerprint": "d8daa2053f4972d9"
   },
   "travel": {
-    "version": 10,
-    "fingerprint": "5487b5eb31543526"
+    "version": 11,
+    "fingerprint": "d705cdde5187d697"
   }
 }

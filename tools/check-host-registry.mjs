@@ -2023,10 +2023,12 @@ try {
     assert.deepEqual((await as('GET', '/api/modules/for-space?space=lobby')).json.builtin.find((b) => b.id === 'conference'), { id: 'conference', name: 'Call', icon: 'video', content: 'padded', description: 'Voice and video for the space: the tiles, the toolbar, reactions, asides and the OBS views.' });
     assert.deepEqual(await as('PATCH', '/api/modules/conference', { enabled: false }).then((r) => [r.status, r.json]), [400, { error: 'Call is built in, so only its display name and icon can be changed here.' }]);
 
-    assert.equal((await as('PATCH', '/api/settings', { words: { aside: { one: 'huddle', many: 'huddles' }, space: { one: 'trip', many: 'trips' }, module: { one: 'tool', many: 'tools' } } })).status, 200);
-    assert.equal((await stream()).settings.find((d) => d.key === 'asideDim').label, 'Huddle: dim (%)', 'a manifest\'s placeholders in the owner\'s words');
+    // The aside and module words are locked (plan-templates-redesign.md, decisions 5 and 32): only space and member change.
+    assert.deepEqual(await as('PATCH', '/api/settings', { words: { aside: { one: 'huddle', many: 'huddles' } } }).then((r) => [r.status, r.json.error]), [400, 'The aside word reads the same everywhere, so it can\'t be changed.']);
+    assert.equal((await as('PATCH', '/api/settings', { words: { space: { one: 'trip', many: 'trips' } } })).status, 200);
+    assert.equal((await stream()).settings.find((d) => d.key === 'asideDim').label, 'Aside: dim (%)', 'a locked word reads the same in a manifest');
     assert.match((await planner()).description, /the events, tasks and polls your trip already has\.$/);
-    assert.ok((await as('GET', '/api/roles')).json.permissions.some((p) => p.group === 'Tool: Itinerary'));
+    assert.ok((await as('GET', '/api/roles')).json.permissions.some((p) => p.group === 'Module: Itinerary'));
     assert.match((await as('GET', '/api/modules')).json.bundled.find((m) => m.id === 'maps').description, /your trip cares about/, 'the Available list too');
 
     // Uninstalling with its data clears its display name; a plain uninstall keeps it.
@@ -2053,7 +2055,7 @@ try {
     const start = () => startServer(hosted, { BASE_DOMAIN: 'localhost', ADMIN_LOGIN: 'boss', ADMIN_PASSWORD: 'host-password-3' });
     server = await start();
     const boss = cookieOf(await call(server, 'admin', 'POST', '/api/host/login', { body: { login: 'boss', password: 'host-password-3' } }));
-    assert.deepEqual((await call(server, 'admin', 'GET', '/api/host/templates', { cookie: boss })).json.templates.map((t) => t.id), ['games', 'travel']);
+    assert.deepEqual((await call(server, 'admin', 'GET', '/api/host/templates', { cookie: boss })).json.templates.map((t) => t.id), ['default', 'games', 'travel']);
     assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss, body: { slug: 'nope', name: 'Nope', template: 'camping' } }).then((r) => [r.status, r.json]), [400, { error: 'There is no template called camping.' }]);
     for (const template of [['travel'], { id: 'travel' }, 7]) assert.deepEqual(await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss, body: { slug: 'nope', name: 'Nope', template } }).then((r) => [r.status, r.json]), [400, { error: 'A template is named by its id, such as games.' }], JSON.stringify(template));
     const plan = { modules: fs.readdirSync(path.join(ROOT, 'modules')).filter((m) => m !== 'budget') };
@@ -2083,7 +2085,7 @@ try {
     const boss2 = cookieOf(await call(server, 'admin', 'POST', '/api/host/login', { body: { login: 'boss', password: 'host-password-3' } }));
     assert.equal((await call(server, 'admin', 'POST', '/api/host/environments', { cookie: boss2, body: { slug: 'plain', name: 'Plain' } })).status, 201);
     const plainTemplate = async () => (await call(server, 'admin', 'GET', '/api/host/environments', { cookie: boss2 })).json.environments.find((e) => e.slug === 'plain').template;
-    assert.equal(await plainTemplate(), null);
+    assert.equal((await plainTemplate()).id, 'default', 'made with no template: it reads the Default template');
     const backup = await call(server, 'admin', 'POST', '/api/host/environments/trips/backup', { cookie: boss2 });
     assert.equal(backup.status, 200);
     assert.equal((await call(server, 'admin', 'POST', '/api/host/environments/plain/restore', { cookie: boss2, body: backup.raw, type: 'application/zip' })).status, 200);
