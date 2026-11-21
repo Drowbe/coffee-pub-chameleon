@@ -788,6 +788,8 @@ async function main() {
       expect(await waitText(t, '[data-agent-title]', 'Other (set-up agent)'), 'the other set-up agent\'s page did not open');
       expect((await t.eval(`document.querySelectorAll('[data-agent-ask]').length`)) === 0 && !(await hiddenOf(t, '[data-agent-asks-empty]')), 'another agent shows this one\'s asks');
       await go(t, bell.href);
+      // The title is drawn at once; the asks list fills after the page's own request, so wait for the ask, not the title.
+      await t.waitFor('[data-agent-ask]').catch(() => {});
       expect(await waitText(t, '[data-agent-title]', 'Builder (set-up agent)') && await t.eval(`document.querySelectorAll('[data-agent-ask]').length`) === 1, 'the bell line did not open the right agent with its ask');
       // An ordinary agent's page has none of this.
       const ord = (await adm('POST', '/api/users', { agent: true, displayName: 'Reader' })).json.user;

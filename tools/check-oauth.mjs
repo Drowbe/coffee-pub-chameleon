@@ -684,8 +684,11 @@ try {
     const file = path.join(single, 'tokens.json');
     const data = JSON.parse(fs.readFileSync(file, 'utf8'));
     const conn = data.tokens.find((t) => t.kind === 'connection' && t.user === key);
-    conn.createdAt = new Date(Date.now() - 31 * 86400000).toISOString();
-    conn.expiresAt = new Date(Date.now() - 86400000).toISOString();
+    // One clock read: two reads a millisecond apart make a life of 30 days and a millisecond, which the server rightly
+    // refuses to load as a hand-made record (the connection is then gone, not ended).
+    const now = Date.now();
+    conn.createdAt = new Date(now - 31 * 86400000).toISOString();
+    conn.expiresAt = new Date(now - 86400000).toISOString();
     fs.writeFileSync(file, JSON.stringify(data));
     const again = await startServer(single, { ADMIN_PASSWORD: 'admin-password-1', AGENT_TOKENS: 'true' });
     server.port = again.port;
